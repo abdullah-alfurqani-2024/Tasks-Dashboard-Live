@@ -13,6 +13,8 @@
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+// السكيما التي فيها جداول النظام (نفس قيمة schema في js/config.js)
+const SCHEMA = "support_tasks";
 const ROLES = ["admin", "head", "engineer", "viewer"];
 
 const cors = {
@@ -36,6 +38,7 @@ async function admin(path: string, init: RequestInit = {}) {
       apikey: SERVICE_KEY,
       Authorization: `Bearer ${SERVICE_KEY}`,
       "Content-Type": "application/json",
+      ...(path.startsWith("/rest/") ? { "Accept-Profile": SCHEMA, "Content-Profile": SCHEMA } : {}),
       ...(init.headers || {}),
     },
   });

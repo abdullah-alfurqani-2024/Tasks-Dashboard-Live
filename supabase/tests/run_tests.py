@@ -8,9 +8,9 @@ passed = failed = 0
 
 
 def sql(q, who=None):
-    pre = ''
+    pre = "set search_path = support_tasks, public;\n"
     if who:
-        pre = f"set role authenticated; set request.jwt.claim.sub = '{U[who]}';\n"
+        pre += f"set role authenticated; set request.jwt.claim.sub = '{U[who]}';\n"
     r = subprocess.run(PSQL, input=pre + q, capture_output=True, text=True)
     return r.returncode == 0, (r.stdout.strip() if r.returncode == 0 else r.stderr.strip())
 
@@ -29,12 +29,12 @@ def check(name, ok_expected, q, who=None, contains=None):
 roles = {'admin': 'admin', 'head': 'head', 'eng1': 'engineer', 'eng2': 'engineer', 'viewer': 'viewer', 'off': 'engineer'}
 setup = ''.join(
     f"insert into auth.users (id, email) values ('{U[k]}', '{k}@x.om');"
-    f"insert into public.profiles (id, email, full_name, role, is_active) values ('{U[k]}', '{k}@x.om', 'اسم {k}', '{r}', {'false' if k == 'off' else 'true'});"
+    f"insert into support_tasks.profiles (id, email, full_name, role, is_active) values ('{U[k]}', '{k}@x.om', 'اسم {k}', '{r}', {'false' if k == 'off' else 'true'});"
     for k, r in roles.items())
-ok, out = sql("truncate public.task_audit, public.tasks restart identity cascade; delete from public.profiles; delete from auth.users; delete from public.task_types where name = 'كاميرات'; update public.app_settings set value = '0' where key = 'edit_lock_days';" + setup)
+ok, out = sql("truncate support_tasks.task_audit, support_tasks.tasks restart identity cascade; delete from support_tasks.profiles; delete from auth.users; delete from support_tasks.task_types where name = 'كاميرات'; update support_tasks.app_settings set value = '0' where key = 'edit_lock_days';" + setup)
 assert ok, out
 
-ST = "(select id from public.task_statuses where name = '%s')"
+ST = "(select id from support_tasks.task_statuses where name = '%s')"
 OPEN, DONE = ST % 'قيد التنفيذ', ST % 'مكتمل'
 
 # ---------- المهام ----------

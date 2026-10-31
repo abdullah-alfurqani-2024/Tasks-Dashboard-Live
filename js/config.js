@@ -16,6 +16,7 @@ export const CONFIG = {
   supabase: {
     url: '',        // مثال: 'https://abcdefghijkl.supabase.co'
     anonKey: '',    // المفتاح العام: anon public (أو Publishable key في المشاريع الجديدة)
+    schema: 'support_tasks', // السكيما التي فيها جداول النظام (يجب إضافتها في Exposed schemas)
   },
   timeZone: 'Asia/Muscat',
 };

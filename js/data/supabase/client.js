@@ -22,7 +22,9 @@ function writeStore(s) {
 function translate(status, body) {
   const msg = body?.message || body?.msg || body?.error_description || body?.error || '';
   const code = body?.code || body?.error_code || '';
-  if (code === 'P0001' && msg) return msg;                        // رسائلنا من قاعدة البيانات
+  if (code === 'P0001' && msg) return msg;
+  if (code === 'PGRST106' || /schema must be one of/i.test(msg)) return 'سكيما النظام غير مضافة في Supabase ← Data API ← Exposed schemas. راجع دليل التركيب.';
+  if (code === '3F000' || /permission denied for schema/i.test(msg)) return 'لا توجد صلاحية على سكيما النظام. أعد تنفيذ ملف 03_security.sql.';                        // رسائلنا من قاعدة البيانات
   if (code === 'invalid_credentials' || /invalid login credentials/i.test(msg)) return 'البريد أو كلمة المرور غير صحيحة.';
   if (/banned/i.test(msg) || code === 'user_banned') return 'هذا الحساب معطّل. تواصل مع مدير النظام.';
   if (code === 'email_not_confirmed') return 'البريد غير مؤكد.';
@@ -37,8 +39,10 @@ function translate(status, body) {
   return msg || 'حدث خطأ غير متوقع.';
 }
 
-export function createClient({ url, anonKey }) {
+export function createClient({ url, anonKey, schema = 'public' }) {
   const base = url.replace(/\/+$/, '');
+  // سكيما غير public: PostgREST يحددها بهذين الرأسين (قراءة / كتابة)
+  const profile = (method) => (schema === 'public' ? {} : method === 'GET' || method === 'HEAD' ? { 'Accept-Profile': schema } : { 'Content-Profile': schema });
   let session = readStore();
   let refreshing = null;
   let onExpired = () => {};
@@ -137,7 +141,7 @@ export function createClient({ url, anonKey }) {
       for (let from = 0; ; from += page) {
         const qs = new URLSearchParams(params).toString();
         const { data } = await authed(`/rest/v1/${table}?${qs}`, {
-          headers: { 'Range-Unit': 'items', Range: `${from}-${from + page - 1}` },
+          headers: { ...profile('GET'), 'Range-Unit': 'items', Range: `${from}-${from + page - 1}` },
         });
         out.push(...data);
         if (data.length < page) break;
@@ -145,29 +149,29 @@ export function createClient({ url, anonKey }) {
       return out;
     },
     async select(table, params) {
-      const { data } = await authed(`/rest/v1/${table}?${new URLSearchParams(params)}`);
+      const { data } = await authed(`/rest/v1/${table}?${new URLSearchParams(params)}`, { headers: profile('GET') });
       return data;
     },
     async insert(table, rows, { returning = true } = {}) {
       const { data } = await authed(`/rest/v1/${table}`, {
-        method: 'POST', body: rows, headers: { Prefer: returning ? 'return=representation' : 'return=minimal' },
+        method: 'POST', body: rows, headers: { ...profile('POST'), Prefer: returning ? 'return=representation' : 'return=minimal' },
       });
       return data;
     },
     async update(table, match, patch) {
       const { data } = await authed(`/rest/v1/${table}?${new URLSearchParams(match)}`, {
-        method: 'PATCH', body: patch, headers: { Prefer: 'return=representation' },
+        method: 'PATCH', body: patch, headers: { ...profile('PATCH'), Prefer: 'return=representation' },
       });
       return data;
     },
     async upsert(table, rows, onConflict) {
       const { data } = await authed(`/rest/v1/${table}?on_conflict=${onConflict}`, {
-        method: 'POST', body: rows, headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
+        method: 'POST', body: rows, headers: { ...profile('POST'), Prefer: 'resolution=merge-duplicates,return=representation' },
       });
       return data;
     },
     async rpc(fn, args = {}) {
-      const { data } = await authed(`/rest/v1/rpc/${fn}`, { method: 'POST', body: args });
+      const { data } = await authed(`/rest/v1/rpc/${fn}`, { method: 'POST', body: args, headers: profile('POST') });
       return data;
     },
     async invoke(fn, body) {

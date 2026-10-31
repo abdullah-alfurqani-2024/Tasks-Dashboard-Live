@@ -17,8 +17,25 @@
 | 3 | `supabase/sql/03_security.sql` | يضع صلاحيات كل دور (RLS) |
 | 4 | `supabase/sql/04_seed.sql` | يضيف القوائم الأولية والإعدادات |
 
+- كل جداول النظام تُنشأ في سكيما مستقلة اسمها **`support_tasks`**، فلا تلمس جداولك الموجودة في `public`.
 - يجب أن تظهر رسالة **Success** بعد كل ملف.
 - يمكن إعادة تنفيذ أي ملف دون ضرر، فهي لا تكرر البيانات ولا تحذفها.
+
+## 1-ب) إتاحة السكيما الجديدة للواجهة
+
+واجهة Supabase البرمجية (Data API) لا ترى إلا السكيمات المضافة صراحةً، وافتراضياً تكون `public` فقط.
+
+1. اذهب إلى **Project Settings ← Data API**، وفي بعض الإصدارات **Project Settings ← API ← Data API Settings**.
+2. في خانة **Exposed schemas** أضف `support_tasks` بجانب `public`، ولا تحذف `public` لأن مشروعك السابق يستخدمها.
+3. اضغط **Save**.
+
+لا تضفها في **Extra search path**، فلا حاجة لذلك.
+
+**للتحقق:** في **SQL Editor** نفّذ الاستعلام التالي، ويجب أن تظهر 8 أسماء: 7 جداول (`profiles` و`tasks` و`task_types` وغيرها) والعرض `v_tasks`:
+
+```sql
+select table_name from information_schema.tables where table_schema = 'support_tasks' order by 1;
+```
 
 ## 2) إنشاء أول مدير للنظام
 
@@ -51,14 +68,16 @@
 
 1. اذهب إلى **Authentication ← Sign In / Providers**، أو **Authentication ← Providers ← Email** في بعض الإصدارات.
    - أوقف **Allow new users to sign up**، حتى لا يسجّل أحد نفسه. المدير وحده يضيف الحسابات.
+   - **تنبيه للمشروع المشترك:** حسابات الدخول (Authentication) مشتركة بين كل ما في مشروع Supabase. إذا كان مشروعك السابق يعتمد على التسجيل الذاتي فاترك هذا الخيار كما هو. النظام يبقى آمناً، لأن أي حساب ليس له صف في `support_tasks.profiles` يُرفض دخوله ولا يرى أي بيانات.
    - أبقِ مزوّد **Email** مفعّلاً.
 2. اذهب إلى **Authentication ← URL Configuration**.
-   - اجعل **Site URL** رابط النظام على GitHub Pages، وستحصل عليه في الخطوة 6، مثل: `https://abdullah-alfurqani-2025.github.io/اسم-المستودع/`.
+   - إذا كان **Site URL** مستخدماً لمشروعك السابق فلا تغيّره، وأضف رابط النظام في **Redirect URLs** بدلاً منه. النظام لا يعتمد على روابط البريد، فهذه الخطوة اختيارية.
+   - وإلا فاجعل **Site URL** رابط النظام على GitHub Pages، وستحصل عليه في الخطوة 6، مثل: `https://abdullah-alfurqani-2025.github.io/اسم-المستودع/`.
 
 ## 5) ربط الواجهة بقاعدة البيانات
 
 1. اذهب إلى **Project Settings**، ثم **Data API** أو **API**:
-   - انسخ **Project URL**، وشكله مثل `https://abcdefghijkl.supabase.co`.
+   - انسخ **Project URL**، وشكله مثل `https://abcdefghijkl.supabase.co`. هو نفس رابط مشروعك الحالي، لأن النظام يعمل داخل المشروع نفسه في سكيما مستقلة.
 2. اذهب إلى **Project Settings ← API Keys**:
    - انسخ المفتاح **anon public**، أو **Publishable key** في المشاريع الجديدة.
 3. افتح الملف `js/config.js` في المستودع، واكتب القيمتين:
@@ -103,6 +122,9 @@ supabase: {
 | المشكلة | الحل |
 |---|---|
 | «حسابك غير مسجّل في النظام» | المستخدم موجود في Authentication لكن ليس له صف في `profiles`. للمدير الأول: نفّذ `05_first_admin.sql`. لغيره: أضفه من شاشة المستخدمون. |
+| «سكيما النظام غير مضافة في Exposed schemas» | أضف `support_tasks` في **Data API ← Exposed schemas** (الخطوة 1-ب). |
+| «لا توجد صلاحية على سكيما النظام» | أعد تنفيذ `03_security.sql`. |
+| تريد اسماً آخر للسكيما | استبدل `support_tasks` بالاسم الجديد في كل ملفات `supabase/sql`، وفي `schema` داخل `js/config.js`، وفي `SCHEMA` داخل دالة `admin-users`، ثم أضف الاسم الجديد في Exposed schemas. |
 | «دالة إدارة المستخدمين غير منشورة» | اسم الدالة يجب أن يكون `admin-users` بالضبط (الخطوة 3). |
 | «البريد أو كلمة المرور غير صحيحة» للمدير الأول | تأكد أنك فعّلت **Auto Confirm User** عند إنشائه. |
 | الصفحة تعمل بالوضع التجريبي بعد الربط | تأكد من حفظ `js/config.js` في فرع `main`، ثم حدّث الصفحة بـ Ctrl+F5. |

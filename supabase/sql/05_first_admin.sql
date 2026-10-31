@@ -9,7 +9,7 @@
 --  بعدها يضيف هذا المدير بقية المستخدمين من شاشة «المستخدمون» في النظام.
 -- =====================================================================
 
-insert into public.profiles (id, email, full_name, short_name, role, must_change_password)
+insert into support_tasks.profiles (id, email, full_name, short_name, role, must_change_password)
 select id, email,
        'عبدالله الفرقاني',          -- ← الاسم الكامل
        'عبدالله الفرقاني',           -- ← الاسم المختصر (يظهر في الجداول)
@@ -18,4 +18,4 @@ from auth.users
 where email = 'your.email@example.com'   -- ← بريدك كما كتبته في Add user
 on conflict (id) do update set role = 'admin', is_active = true;
 
-select id, email, full_name, role from public.profiles where role = 'admin';
+select id, email, full_name, role from support_tasks.profiles where role = 'admin';
