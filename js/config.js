@@ -14,8 +14,8 @@ export const CONFIG = {
   orgName: 'قسم الدعم الفني',
   backend: 'supabase',
   supabase: {
-    url: '',        // مثال: 'https://abcdefghijkl.supabase.co'
-    anonKey: '',    // المفتاح العام: anon public (أو Publishable key في المشاريع الجديدة)
+    url: 'https://pfarespmmaphtlscgmar.supabase.co',
+    anonKey: 'sb_publishable_1AEljmkY7c2yqSzwNCDuQQ_ggBQvJqI', // المفتاح العام (Publishable) — آمن في المتصفح
     schema: 'support_tasks', // السكيما التي فيها جداول النظام (يجب إضافتها في Exposed schemas)
   },
   timeZone: 'Asia/Muscat',
