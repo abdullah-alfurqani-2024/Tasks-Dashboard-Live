@@ -140,3 +140,15 @@ join support_tasks.profiles p             on p.id = t.engineer_id
 left join support_tasks.task_types tt     on tt.id = t.task_type_id
 left join support_tasks.correspondence_types ct on ct.id = t.correspondence_type_id
 join support_tasks.task_statuses s        on s.id = t.status_id;
+
+-- ---------------------------------------------------------------------
+-- تفعيل Row Level Security فوراً على كل جدول
+-- (السياسات نفسها في 03_security.sql، وحتى تنفيذه يبقى كل جدول مغلقاً على الجميع)
+-- ---------------------------------------------------------------------
+alter table support_tasks.profiles             enable row level security;
+alter table support_tasks.task_types           enable row level security;
+alter table support_tasks.correspondence_types enable row level security;
+alter table support_tasks.task_statuses        enable row level security;
+alter table support_tasks.tasks                enable row level security;
+alter table support_tasks.app_settings         enable row level security;
+alter table support_tasks.task_audit           enable row level security;
