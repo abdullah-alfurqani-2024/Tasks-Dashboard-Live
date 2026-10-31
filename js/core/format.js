@@ -97,8 +97,9 @@ export function parseDate(v) {
 /** مقارنة نصوص عربية بعد التوحيد (أ إ آ ← ا، ة ← ه، ى ← ي) */
 export function normalizeAr(s) {
   return latinDigits(s).toLowerCase()
-    .replace(/[ً-ْـ]/g, '')
-    .replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي')
+    .replace(/[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, '') // رموز خفية تأتي مع النسخ واللصق
+    .replace(/[ً-ْٰـ]/g, '')
+    .replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/[ىیي]/g, 'ي').replace(/ک/g, 'ك') // ی و ک من لوحة المفاتيح الفارسية
     .replace(/\s+/g, ' ').trim();
 }
 
