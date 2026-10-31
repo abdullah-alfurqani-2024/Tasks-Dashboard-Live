@@ -62,7 +62,7 @@ const cellText = (v) => (v == null ? '' : typeof v === 'number' ? String(v) : St
 
 export default async function importPage(ctx, main) {
   setTitle('الاستيراد');
-  const S = { step: 1, fileName: '', sheets: [], sheetIdx: 0, headerRow: -1, map: {}, engineerMode: 'column', fixedEngineer: '', createMissing: true, skipDup: true, parsed: null };
+  const S = { step: 1, fileName: '', sheets: [], sheetIdx: 0, headerRow: -1, map: {}, engineerMode: 'column', fixedEngineer: '', createMissing: true, skipDup: true, parsed: null, alias: {}, existing: null };
   const root = newPage(main);
   mount(root, html`
     ${pageHead({ title: 'استيراد المهام', sub: 'من ملف Excel (xlsx) أو CSV — مثل ملفات المهندسين أو الملف الرئيسي في Google Sheets بعد تنزيله.',
@@ -97,6 +97,7 @@ export default async function importPage(ctx, main) {
     try {
       if (file.size > 30 * 1024 * 1024) throw new Error('الملف كبير جداً (أكثر من 30 ميغابايت).');
       S.fileName = file.name;
+      S.alias = {}; S.existing = null;
       if (/\.csv$/i.test(file.name) || file.type === 'text/csv') {
         S.sheets = [{ name: 'CSV', rows: parseCsv(await file.text()) }];
       } else if (/\.xlsx$/i.test(file.name)) {
@@ -158,6 +159,12 @@ export default async function importPage(ctx, main) {
       </div>`);
   }
 
+  on(root, 'change', '[data-alias]', (e, el) => {
+    if (!el.value) return;
+    S.alias[normalizeAr(el.dataset.alias)] = el.value;
+    step3(null);
+  });
+
   on(root, 'change', '[data-k], [data-map], [name="engMode"]', (e, el) => {
     if (el.dataset.map) { S.map[el.dataset.map] = el.value === '' ? undefined : Number(el.value); return; }
     if (el.name === 'engMode') { S.engineerMode = el.value; step2(); return; }
@@ -180,21 +187,33 @@ export default async function importPage(ctx, main) {
     const engs = engineers({ includeInactive: true });
     const engIndex = new Map();
     for (const e of engs) for (const n of [e.fullName, e.shortName, e.email]) if (n) engIndex.set(normalizeAr(n), e);
+    // كلمات الاسم بدون «بن/بنت» لمطابقة «أنس الغيلاني» مع «أنس بن سالم بن علي الغيلاني»
+    const words = (s) => normalizeAr(s).split(' ').filter((w) => w && !['بن', 'بنت', 'ابن'].includes(w));
+    const inOrder = (part, whole) => { let i = 0; for (const w of whole) if (w === part[i]) i++; return i === part.length; };
     const findEng = (name) => {
       const n = normalizeAr(name);
       if (!n) return null;
+      if (S.alias[n]) return engs.find((e) => e.id === S.alias[n]) || null;
       if (engIndex.has(n)) return engIndex.get(n);
-      const c = engs.filter((e) => normalizeAr(e.fullName).startsWith(n) || n.startsWith(normalizeAr(e.fullName)));
+      const w = words(name);
+      const c = engs.filter((e) => [e.fullName, e.shortName].some((full) => {
+        const fw = words(full || '');
+        return fw.length && w.length && fw[0] === w[0] && (inOrder(w, fw) || inOrder(fw, w));
+      }));
       return c.length === 1 ? c[0] : null;
     };
+    const unknown = new Map();
     const lk = (kind, name) => L[kind].find((x) => normalizeAr(x.name) === normalizeAr(name));
     const defOpen = L.statuses.find((s) => s.isActive && s.kind === 'open');
     const defDone = L.statuses.find((s) => s.isActive && s.kind === 'done');
 
     let existing = new Set();
     if (S.skipDup) {
-      const all = await db.tasks.list({ deleted: 'include' });
-      existing = new Set(all.map((t) => `${t.engineerId}|${t.receivedDate}|${normalizeAr(t.subject)}`));
+      if (!S.existing) {
+        const all = await db.tasks.list({ deleted: 'include' });
+        S.existing = new Set(all.map((t) => `${t.engineerId}|${t.receivedDate}|${normalizeAr(t.subject)}`));
+      }
+      existing = S.existing;
     }
     const seen = new Set();
     const missing = { taskTypes: new Set(), correspondenceTypes: new Set(), statuses: new Set() };
@@ -220,6 +239,7 @@ export default async function importPage(ctx, main) {
       else {
         const name = cellText(g(r, 'engineer'));
         eng = findEng(name);
+        if (!eng && name) unknown.set(name, (unknown.get(name) || 0) + 1);
         if (!eng) errors.push(name ? `مهندس غير معروف «${name}»` : 'اسم المهندس فارغ');
       }
 
@@ -250,7 +270,7 @@ export default async function importPage(ctx, main) {
       }
       out.push({ line, task, errors, dup, engName: eng?.fullName || cellText(g(r, 'engineer')), statusName: status?.name || status?.pending || '' });
     });
-    return { rows: out, missing };
+    return { rows: out, missing, unknown };
   }
 
   /* ───── الخطوة 3 ───── */
@@ -259,7 +279,8 @@ export default async function importPage(ctx, main) {
     if (S.engineerMode === 'column' && S.map.engineer == null) return toastError({ message: 'طابق عمود «اسم المهندس» أو اختر مهندساً واحداً.' });
     try { S.parsed = await busy(btn, parseRows); } catch (e) { return toastError(e); }
     S.step = 3; drawSteps();
-    const { rows, missing } = S.parsed;
+    const { rows, missing, unknown } = S.parsed;
+    const engOpts = engineers({ includeInactive: true }).map((e) => ({ id: e.id, name: e.fullName, isActive: e.isActive }));
     const ok = rows.filter((r) => !r.errors.length && !r.dup), bad = rows.filter((r) => r.errors.length), dup = rows.filter((r) => r.dup);
     const miss = Object.entries(missing).filter(([, v]) => v.size);
     const show = [...bad, ...ok, ...dup].slice(0, 300);
@@ -274,6 +295,14 @@ export default async function importPage(ctx, main) {
           </div>
           ${miss.length ? html`<div class="alert warn">ستُضاف هذه القيم إلى القوائم: ${miss.map(([k, v]) => html`<div><b>${{ taskTypes: 'أنواع المهام', correspondenceTypes: 'أنواع المراسلات', statuses: 'الحالات' }[k]}:</b> ${[...v].join('، ')}</div>`)}
             ${missing.statuses.size ? html`<div class="small">الحالات الجديدة تُضاف كنوع «${completedHint()}» — راجعها في صفحة القوائم بعد الاستيراد.</div>` : ''}</div>` : ''}
+          ${unknown.size ? html`<div class="alert bad">
+            <b>أسماء مهندسين لم تُطابق أي حساب.</b> اختر الحساب المقابل لكل اسم، أو أضف المهندس من «المستخدمون» ثم اضغط «إعادة الفحص».
+            <div class="form-grid" style="margin-top:10px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">
+              ${[...unknown].map(([name, n]) => html`<div class="field"><label>«${name}» (${num(n)} مهمة)</label>
+                <select class="input" data-alias="${name}">${options(engOpts, '', '— اختر الحساب —')}</select></div>`)}
+            </div>
+            <div class="row" style="margin-top:8px"><button class="btn btn-sm" data-act="recheck">${icon('restore')}إعادة الفحص</button></div>
+          </div>` : ''}
           ${bad.length ? html`<div class="row"><button class="btn btn-sm" data-act="errors">${icon('download')}تنزيل الأخطاء (CSV)</button></div>` : ''}
           <div class="row"><button class="btn btn-primary" data-act="run" ${ok.length ? '' : 'disabled'}>${icon('upload')}استيراد ${num(ok.length)} مهمة</button></div>
         </div>
@@ -291,9 +320,11 @@ export default async function importPage(ctx, main) {
 
   /* ───── الخطوة 4 ───── */
   async function step4() {
-    const { rows, missing } = S.parsed;
+    const { rows, missing, unknown } = S.parsed;
+    const engOpts = engineers({ includeInactive: true }).map((e) => ({ id: e.id, name: e.fullName, isActive: e.isActive }));
     const ok = rows.filter((r) => !r.errors.length && !r.dup);
     S.step = 4; drawSteps();
+    S.existing = null; // بعد الإدخال تتغير قائمة المكرر
     mount(stepBox, html`<div class="card card-pad stack"><h2>جارٍ الاستيراد…</h2><div class="progress"><div id="bar"></div></div><div class="small muted" id="msg">تجهيز القوائم…</div></div>`);
     const bar = $('#bar', stepBox), msg = $('#msg', stepBox);
     try {
@@ -327,6 +358,7 @@ export default async function importPage(ctx, main) {
     const a = b.dataset.act;
     if (a === 'restart') step1();
     else if (a === 'preview') step3(b);
+    else if (a === 'recheck') { await loadReference({ force: true }); step3(b); }
     else if (a === 'back') step2();
     else if (a === 'run') step4();
     else if (a === 'errors') {
