@@ -29,7 +29,7 @@ function translate(status, body) {
   if (/banned/i.test(msg) || code === 'user_banned') return 'هذا الحساب معطّل. تواصل مع مدير النظام.';
   if (code === 'email_not_confirmed') return 'البريد غير مؤكد.';
   if (code === 'same_password') return 'كلمة المرور الجديدة يجب أن تختلف عن الحالية.';
-  if (code === 'weak_password' || /password should be/i.test(msg)) return 'كلمة المرور ضعيفة: 8 أحرف على الأقل.';
+  if (code === 'weak_password' || /password should be/i.test(msg)) return 'كلمة المرور أقصر من الحد الذي تقبله Supabase (Authentication ← Providers ← Email ← Minimum password length).';
   if (code === '42501' || status === 403) return 'لا تملك صلاحية لهذه العملية.';
   if (code === '23505') return 'هذه القيمة موجودة مسبقاً.';
   if (code === '23503') return 'لا يمكن تنفيذ العملية لارتباطها ببيانات أخرى.';

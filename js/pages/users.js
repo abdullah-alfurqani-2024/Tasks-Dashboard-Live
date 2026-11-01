@@ -8,6 +8,9 @@ import { modal, busy, toast, toastError, confirmBox } from '../ui/feedback.js';
 import { dataTable } from '../ui/table.js';
 import { pageHead, options, loading, newPage, searchBox } from '../ui/parts.js';
 import { normalizeAr } from '../core/format.js';
+import { normalizeSettings } from '../core/settings.js';
+
+const pwRules = () => normalizeSettings(state.settings || {});
 
 const ROLE_HELP = {
   admin: 'كل الصلاحيات: المستخدمون، الإعدادات، الحذف والاستعادة، الاستيراد.',
@@ -29,7 +32,8 @@ async function copy(text) {
 }
 
 function showCredentials(title, email, password) {
-  const text = `البريد: ${email}\nكلمة المرور المؤقتة: ${password}\nالرابط: ${location.origin}${location.pathname}\n(سيُطلب منك تغيير كلمة المرور عند أول دخول)`;
+  const force = pwRules().forcePasswordChange;
+  const text = `البريد: ${email}\nكلمة المرور${force ? ' المؤقتة' : ''}: ${password}\nالرابط: ${location.origin}${location.pathname}${force ? '\n(سيُطلب منك تغيير كلمة المرور عند أول دخول)' : ''}`;
   const m = modal({
     title, size: 'sm',
     body: html`<p style="margin-top:0">أرسل هذه البيانات للمستخدم. لن تظهر كلمة المرور مرة أخرى.</p>
@@ -89,9 +93,9 @@ export default async function users(ctx, main) {
         <div class="field"><label for="u-role">الدور <span class="req">*</span></label>
           <select class="input" id="u-role" name="role" ${self ? 'disabled' : ''}>${options(Object.entries(ROLE_LABELS), u?.role || 'engineer')}</select>
           <span class="hint" id="u-role-help">${ROLE_HELP[u?.role || 'engineer']}</span></div>
-        ${isNew ? html`<div class="field"><label for="u-pw">كلمة مرور مؤقتة <span class="req">*</span></label>
-          <input class="input ltr" style="display:block;text-align:left" id="u-pw" name="password" value="${pw}" minlength="8" required>
-          <span class="hint">سيُطلب تغييرها عند أول دخول.</span></div>`
+        ${isNew ? html`<div class="field"><label for="u-pw">كلمة المرور <span class="req">*</span></label>
+          <input class="input ltr" style="display:block;text-align:left" id="u-pw" name="password" value="${pw}" minlength="${pwRules().minPasswordLength}" required>
+          <span class="hint">يمكنك كتابة غيرها (${pwRules().minPasswordLength} أحرف على الأقل).${pwRules().forcePasswordChange ? ' سيُطلب تغييرها عند أول دخول.' : ''}</span></div>`
           : html`<div class="field"><span class="label">الحساب</span>
           <label class="check"><input type="checkbox" name="isActive" ${u.isActive ? 'checked' : ''} ${self ? 'disabled' : ''}> نشط (يستطيع الدخول)</label>
           ${self ? html`<span class="hint">لا يمكنك تغيير دورك أو تعطيل حسابك بنفسك.</span>` : ''}</div>`}
@@ -108,7 +112,7 @@ export default async function users(ctx, main) {
       const fail = (t) => { err.textContent = t; err.hidden = false; };
       if (!v.fullName?.trim()) return fail('اكتب الاسم الكامل.');
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test((v.email || '').trim())) return fail('البريد الإلكتروني غير صحيح.');
-      if (isNew && (v.password || '').length < 8) return fail('كلمة المرور 8 أحرف على الأقل.');
+      if (isNew && (v.password || '').length < pwRules().minPasswordLength) return fail(`كلمة المرور ${pwRules().minPasswordLength} أحرف على الأقل.`);
       if (!isNew && !self && u.isActive && v.isActive === false
         && !(await confirmBox({ title: 'تعطيل الحساب', message: `تعطيل حساب ${u.fullName}؟ لن يستطيع الدخول، وتبقى مهامه محفوظة.`, okText: 'تعطيل', danger: true }))) return;
       await busy($('[data-save]', m.el), async () => {
@@ -139,13 +143,30 @@ export default async function users(ctx, main) {
   on(root, 'click', '[data-edit]', (e, b) => form(list.find((u) => u.id === b.dataset.edit)));
   on(root, 'click', '[data-reset]', async (e, b) => {
     const u = list.find((x) => x.id === b.dataset.reset);
-    if (!(await confirmBox({ title: 'إعادة تعيين كلمة المرور', message: `إنشاء كلمة مرور مؤقتة جديدة لـ ${u.fullName}؟ ستتوقف كلمة المرور الحالية عن العمل.`, okText: 'إعادة التعيين' }))) return;
-    const pw = tempPassword();
-    try {
-      await db.users.resetPassword(u.id, pw);
-      showCredentials('كلمة المرور الجديدة', u.email, pw);
-      await load();
-    } catch (err) { toastError(err); }
+    const { minPasswordLength: min, forcePasswordChange: force } = pwRules();
+    const m = modal({
+      title: `كلمة مرور جديدة: ${u.fullName}`, size: 'sm',
+      body: html`<form novalidate class="stack">
+        <div class="field"><label for="r-pw">كلمة المرور الجديدة</label>
+          <input class="input ltr" style="display:block;text-align:left" id="r-pw" name="password" value="${tempPassword()}" minlength="${min}" required autofocus>
+          <span class="hint">مقترحة عشوائياً، ويمكنك كتابة غيرها (${min} أحرف على الأقل). ستتوقف كلمة المرور الحالية عن العمل${force ? '، وسيُطلب منه تغييرها عند الدخول' : ''}.</span></div>
+        <div class="alert bad" data-err hidden></div></form>`,
+      footer: html`<button class="btn btn-primary" data-save>${icon('key')}تعيين</button><button class="btn" data-x>إلغاء</button>`,
+    });
+    const f = $('form', m.el), err = $('[data-err]', m.el);
+    $('[data-x]', m.el).onclick = () => m.close();
+    const submit = () => busy($('[data-save]', m.el), async () => {
+      const pw = f.elements.password.value;
+      if (pw.length < min) { err.textContent = `كلمة المرور ${min} أحرف على الأقل.`; err.hidden = false; return; }
+      try {
+        await db.users.resetPassword(u.id, pw);
+        m.close();
+        showCredentials('كلمة المرور الجديدة', u.email, pw);
+        await load();
+      } catch (ex) { err.textContent = ex.message; err.hidden = false; }
+    });
+    $('[data-save]', m.el).onclick = submit;
+    f.onsubmit = (ev) => { ev.preventDefault(); submit(); };
   });
   root.addEventListener('input', (e) => { if (e.target.name === 'q') { q = normalizeAr(e.target.value); table?.setRows(view()); } });
 

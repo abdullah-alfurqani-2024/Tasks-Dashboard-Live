@@ -6,6 +6,8 @@
  * البيانات تُحفظ في متصفحك فقط (localStorage).
  */
 
+import { normalizeSettings } from '../../core/settings.js';
+
 const KEY = 'tsk.demo.v1';
 const PASSWORD = 'demo1234';
 const wait = (ms = 120) => new Promise((r) => setTimeout(r, ms));
@@ -60,7 +62,7 @@ function seed() {
       createdAt: rd + 'T09:00:00Z', createdBy: e.id, updatedAt: rd + 'T09:00:00Z', updatedBy: e.id, deletedAt: null, deletedBy: null,
     });
   }
-  return { users, lookups, tasks, audit: [], settings: { editLockDays: 0, delayThresholdDays: 7 }, seq: { task: tasks.length, audit: 0, lookup: 100, user: users.length } };
+  return { users, lookups, tasks, audit: [], settings: normalizeSettings(), seq: { task: tasks.length, audit: 0, lookup: 100, user: users.length } };
 }
 
 function load() {
@@ -137,7 +139,8 @@ export function createAdapter() {
       },
       async signOut() { me = null; try { sessionStorage.removeItem(KEY + '.me'); } catch { /* */ } },
       async changePassword(pw) {
-        if (pw.length < 8) throw err('كلمة المرور ضعيفة: 8 أحرف على الأقل.');
+        const min = normalizeSettings(db.settings).minPasswordLength;
+        if (pw.length < min) throw err(`كلمة المرور ${min} أحرف على الأقل.`);
         me.password = pw; me.mustChangePassword = false; persist();
       },
       onExpired() {},
@@ -245,8 +248,9 @@ export function createAdapter() {
         need('admin');
         const email = u.email.trim().toLowerCase();
         if (db.users.some((x) => x.email === email)) throw err('هذا البريد مسجّل مسبقاً.');
-        if ((u.password || '').length < 8) throw err('كلمة المرور يجب أن تكون 8 أحرف على الأقل.');
-        const row = { id: `u${++db.seq.user}`, email, fullName: u.fullName.trim(), shortName: u.shortName?.trim() || '', role: u.role, isActive: true, mustChangePassword: true, password: u.password };
+        const st = normalizeSettings(db.settings);
+        if ((u.password || '').length < st.minPasswordLength) throw err(`كلمة المرور ${st.minPasswordLength} أحرف على الأقل.`);
+        const row = { id: `u${++db.seq.user}`, email, fullName: u.fullName.trim(), shortName: u.shortName?.trim() || '', role: u.role, isActive: true, mustChangePassword: st.forcePasswordChange, password: u.password };
         db.users.push(row); persist();
         const { password, ...out } = row; return out;
       },
@@ -265,17 +269,18 @@ export function createAdapter() {
       },
       async resetPassword(id, pw) {
         need('admin');
-        if (pw.length < 8) throw err('كلمة المرور يجب أن تكون 8 أحرف على الأقل.');
+        const st = normalizeSettings(db.settings);
+        if (pw.length < st.minPasswordLength) throw err(`كلمة المرور ${st.minPasswordLength} أحرف على الأقل.`);
         const row = db.users.find((x) => x.id === id);
-        row.password = pw; row.mustChangePassword = true; persist();
+        row.password = pw; row.mustChangePassword = st.forcePasswordChange; persist();
       },
     },
 
     settings: {
-      async load() { return { ...db.settings }; },
+      async load() { return normalizeSettings(db.settings); },
       async save(s) {
         need('admin');
-        db.settings = { editLockDays: Math.max(0, Number(s.editLockDays) || 0), delayThresholdDays: Math.max(1, Number(s.delayThresholdDays) || 7) };
+        db.settings = normalizeSettings(s);
         persist(); return { ...db.settings };
       },
     },

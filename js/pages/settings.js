@@ -3,6 +3,7 @@ import { CONFIG } from '../config.js';
 import { db, backendName, isDemo } from '../data/index.js';
 import { html, mount, $, formData } from '../core/dom.js';
 import { state } from '../core/store.js';
+import { PW_FLOOR } from '../core/settings.js';
 import { fmtDateTime } from '../core/format.js';
 import { setTitle } from '../core/session.js';
 import { icon } from '../ui/icons.js';
@@ -28,6 +29,11 @@ export default async function settings(ctx, main) {
           <div class="field"><label for="s-delay">حد التأخير (بالأيام)</label>
             <input class="input num" id="s-delay" name="delayThresholdDays" type="number" min="1" max="365" value="${s.delayThresholdDays}">
             <span class="hint">المهمة المفتوحة أكثر من هذه المدة تُعد «متأخرة» في المهام ولوحة المؤشرات، وتُلوَّن المدة الأطول منها بالأحمر.</span></div>
+          <h3 style="margin-top:8px">كلمات المرور</h3>
+          <div class="field"><label for="s-pwmin">أقل طول لكلمة المرور</label>
+            <input class="input num" id="s-pwmin" name="minPasswordLength" type="number" min="${PW_FLOOR}" max="72" value="${s.minPasswordLength}">
+            <span class="hint">أقل قيمة ممكنة ${PW_FLOOR}، وهو حد خدمة الدخول في Supabase ولا يمكن النزول عنه. إذا رفعتها هنا فارفعها أيضاً في Supabase ← Authentication ← Providers ← Email ← Minimum password length.</span></div>
+          <label class="check"><input type="checkbox" name="forcePasswordChange" ${s.forcePasswordChange ? 'checked' : ''}> إلزام المستخدم بتغيير كلمة المرور التي يضعها المدير عند أول دخول</label>
           <div class="alert bad" data-err hidden></div>
           <div><button class="btn btn-primary" type="submit">${icon('check')}حفظ</button></div>
         </div>
@@ -50,13 +56,14 @@ export default async function settings(ctx, main) {
   form.onsubmit = async (e) => {
     e.preventDefault();
     const v = formData(form);
-    const lock = Number(v.editLockDays), delay = Number(v.delayThresholdDays);
+    const lock = Number(v.editLockDays), delay = Number(v.delayThresholdDays), pwMin = Number(v.minPasswordLength);
     err.hidden = true;
     if (!Number.isInteger(lock) || lock < 0) { err.textContent = 'مدة القفل رقم صحيح 0 أو أكثر.'; err.hidden = false; return; }
     if (!Number.isInteger(delay) || delay < 1) { err.textContent = 'حد التأخير رقم صحيح 1 أو أكثر.'; err.hidden = false; return; }
+    if (!Number.isInteger(pwMin) || pwMin < PW_FLOOR || pwMin > 72) { err.textContent = `أقل طول لكلمة المرور بين ${PW_FLOOR} و 72.`; err.hidden = false; return; }
     await busy($('button[type=submit]', form), async () => {
       try {
-        state.settings = await db.settings.save({ editLockDays: lock, delayThresholdDays: delay });
+        state.settings = await db.settings.save({ editLockDays: lock, delayThresholdDays: delay, minPasswordLength: pwMin, forcePasswordChange: v.forcePasswordChange });
         toast('تم حفظ الإعدادات.', 'ok');
       } catch (ex) { err.textContent = ex.message; err.hidden = false; }
     });

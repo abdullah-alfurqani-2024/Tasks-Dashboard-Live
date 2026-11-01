@@ -21,7 +21,7 @@
  *
  * LookupItem { id, name, sortOrder, isActive, kind? }   (kind للحالات فقط)
  * Lookups    { taskTypes: LookupItem[], correspondenceTypes: LookupItem[], statuses: LookupItem[] }
- * Settings   { editLockDays: number, delayThresholdDays: number }
+ * Settings   { editLockDays: number, delayThresholdDays: number, minPasswordLength: number, forcePasswordChange: boolean }
  * AuditEntry { id, taskId, action: 'insert'|'update'|'delete'|'restore', changedBy, changedAt,
  *              changedFields: string[]|null, oldData: object|null, newData: object|null }
  *              (مفاتيح oldData/newData بأسماء أعمدة قاعدة البيانات snake_case)

@@ -2,6 +2,7 @@
  * محوّل Supabase — يطبّق عقد contract.js فوق client.js
  */
 import { createClient, ApiError } from './client.js';
+import { normalizeSettings } from '../../core/settings.js';
 
 const TASK_COLS = 'id,engineer_id,engineer_name,engineer_short,ref_no,requester,employee_name,subject,received_date,completed_date,notes,task_type_id,task_type,correspondence_type_id,correspondence_type,status_id,status,status_kind,delay_reason,duration_days,created_at,created_by,updated_at,updated_by,deleted_at,deleted_by';
 const LOOKUP_TABLES = { taskTypes: 'task_types', correspondenceTypes: 'correspondence_types', statuses: 'task_statuses' };
@@ -178,12 +179,18 @@ export function createAdapter(config) {
       async load() {
         const rows = await c.select('app_settings', { select: 'key,value' });
         const m = Object.fromEntries(rows.map((r) => [r.key, r.value]));
-        return { editLockDays: Number(m.edit_lock_days) || 0, delayThresholdDays: Number(m.delay_threshold_days ?? 7) };
+        return normalizeSettings({
+          editLockDays: m.edit_lock_days, delayThresholdDays: m.delay_threshold_days,
+          minPasswordLength: m.min_password_length, forcePasswordChange: m.force_password_change,
+        });
       },
       async save(s) {
+        const n = normalizeSettings(s);
         await c.upsert('app_settings', [
-          { key: 'edit_lock_days', value: Math.max(0, Number(s.editLockDays) || 0) },
-          { key: 'delay_threshold_days', value: Math.max(1, Number(s.delayThresholdDays) || 7) },
+          { key: 'edit_lock_days', value: n.editLockDays },
+          { key: 'delay_threshold_days', value: n.delayThresholdDays },
+          { key: 'min_password_length', value: n.minPasswordLength },
+          { key: 'force_password_change', value: n.forcePasswordChange },
         ], 'key');
         return this.load();
       },

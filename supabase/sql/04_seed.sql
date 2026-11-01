@@ -19,5 +19,7 @@ on conflict (name) do nothing;
 
 insert into support_tasks.app_settings (key, value) values
   ('edit_lock_days', '0'),          -- قفل تعديل المهمة المكتملة بعد عدد أيام (0 = بدون قفل)
-  ('delay_threshold_days', '7')     -- مهمة أطول من هذا تُعدّ متأخرة في التقارير
+  ('delay_threshold_days', '7'),    -- مهمة أطول من هذا تُعدّ متأخرة في التقارير
+  ('min_password_length', '6'),     -- أقل طول لكلمة المرور (6 = أقل ما تقبله Supabase)
+  ('force_password_change', 'true') -- إلزام تغيير كلمة المرور التي يضعها المدير عند أول دخول
 on conflict (key) do nothing;

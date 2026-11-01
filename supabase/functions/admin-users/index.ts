@@ -53,7 +53,7 @@ async function admin(path: string, init: RequestInit = {}) {
 
 function translate(msg: string): string {
   if (/already been registered|already exists|duplicate key/i.test(msg)) return "هذا البريد مسجّل مسبقاً.";
-  if (/password/i.test(msg) && /(short|least|weak)/i.test(msg)) return "كلمة المرور ضعيفة: 8 أحرف على الأقل.";
+  if (/password/i.test(msg) && /(short|least|weak)/i.test(msg)) return "كلمة المرور أقصر من الحد الذي تقبله Supabase (Authentication ← Providers ← Email ← Minimum password length).";
   if (/invalid.*email|email.*invalid/i.test(msg)) return "صيغة البريد غير صحيحة.";
   if (/بنفسك/.test(msg)) return msg;
   return msg;
@@ -79,8 +79,18 @@ function clean(v: unknown) {
   return typeof v === "string" ? v.trim() : v;
 }
 
-function checkPassword(p: unknown) {
-  if (typeof p !== "string" || p.length < 8) throw new AppError("كلمة المرور يجب أن تكون 8 أحرف على الأقل.");
+// قواعد كلمة المرور من إعدادات النظام (يحددها المدير). 6 = أقل ما تقبله Supabase
+const PW_FLOOR = 6;
+async function passwordRules() {
+  const rows = await admin("/rest/v1/app_settings?key=in.(min_password_length,force_password_change)&select=key,value");
+  const m = Object.fromEntries((rows || []).map((r: { key: string; value: unknown }) => [r.key, r.value]));
+  const min = Math.min(72, Math.max(PW_FLOOR, Number(m.min_password_length) || PW_FLOOR));
+  const force = m.force_password_change === undefined ? true : m.force_password_change === true || m.force_password_change === "true";
+  return { min, force };
+}
+
+function checkPassword(p: unknown, min: number) {
+  if (typeof p !== "string" || p.length < min) throw new AppError(`كلمة المرور يجب أن تكون ${min} أحرف على الأقل.`);
 }
 
 async function createUser(body: Record<string, unknown>) {
@@ -91,7 +101,8 @@ async function createUser(body: Record<string, unknown>) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new AppError("صيغة البريد غير صحيحة.");
   if (!full_name) throw new AppError("الاسم الكامل مطلوب.");
   if (!ROLES.includes(role)) throw new AppError("دور غير معروف.");
-  checkPassword(body.password);
+  const rules = await passwordRules();
+  checkPassword(body.password, rules.min);
 
   const user = await admin("/auth/v1/admin/users", {
     method: "POST",
@@ -101,7 +112,7 @@ async function createUser(body: Record<string, unknown>) {
     const rows = await admin("/rest/v1/profiles", {
       method: "POST",
       headers: { Prefer: "return=representation" },
-      body: JSON.stringify({ id: user.id, email, full_name, short_name, role, must_change_password: true }),
+      body: JSON.stringify({ id: user.id, email, full_name, short_name, role, must_change_password: rules.force }),
     });
     return rows[0];
   } catch (e) {
@@ -175,11 +186,12 @@ async function updateUser(body: Record<string, unknown>, callerId: string) {
 async function resetPassword(body: Record<string, unknown>) {
   const id = String(body.id || "");
   if (!id) throw new AppError("المستخدم غير محدد.");
-  checkPassword(body.password);
+  const rules = await passwordRules();
+  checkPassword(body.password, rules.min);
   await admin(`/auth/v1/admin/users/${id}`, { method: "PUT", body: JSON.stringify({ password: body.password }) });
   await admin(`/rest/v1/profiles?id=eq.${id}`, {
     method: "PATCH",
-    body: JSON.stringify({ must_change_password: true }),
+    body: JSON.stringify({ must_change_password: rules.force }),
   });
   return { ok: true };
 }
