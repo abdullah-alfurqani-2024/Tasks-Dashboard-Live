@@ -8,6 +8,8 @@
 //    update         { id, login_no?, email?, full_name?, short_name?, role?, is_active? }
 //  المستخدم بلا بريد يُعطى بريد دخول داخلياً (n<الرقم>@tasks.internal) لا يُرسل إليه شيء
 //    reset_password { id, password }
+//    reset_all      { mode: 'same'|'login_no', password?, force, include_inactive }
+//                   كل المستخدمين عدا من ينفّذ الأمر: كلمة مرور موحدة، أو الرقم المدني/الوظيفي لكل مستخدم
 //
 //  لا يستخدم أي مكتبة: fetch مباشرة إلى واجهات Supabase
 //
@@ -230,6 +232,40 @@ async function updateUser(body: Record<string, unknown>, callerId: string) {
   return rows[0];
 }
 
+/** إعادة تعيين كلمات المرور للكل عدا المدير الذي ينفّذ الأمر */
+async function resetAll(body: Record<string, unknown>, callerId: string) {
+  const mode = body.mode === "login_no" ? "login_no" : "same";
+  const force = body.force !== false;
+  const includeInactive = body.include_inactive === true;
+  const rules = await passwordRules();
+  if (mode === "same") checkPassword(body.password, rules.min);
+
+  const users: { id: string; full_name: string; login_no: string | null; is_active: boolean }[] =
+    await admin(`/rest/v1/profiles?id=neq.${callerId}&select=id,full_name,login_no,is_active&order=full_name.asc`);
+  const done: string[] = [];
+  const skipped: { name: string; reason: string }[] = [];
+  const queue = users.filter((u) => {
+    if (!u.is_active && !includeInactive) { skipped.push({ name: u.full_name, reason: "حساب معطّل" }); return false; }
+    if (mode === "login_no" && !u.login_no) { skipped.push({ name: u.full_name, reason: "ليس له رقم" }); return false; }
+    if (mode === "login_no" && u.login_no!.length < rules.min) { skipped.push({ name: u.full_name, reason: `رقمه أقصر من ${rules.min} خانات` }); return false; }
+    return true;
+  });
+  // 5 طلبات في وقت واحد
+  for (let i = 0; i < queue.length; i += 5) {
+    await Promise.all(queue.slice(i, i + 5).map(async (u) => {
+      const password = mode === "same" ? String(body.password) : u.login_no!;
+      try {
+        await admin(`/auth/v1/admin/users/${u.id}`, { method: "PUT", body: JSON.stringify({ password }) });
+        await admin(`/rest/v1/profiles?id=eq.${u.id}`, { method: "PATCH", body: JSON.stringify({ must_change_password: force }) });
+        done.push(u.full_name);
+      } catch (e) {
+        skipped.push({ name: u.full_name, reason: e instanceof AppError ? e.message : "خطأ غير متوقع" });
+      }
+    }));
+  }
+  return { reset: done.length, skipped };
+}
+
 async function resetPassword(body: Record<string, unknown>) {
   const id = String(body.id || "");
   if (!id) throw new AppError("المستخدم غير محدد.");
@@ -254,6 +290,7 @@ Deno.serve(async (req) => {
       case "create": return json({ user: await createUser(body) });
       case "update": return json({ user: await updateUser(body, callerId) });
       case "reset_password": return json(await resetPassword(body));
+      case "reset_all": return json(await resetAll(body, callerId));
       default: throw new AppError("عملية غير معروفة.");
     }
   } catch (e) {

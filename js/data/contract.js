@@ -51,6 +51,8 @@
  * users.create({ loginNo, email?, password, fullName, shortName, role }) → User   (الرقم أو البريد على الأقل)
  * users.update(id, { loginNo?, email?, fullName?, shortName?, role?, isActive? }) → User
  * users.resetPassword(id, password) → void
+ * users.resetAll({ mode: 'same'|'loginNo', password?, force, includeInactive }) → { reset, skipped: [{ name, reason }] }
+ *        كل المستخدمين عدا المنفّذ
  *
  * settings.load()                → Settings
  * settings.save(Settings)        → Settings

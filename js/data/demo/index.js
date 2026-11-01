@@ -280,6 +280,22 @@ export function createAdapter() {
         persist();
         const { password, ...out } = row; return out;
       },
+      async resetAll(o) {
+        need('admin');
+        const st = normalizeSettings(db.settings);
+        if (o.mode !== 'loginNo' && (o.password || '').length < st.minPasswordLength) throw err(`كلمة المرور ${st.minPasswordLength} أحرف على الأقل.`);
+        let reset = 0; const skipped = [];
+        for (const u of db.users) {
+          if (u.id === me.id) continue;
+          if (!u.isActive && !o.includeInactive) { skipped.push({ name: u.fullName, reason: 'حساب معطّل' }); continue; }
+          const pw = o.mode === 'loginNo' ? u.loginNo : o.password;
+          if (!pw) { skipped.push({ name: u.fullName, reason: 'ليس له رقم' }); continue; }
+          if (pw.length < st.minPasswordLength) { skipped.push({ name: u.fullName, reason: `رقمه أقصر من ${st.minPasswordLength} خانات` }); continue; }
+          u.password = pw; u.mustChangePassword = o.force !== false; reset++;
+        }
+        persist();
+        return { reset, skipped };
+      },
       async resetPassword(id, pw) {
         need('admin');
         const st = normalizeSettings(db.settings);

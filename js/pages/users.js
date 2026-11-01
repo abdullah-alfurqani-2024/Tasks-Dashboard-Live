@@ -50,7 +50,7 @@ export default async function users(ctx, main) {
   setTitle('المستخدمون');
   const root = newPage(main);
   mount(root, html`
-    ${pageHead({ title: 'المستخدمون', sub: 'المدير يضيف الحسابات ويحدد الأدوار. لا يوجد تسجيل ذاتي.', actions: html`<button class="btn btn-primary" data-act="new">${icon('plus')}مستخدم جديد</button>` })}
+    ${pageHead({ title: 'المستخدمون', sub: 'المدير يضيف الحسابات ويحدد الأدوار. لا يوجد تسجيل ذاتي.', actions: html`<button class="btn" data-act="reset-all">${icon('key')}كلمات المرور للكل</button><button class="btn btn-primary" data-act="new">${icon('plus')}مستخدم جديد</button>` })}
     ${isDemo ? '' : html`<div class="alert small" style="margin-bottom:14px">إضافة المستخدمين وتعطيلهم وإعادة كلمات المرور تتم عبر دالة <span class="ltr">admin-users</span> على Supabase. إذا ظهر خطأ «غير منشورة» راجع دليل التركيب.</div>`}
     <div class="card filters"><div class="field wide">${searchBox('', 'الاسم أو الرقم أو البريد…')}</div></div>
     <div class="card" id="tbl" style="margin-top:14px">${loading()}</div>`);
@@ -150,6 +150,63 @@ export default async function users(ctx, main) {
   }
 
   on(root, 'click', '[data-act="new"]', () => form(null));
+  on(root, 'click', '[data-act="reset-all"]', () => resetAllDialog());
+
+  /** إعادة تعيين كلمات المرور لكل المستخدمين عدا الحساب الحالي */
+  function resetAllDialog() {
+    const { minPasswordLength: min, forcePasswordChange } = pwRules();
+    const others = list.filter((u) => u.id !== state.user.id);
+    const WORD = 'تأكيد';
+    const m = modal({
+      title: 'إعادة تعيين كلمات المرور للكل',
+      body: html`<form class="stack" novalidate>
+        <div class="alert warn">
+          تتغير كلمة مرور <b>${others.length}</b> مستخدماً، أي كل المستخدمين عدا حسابك أنت. ستتوقف كلماتهم الحالية عن العمل فوراً.
+          ${html`<br><b>حسابات الدخول مشتركة بين نسختي التجربة والإنتاج</b>، فالتغيير يسري على الإنتاج أيضاً أينما نُفّذ.`}
+        </div>
+        <div class="field"><span class="label">كلمة المرور الجديدة</span>
+          <label class="check"><input type="radio" name="mode" value="same" checked> كلمة مرور موحدة للجميع</label>
+          <input class="input ltr" style="display:block;text-align:left" name="password" value="${tempPassword()}" minlength="${min}" aria-label="كلمة المرور الموحدة">
+          <label class="check"><input type="radio" name="mode" value="loginNo"> الرقم المدني/الوظيفي لكل مستخدم</label>
+          <span class="hint">من ليس له رقم، أو رقمه أقصر من ${min} خانات (حد Supabase)، يُترك كما هو ويظهر في النتيجة.</span></div>
+        <label class="check"><input type="checkbox" name="force" ${forcePasswordChange ? 'checked' : ''}> إلزام كل مستخدم بتغييرها عند أول دخول</label>
+        <label class="check"><input type="checkbox" name="includeInactive"> تشمل الحسابات المعطّلة</label>
+        <div class="field"><label for="ra-confirm">للتأكيد اكتب كلمة «${WORD}»</label>
+          <input class="input" id="ra-confirm" name="confirm" autocomplete="off"></div>
+        <div class="alert bad" data-err hidden></div>
+      </form>`,
+      footer: html`<button class="btn btn-danger" data-save>${icon('key')}إعادة التعيين</button><button class="btn" data-x>إلغاء</button>`,
+    });
+    const f = $('form', m.el), err = $('[data-err]', m.el);
+    const sync = () => { f.elements.password.disabled = f.elements.mode.value !== 'same'; };
+    f.addEventListener('change', sync); sync();
+    $('[data-x]', m.el).onclick = () => m.close();
+    $('[data-save]', m.el).onclick = (e) => busy(e.currentTarget, async () => {
+      const v = formData(f);
+      const mode = f.elements.mode.value;
+      const fail = (t) => { err.textContent = t; err.hidden = false; };
+      err.hidden = true;
+      if (mode === 'same' && (v.password || '').length < min) return fail(`كلمة المرور ${min} أحرف على الأقل.`);
+      if ((v.confirm || '').trim() !== WORD) return fail(`اكتب كلمة «${WORD}» للتأكيد.`);
+      try {
+        const r = await db.users.resetAll({ mode, password: v.password, force: v.force, includeInactive: v.includeInactive });
+        m.close();
+        const text = (mode === 'same' ? `كلمة المرور الجديدة للجميع: ${v.password}` : 'كلمة المرور الجديدة: الرقم المدني/الوظيفي لكل مستخدم')
+          + `\nالرابط: ${location.origin}${location.pathname}` + (v.force ? '\n(سيُطلب تغييرها عند أول دخول)' : '');
+        const res = modal({
+          title: 'تمت إعادة التعيين', size: 'sm',
+          body: html`<p style="margin-top:0">أُعيد تعيين كلمة مرور <b>${r.reset}</b> مستخدماً.</p>
+            ${r.skipped?.length ? html`<div class="alert warn small"><b>لم تتغير (${r.skipped.length}):</b>
+              ${r.skipped.map((x) => html`<div>${x.name} — ${x.reason}</div>`)}</div>` : ''}
+            <pre class="input" style="white-space:pre-wrap;direction:rtl;min-height:0;font:inherit;margin-top:12px">${text}</pre>`,
+          footer: html`<button class="btn btn-primary" data-copy>${icon('copy')}نسخ</button><button class="btn" data-x>تم</button>`,
+        });
+        $('[data-copy]', res.el).onclick = () => copy(text);
+        $('[data-x]', res.el).onclick = () => res.close();
+        await load();
+      } catch (ex) { fail(ex.message); }
+    });
+  }
   on(root, 'click', '[data-edit]', (e, b) => form(list.find((u) => u.id === b.dataset.edit)));
   on(root, 'click', '[data-reset]', async (e, b) => {
     const u = list.find((x) => x.id === b.dataset.reset);

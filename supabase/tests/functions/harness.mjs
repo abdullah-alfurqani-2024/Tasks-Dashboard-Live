@@ -151,4 +151,24 @@ ok('رقم مكرر عند الإنشاء', r.status === 400 && /الرقم/.tes
 r = await call('admin', 'admin-users-staging', { action: 'update', id: 'admin', login_no: '777' }, T);
 ok('رقم مكرر عند التعديل', r.status === 400 && /الرقم/.test(r.body.error));
 
+// 9) إعادة تعيين كلمات المرور للكل
+auth.set('off', { email: 'off@x.om', password: 'pw-off' });
+db.support_tasks_staging.push({ id: 'off', email: 'off@x.om', role: 'engineer', is_active: false, login_no: '4444444', full_name: 'معطّل' });
+db.support_tasks_staging.push({ id: 'short', email: 'short@x.om', role: 'engineer', is_active: true, login_no: '12', full_name: 'رقم قصير' });
+auth.set('short', { email: 'short@x.om', password: 'pw-short' });
+r = await call('admin', 'admin-users-staging', { action: 'reset_all', mode: 'same', password: '123', force: true }, T);
+ok('الكل: كلمة موحدة قصيرة مرفوضة', r.status === 400);
+r = await call('admin', 'admin-users-staging', { action: 'reset_all', mode: 'same', password: 'Test2026', force: true }, T);
+ok('الكل: موحدة', r.status === 200 && auth.get('eng').password === 'Test2026' && auth.get('id1')?.password === 'Test2026', JSON.stringify(r.body));
+ok('الكل: المنفّذ نفسه لم يتغير', auth.get('admin').password === 'pw-admin');
+ok('الكل: المعطّل تُرك', auth.get('off').password === 'pw-off' && r.body.skipped.some((x) => x.reason === 'حساب معطّل'));
+ok('الكل: إلزام التغيير', prof('support_tasks_staging', 'eng').must_change_password === true);
+r = await call('admin', 'admin-users-staging', { action: 'reset_all', mode: 'login_no', force: false, include_inactive: true }, T);
+ok('الكل: بالرقم ينجح', r.status === 200 && r.body.reset >= 1, JSON.stringify(r.body));
+ok('الكل: الرقم القصير تُرك مع السبب', r.body.skipped.some((x) => x.name === 'رقم قصير'));
+ok('الكل: المعطّل شُمل عند الطلب', auth.get('off').password === '4444444');
+ok('الكل: بدون إلزام التغيير', prof('support_tasks_staging', 'off').must_change_password === false);
+r = await call('admin', 'admin-users-staging', { action: 'reset_all', mode: 'same', password: 'Test2026' }, 'tok-eng');
+ok('الكل: غير المدير مرفوض', r.status === 403 || r.status === 401 || r.status === 400, JSON.stringify(r));
+
 console.log(`\n${pass} ناجح، ${fail} فاشل`);

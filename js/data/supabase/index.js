@@ -179,6 +179,10 @@ export function createAdapter(config) {
       async resetPassword(id, password) {
         await c.invoke(fn, { action: 'reset_password', id, password });
       },
+      /** opts: { mode: 'same'|'loginNo', password?, force, includeInactive } ← { reset, skipped: [{name, reason}] } */
+      async resetAll(o) {
+        return c.invoke(fn, { action: 'reset_all', mode: o.mode === 'loginNo' ? 'login_no' : 'same', password: o.password, force: o.force, include_inactive: o.includeInactive });
+      },
     },
 
     settings: {
