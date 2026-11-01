@@ -62,7 +62,7 @@ const cellText = (v) => (v == null ? '' : typeof v === 'number' ? String(v) : St
 
 export default async function importPage(ctx, main) {
   setTitle('الاستيراد');
-  const S = { step: 1, fileName: '', sheets: [], sheetIdx: 0, headerRow: -1, map: {}, engineerMode: 'column', fixedEngineer: '', createMissing: true, skipDup: true, parsed: null, alias: {}, existing: null };
+  const S = { step: 1, fileName: '', sheets: [], sheetIdx: 0, headerRow: -1, map: {}, engineerMode: 'column', fixedEngineer: '', createMissing: true, skipDup: true, autoFix: true, parsed: null, alias: {}, existing: null };
   const root = newPage(main);
   mount(root, html`
     ${pageHead({ title: 'استيراد المهام', sub: 'من ملف Excel (xlsx) أو CSV — مثل ملفات المهندسين أو الملف الرئيسي في Google Sheets بعد تنزيله.',
@@ -154,6 +154,9 @@ export default async function importPage(ctx, main) {
           <h3>خيارات</h3>
           <label class="check"><input type="checkbox" data-k="createMissing" ${S.createMissing ? 'checked' : ''}> إضافة قيم القوائم غير الموجودة (نوع المهمة، نوع المراسلة، الحالة) تلقائياً</label>
           <label class="check"><input type="checkbox" data-k="skipDup" ${S.skipDup ? 'checked' : ''}> تجاهل المهام المكررة (نفس المهندس + تاريخ الاستقبال + الموضوع موجودة مسبقاً)</label>
+          <label class="check"><input type="checkbox" data-k="autoFix" ${S.autoFix ? 'checked' : ''}> إصلاح تلقائي للأخطاء البسيطة بدلاً من رفض الصف:
+            الموضوع الفارغ يصبح «(بدون موضوع)»، والمكتملة بلا تاريخ انتهاء أو بتاريخ انتهاء قبل الاستقبال تأخذ تاريخ الاستقبال.
+            يُكتب ما أُصلح في «الملاحظات» بعلامة <b>[استيراد]</b> لتراجعه لاحقاً بالبحث عنها.</label>
           <div><button class="btn btn-primary" data-act="preview">${icon('eye')}معاينة</button></div>
         </div>
       </div>`);
@@ -229,10 +232,15 @@ export default async function importPage(ctx, main) {
       const receivedDate = parseDate(recRaw);
       const completedDate = parseDate(doneRaw);
       if (!subject && !receivedDate && !cellText(g(r, 'refNo'))) return; // صف فارغ عملياً (مثلاً صف معادلات)
-      if (!subject) errors.push('الموضوع فارغ');
+      const fixes = [];
+      let subjectV = subject;
+      if (!subject) { if (S.autoFix) { subjectV = '(بدون موضوع)'; fixes.push('الموضوع فارغ'); } else errors.push('الموضوع فارغ'); }
       if (!receivedDate) errors.push(cellText(recRaw) ? `تاريخ الاستقبال غير مفهوم «${cellText(recRaw)}»` : 'تاريخ الاستقبال فارغ');
       if (cellText(doneRaw) && !completedDate) errors.push(`تاريخ الانتهاء غير مفهوم «${cellText(doneRaw)}»`);
-      if (receivedDate && completedDate && completedDate < receivedDate) errors.push('تاريخ الانتهاء قبل الاستقبال');
+      let completedV = completedDate;
+      if (receivedDate && completedDate && completedDate < receivedDate) {
+        if (S.autoFix) { completedV = receivedDate; fixes.push(`تاريخ الانتهاء ${fmtDate(completedDate)} قبل الاستقبال`); } else errors.push('تاريخ الانتهاء قبل الاستقبال');
+      }
 
       let eng = null;
       if (S.engineerMode === 'fixed') eng = engs.find((e) => e.id === S.fixedEngineer) || null;
@@ -253,22 +261,26 @@ export default async function importPage(ctx, main) {
         else errors.push(`${TARGETS.find((t) => t.key === k).label} غير موجود «${name}»`);
       }
       let status = ref.status;
-      if (!status) status = completedDate ? defDone : defOpen;
-      const kind = status?.kind || (status?.pending ? (completedDate ? 'done' : 'open') : null);
-      if (kind === 'done' && !completedDate) errors.push('الحالة مكتملة بدون تاريخ انتهاء');
+      if (!status) status = completedV ? defDone : defOpen;
+      const kind = status?.kind || (status?.pending ? (completedV ? 'done' : 'open') : null);
+      if (kind === 'done' && !completedV) {
+        if (S.autoFix && receivedDate) { completedV = receivedDate; fixes.push('مكتملة بدون تاريخ انتهاء'); } else errors.push('الحالة مكتملة بدون تاريخ انتهاء');
+      }
+      const notesRaw = cellText(g(r, 'notes'));
+      const notesV = fixes.length ? [notesRaw, `[استيراد] ${fixes.join('، ')}`].filter(Boolean).join(' — ') : notesRaw;
 
       const task = {
         engineerId: eng?.id, refNo: cellText(g(r, 'refNo')), requester: cellText(g(r, 'requester')), employeeName: cellText(g(r, 'employeeName')),
-        subject, receivedDate, completedDate: kind === 'open' ? null : completedDate, notes: cellText(g(r, 'notes')), delayReason: cellText(g(r, 'delayReason')),
+        subject: subjectV, receivedDate, completedDate: kind === 'open' ? null : completedV, notes: notesV, delayReason: cellText(g(r, 'delayReason')),
         _ref: { ...ref, status },
       };
       let dup = false;
       if (!errors.length && S.skipDup) {
-        const key = `${eng.id}|${receivedDate}|${normalizeAr(subject)}`;
+        const key = `${eng.id}|${receivedDate}|${normalizeAr(subjectV)}`;
         dup = existing.has(key) || seen.has(key);
         seen.add(key);
       }
-      out.push({ line, task, errors, dup, engName: eng?.fullName || cellText(g(r, 'engineer')), statusName: status?.name || status?.pending || '' });
+      out.push({ line, task, errors, fixes, dup, engName: eng?.fullName || cellText(g(r, 'engineer')), statusName: status?.name || status?.pending || '' });
     });
     return { rows: out, missing, unknown };
   }
@@ -283,7 +295,7 @@ export default async function importPage(ctx, main) {
     const engOpts = engineers({ includeInactive: true }).map((e) => ({ id: e.id, name: e.fullName, isActive: e.isActive }));
     const ok = rows.filter((r) => !r.errors.length && !r.dup), bad = rows.filter((r) => r.errors.length), dup = rows.filter((r) => r.dup);
     const miss = Object.entries(missing).filter(([, v]) => v.size);
-    const show = [...bad, ...ok, ...dup].slice(0, 300);
+    const show = [...bad, ...ok.filter((r) => r.fixes.length), ...ok.filter((r) => !r.fixes.length), ...dup].slice(0, 300);
     mount(stepBox, html`
       <div class="card">
         <div class="card-head"><h2>المعاينة</h2><div class="actions"><button class="btn btn-sm" data-act="back">رجوع</button></div></div>
@@ -292,6 +304,7 @@ export default async function importPage(ctx, main) {
             <span class="chip"><span class="dot" style="color:var(--ok)"></span>جاهزة للاستيراد <b>${num(ok.length)}</b></span>
             <span class="chip"><span class="dot" style="color:var(--bad)"></span>فيها أخطاء (لن تُستورد) <b>${num(bad.length)}</b></span>
             ${S.skipDup ? html`<span class="chip"><span class="dot" style="color:var(--muted)"></span>مكررة (تُتجاهل) <b>${num(dup.length)}</b></span>` : ''}
+            ${S.autoFix ? html`<span class="chip"><span class="dot" style="color:var(--warn)"></span>أُصلحت تلقائياً (ضمن الجاهزة) <b>${num(ok.filter((r) => r.fixes.length).length)}</b></span>` : ''}
           </div>
           ${miss.length ? html`<div class="alert warn">ستُضاف هذه القيم إلى القوائم: ${miss.map(([k, v]) => html`<div><b>${{ taskTypes: 'أنواع المهام', correspondenceTypes: 'أنواع المراسلات', statuses: 'الحالات' }[k]}:</b> ${[...v].join('، ')}</div>`)}
             ${missing.statuses.size ? html`<div class="small">الحالات الجديدة تُضاف كنوع «${completedHint()}» — راجعها في صفحة القوائم بعد الاستيراد.</div>` : ''}</div>` : ''}
@@ -311,7 +324,7 @@ export default async function importPage(ctx, main) {
           <tbody>${show.map((r) => html`<tr>
             <td class="num muted">${r.line}</td><td class="nowrap">${r.engName}</td><td class="subject"><div class="clip">${r.task.subject}</div></td>
             <td class="num nowrap">${fmtDate(r.task.receivedDate)}</td><td class="num nowrap">${fmtDate(r.task.completedDate)}</td><td>${r.statusName}</td>
-            <td>${r.errors.length ? html`<span class="badge bad">خطأ</span> <span class="small">${r.errors.join('، ')}</span>` : r.dup ? html`<span class="badge">مكررة</span>` : html`<span class="badge ok">جاهزة</span>`}</td></tr>`)}</tbody>
+            <td>${r.errors.length ? html`<span class="badge bad">خطأ</span> <span class="small">${r.errors.join('، ')}</span>` : r.dup ? html`<span class="badge">مكررة</span>` : r.fixes.length ? html`<span class="badge warn">أُصلحت</span> <span class="small">${r.fixes.join('، ')}</span>` : html`<span class="badge ok">جاهزة</span>`}</td></tr>`)}</tbody>
         </table></div>
         ${rows.length > show.length ? html`<div class="table-foot">تُعرض أول ${num(show.length)} من ${num(rows.length)} صف.</div>` : ''}
       </div>`);
