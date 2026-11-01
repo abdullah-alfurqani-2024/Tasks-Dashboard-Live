@@ -9,6 +9,7 @@ globalThis.Deno = {
 const auth = new Map();          // id -> { email, password, banned }
 const db = { support_tasks: [], support_tasks_staging: [] }; // profiles
 let seq = 0;
+const links = new Map();         // hashed_token -> user id
 const J = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
 function match(row, params) {
@@ -32,6 +33,19 @@ globalThis.fetch = async (url, init = {}) => {
   if (u.pathname === '/auth/v1/admin/users' && method === 'POST') {
     if ([...auth.values()].some((a) => a.email === body.email)) return J({ msg: 'A user with this email address has already been registered' }, 422);
     const id = `id${++seq}`; auth.set(id, { email: body.email, password: body.password }); return J({ id });
+  }
+  if (u.pathname === '/auth/v1/admin/generate_link') {
+    const e = [...auth.entries()].find(([, a]) => a.email === body.email);
+    if (!e) return J({ msg: 'User not found' }, 404);
+    links.set(`hash-${e[0]}`, e[0]);
+    return J({ id: e[0], email: body.email, action_link: 'https://x', email_otp: '123456', hashed_token: `hash-${e[0]}`, verification_type: 'magiclink' });
+  }
+  if (u.pathname === '/auth/v1/verify') {
+    const id = links.get(body.token_hash);
+    if (!id || body.type !== 'magiclink') return J({ msg: 'Token has expired or is invalid' }, 403);
+    links.delete(body.token_hash);
+    if (auth.get(id).banned) return J({ msg: 'User is banned' }, 400);
+    return J({ access_token: `tok-${id}`, refresh_token: 'r-secret', expires_in: 3600, expires_at: 9999999999, user: { id } });
   }
   const m = u.pathname.match(/^\/auth\/v1\/admin\/users\/(.+)$/);
   if (m) {
@@ -170,5 +184,25 @@ ok('الكل: المعطّل شُمل عند الطلب', auth.get('off').passwo
 ok('الكل: بدون إلزام التغيير', prof('support_tasks_staging', 'off').must_change_password === false);
 r = await call('admin', 'admin-users-staging', { action: 'reset_all', mode: 'same', password: 'Test2026' }, 'tok-eng');
 ok('الكل: غير المدير مرفوض', r.status === 403 || r.status === 401 || r.status === 400, JSON.stringify(r));
+
+// 10) الدخول بحساب مستخدم آخر (التجربة فقط)
+const pwBefore = auth.get('eng').password;
+r = await call('admin', 'admin-users-staging', { action: 'impersonate', id: 'eng' }, T);
+ok('الدخول بحسابه: نجاح', r.status === 200 && r.body.session.access_token === 'tok-eng' && r.body.name, JSON.stringify(r));
+ok('الدخول بحسابه: بلا رمز تجديد', r.status === 200 && !r.body.session.refresh_token);
+ok('الدخول بحسابه: كلمة مروره لم تتغير', auth.get('eng').password === pwBefore);
+r = await call('admin', 'admin-users', { action: 'impersonate', id: 'eng' }, T);
+ok('الدخول بحسابه: مرفوض في الإنتاج', r.status === 403 && /التجربة/.test(r.body.error), JSON.stringify(r));
+r = await call('admin', 'admin-users-staging', { action: 'impersonate', id: 'admin' }, T);
+ok('الدخول بحسابه: ليس لنفسك', r.status === 400);
+r = await call('admin', 'admin-users-staging', { action: 'impersonate', id: 'off' }, T);
+ok('الدخول بحسابه: المعطّل في التجربة مرفوض', r.status === 400 && /معطّل/.test(r.body.error));
+r = await call('admin', 'admin-users-staging', { action: 'impersonate', id: 'eng' }, 'tok-short');
+ok('الدخول بحسابه: لغير المدير مرفوض', r.status === 403, JSON.stringify(r));
+auth.get('short').banned = true;
+r = await call('admin', 'admin-users-staging', { action: 'impersonate', id: 'short' }, T);
+ok('الدخول بحسابه: حساب دخول موقوف', r.status === 400 && /معطّل/.test(r.body.error), JSON.stringify(r));
+r = await call('admin', 'admin-users-staging', { action: 'impersonate', id: 'nobody' }, T);
+ok('الدخول بحسابه: مستخدم غير موجود', r.status === 404);
 
 console.log(`\n${pass} ناجح، ${fail} فاشل`);

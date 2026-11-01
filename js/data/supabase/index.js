@@ -59,11 +59,18 @@ export function createAdapter(config) {
     if (!uid) return null;
     const rows = await c.select('profiles', { id: `eq.${uid}`, select: '*' });
     if (!rows.length) {
+      if (c.acting) { c.stopActing(); throw new ApiError('المستخدم غير موجود في نسخة التجربة.'); }
       await c.signOut();
       throw new ApiError('حسابك غير مسجّل في النظام. تواصل مع مدير النظام.');
     }
     me = toUser(rows[0]);
+    if (c.acting) {
+      // التصفح بحساب مستخدم آخر: لا نطلب تغيير كلمة المرور (حسابات الدخول مشتركة مع الإنتاج)
+      me.actingAs = true;
+      me.mustChangePassword = false;
+    }
     if (!me.isActive) {
+      if (c.acting) { c.stopActing(); throw new ApiError('هذا الحساب معطّل في نسخة التجربة.'); }
       await c.signOut();
       throw new ApiError('هذا الحساب معطّل. تواصل مع مدير النظام.');
     }
@@ -90,6 +97,17 @@ export function createAdapter(config) {
         return loadMe();
       },
       async signOut() { me = null; await c.signOut(); },
+      /** التجربة فقط: التصفح بحساب مستخدم آخر دون كلمة مروره */
+      async actAs(id) {
+        const r = await c.invoke(fn, { action: 'impersonate', id });
+        c.startActing(r.session);
+        try { return await loadMe(); } catch (e) { c.stopActing(); throw e; }
+      },
+      /** العودة لحساب المدير */
+      async stopActing() {
+        c.stopActing();
+        return loadMe();
+      },
       async changePassword(password) {
         await c.updatePassword(password);
         await c.rpc('mark_password_changed');

@@ -2,7 +2,7 @@
 import { db, isDemo } from '../data/index.js';
 import { html, mount, $, formData, on } from '../core/dom.js';
 import { state, ROLE_LABELS, loadReference } from '../core/store.js';
-import { setTitle, refreshChrome } from '../core/session.js';
+import { setTitle, refreshChrome, actAs } from '../core/session.js';
 import { icon } from '../ui/icons.js';
 import { modal, busy, toast, toastError, confirmBox } from '../ui/feedback.js';
 import { dataTable } from '../ui/table.js';
@@ -57,6 +57,8 @@ export default async function users(ctx, main) {
 
   let list = [];
   let q = '';
+  // الدخول بحساب مستخدم آخر: نسخة التجربة (والوضع التجريبي) فقط
+  const canActAs = isDemo || CONFIG.env === 'staging';
   const columns = [
     { key: 'fullName', label: 'الاسم', render: (u) => html`<b>${u.fullName}</b>${u.id === state.user.id ? html` <span class="badge info">أنت</span>` : ''}${u.shortName ? html`<div class="small muted">${u.shortName}</div>` : ''}` },
     { key: 'loginNo', label: 'الرقم', cls: 'num', render: (u) => html`<span class="ltr">${u.loginNo || '—'}</span>` },
@@ -66,7 +68,8 @@ export default async function users(ctx, main) {
     { key: 'mustChangePassword', label: 'كلمة المرور', render: (u) => (u.mustChangePassword ? html`<span class="small muted">بانتظار التغيير</span>` : '') },
     { key: 'act', label: '', sort: false, render: (u) => html`<div class="row-actions">
       <button class="btn btn-sm" data-edit="${u.id}">${icon('edit')}تعديل</button>
-      <button class="btn btn-sm" data-reset="${u.id}" title="إعادة تعيين كلمة المرور">${icon('key')}</button></div>` },
+      <button class="btn btn-sm" data-reset="${u.id}" title="إعادة تعيين كلمة المرور">${icon('key')}</button>
+      ${canActAs && u.id !== state.user.id && u.isActive ? html`<button class="btn btn-sm" data-as="${u.id}" title="الدخول بحسابه دون كلمة مروره">${icon('eye')}الدخول بحسابه</button>` : ''}</div>` },
   ];
   const view = () => list.filter((u) => !q || normalizeAr(`${u.fullName} ${u.shortName} ${u.email} ${u.loginNo}`).includes(q));
   let table;
@@ -207,6 +210,19 @@ export default async function users(ctx, main) {
       } catch (ex) { fail(ex.message); }
     });
   }
+  on(root, 'click', '[data-as]', async (e, b) => {
+    const u = list.find((x) => x.id === b.dataset.as);
+    if (!u) return;
+    const ok = await confirmBox({
+      title: 'الدخول بحساب مستخدم',
+      message: `ستتصفح نسخة التجربة بحساب «${u.fullName}» بنفس صلاحياته، دون معرفة كلمة مروره ودون تغييرها، ولن يلاحظ ذلك. للعودة اضغط «العودة لحسابي» في الشريط أعلى الصفحة.`,
+      okText: 'الدخول بحسابه',
+    });
+    if (!ok) return;
+    await busy(b, async () => {
+      try { await actAs(u.id); toast(`أنت الآن بحساب ${u.fullName}.`, 'ok'); } catch (ex) { toastError(ex); }
+    });
+  });
   on(root, 'click', '[data-edit]', (e, b) => form(list.find((u) => u.id === b.dataset.edit)));
   on(root, 'click', '[data-reset]', async (e, b) => {
     const u = list.find((x) => x.id === b.dataset.reset);

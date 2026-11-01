@@ -6,7 +6,7 @@ import { db, isDemo } from './data/index.js';
 import { html, mount, $, on } from './core/dom.js';
 import { state, can, loadReference, ROLE_LABELS } from './core/store.js';
 import { route, fallback, setGuard, start, navigate, currentPath, resolve } from './core/router.js';
-import { setChrome, homePath, endSession } from './core/session.js';
+import { setChrome, homePath, endSession, stopActing } from './core/session.js';
 import { icon } from './ui/icons.js';
 import { toast, toastError } from './ui/feedback.js';
 import { watchDateFields } from './ui/dateField.js';
@@ -52,6 +52,7 @@ fallback(() => navigate(state.user ? homePath() : '/login', { replace: true }));
 setGuard((r, path) => {
   const u = state.user;
   if (!u) return r.meta.public ? null : `/login?next=${encodeURIComponent(path)}`;
+  if (u.actingAs && path === '/password') return homePath(); // لا تغيير لكلمة المرور أثناء التصفح بحساب آخر
   if (u.mustChangePassword && path !== '/password') return '/password';
   if (r.meta.public) return homePath();
   if (r.meta.perm && !can(r.meta.perm)) return homePath();
@@ -72,6 +73,13 @@ function renderChrome() {
     banner.classList.add('env-staging');
     mount(banner, html`${CONFIG.envLabel}`);
   }
+  const asBar = document.getElementById('as-banner');
+  if (u?.actingAs) {
+    asBar.hidden = false;
+    mount(asBar, html`<span>${icon('eye')} أنت تتصفح النظام بحساب: <b>${u.fullName}</b> (${ROLE_LABELS[u.role]})</span>
+      <button class="btn btn-sm" data-act="stop-acting">العودة لحسابي</button>`);
+  } else { asBar.hidden = true; asBar.innerHTML = ''; }
+  document.body.classList.toggle('acting', !!u?.actingAs);
   if (!u) { topbar.hidden = true; topbar.innerHTML = ''; return; }
   topbar.hidden = false;
   const theme = document.documentElement.dataset.theme;
@@ -96,9 +104,10 @@ function renderChrome() {
         </button>
         <div class="dropdown-menu" id="user-menu" hidden>
           <div class="small muted" style="padding:6px 10px">${u.fullName}<br><span class="ltr">${u.loginNo || u.email}</span></div>
+          ${u.actingAs ? html`<button data-act="stop-acting">${icon('logout')}العودة لحسابي</button>` : html`
           <a href="#/password">${icon('key')}تغيير كلمة المرور</a>
           ${isDemo ? html`<button data-act="reset-demo">${icon('restore')}إعادة البيانات التجريبية</button>` : ''}
-          <button data-act="logout">${icon('logout')}تسجيل الخروج</button>
+          <button data-act="logout">${icon('logout')}تسجيل الخروج</button>`}
         </div>
       </div>
     </div>`);
@@ -150,10 +159,17 @@ on(topbar, 'click', '[data-act]', async (e, b) => {
   } else if (act === 'logout') {
     closeMenus();
     await endSession();
+  } else if (act === 'stop-acting') {
+    closeMenus();
+    await backToAdmin();
   } else if (act === 'reset-demo') {
     db.resetDemo?.();
   }
 });
+async function backToAdmin(msg) {
+  try { await stopActing(); if (msg) toast(msg, 'warn'); } catch (e) { toastError(e); }
+}
+on(document.getElementById('as-banner'), 'click', '[data-act="stop-acting"]', (e, b) => { b.disabled = true; backToAdmin(); });
 document.addEventListener('click', (e) => { if (!e.target.closest('.dropdown, .nav, .menu-btn')) closeMenus(); });
 topbar.addEventListener('click', (e) => { if (e.target.closest('.nav a, .dropdown-menu a')) closeMenus(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenus(); });
@@ -164,7 +180,8 @@ setChrome(renderChrome);
 async function boot() {
   if (await checkOnStart()) return; // إصدار أحدث على الخادم: يُعاد التحميل تلقائياً
   watchUpdates();
-  db.auth.onExpired(() => {
+  db.auth.onExpired((kind) => {
+    if (kind === 'acting') { if (state.user?.actingAs) backToAdmin('انتهت مدة الدخول بحساب المستخدم، وعدت إلى حسابك.'); return; }
     if (!state.user) return;
     toast('انتهت الجلسة، سجّل الدخول من جديد.', 'warn');
     endSession({ silent: true });

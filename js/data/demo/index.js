@@ -77,6 +77,10 @@ export function createAdapter() {
   const db = load();
   let me = null;
   try { const id = sessionStorage.getItem(KEY + '.me'); me = db.users.find((u) => u.id === id && u.isActive) || null; } catch { /* */ }
+  let adminId = null;
+  try { adminId = sessionStorage.getItem(KEY + '.as'); } catch { /* */ }
+  /** نسخة المستخدم للواجهة؛ عند التصفح بحساب آخر لا يُطلب تغيير كلمة المرور */
+  const asUser = (u) => (adminId ? { ...u, actingAs: true, mustChangePassword: false } : { ...u });
   const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch { /* */ } };
   const role = () => me?.role;
   const need = (...roles) => { if (!me) throw err('سجّل الدخول أولاً.'); if (!roles.includes(me.role)) throw err('لا تملك صلاحية لهذه العملية.'); };
@@ -130,19 +134,39 @@ export function createAdapter() {
     demoPassword: PASSWORD,
 
     auth: {
-      async restore() { await wait(50); return me ? { ...me } : null; },
+      async restore() { await wait(50); return me ? asUser(me) : null; },
       async signIn(login, password) {
         await wait(300);
         const id = latinDigits(login).trim().toLowerCase();
         const u = db.users.find((x) => (id.includes('@') ? x.email === id : x.loginNo === id));
         if (!u || password !== (u.password || PASSWORD)) throw err('الرقم أو كلمة المرور غير صحيحة.');
         if (!u.isActive) throw err('هذا الحساب معطّل. تواصل مع مدير النظام.');
-        me = u;
-        try { sessionStorage.setItem(KEY + '.me', u.id); } catch { /* */ }
-        return { ...u };
+        me = u; adminId = null;
+        try { sessionStorage.setItem(KEY + '.me', u.id); sessionStorage.removeItem(KEY + '.as'); } catch { /* */ }
+        return asUser(u);
       },
-      async signOut() { me = null; try { sessionStorage.removeItem(KEY + '.me'); } catch { /* */ } },
+      async signOut() { me = null; adminId = null; try { sessionStorage.removeItem(KEY + '.me'); sessionStorage.removeItem(KEY + '.as'); } catch { /* */ } },
+      /** التصفح بحساب مستخدم آخر (مثل نسخة التجربة) */
+      async actAs(id) {
+        await wait(200);
+        need('admin');
+        const u = db.users.find((x) => x.id === id);
+        if (!u) throw err('المستخدم غير موجود.');
+        if (u.id === me.id) throw err('هذا حسابك أنت.');
+        if (!u.isActive) throw err('الحساب معطّل في نسخة التجربة. فعّله أولاً.');
+        adminId = me.id; me = u;
+        try { sessionStorage.setItem(KEY + '.as', adminId); sessionStorage.setItem(KEY + '.me', u.id); } catch { /* */ }
+        return asUser(me);
+      },
+      async stopActing() {
+        await wait(100);
+        if (adminId) me = db.users.find((x) => x.id === adminId) || null;
+        adminId = null;
+        try { sessionStorage.removeItem(KEY + '.as'); if (me) sessionStorage.setItem(KEY + '.me', me.id); } catch { /* */ }
+        return me ? asUser(me) : null;
+      },
       async changePassword(pw) {
+        if (adminId) throw err('لا يمكن تغيير كلمة المرور أثناء الدخول بحساب مستخدم آخر.');
         const min = normalizeSettings(db.settings).minPasswordLength;
         if (pw.length < min) throw err(`كلمة المرور ${min} أحرف على الأقل.`);
         me.password = pw; me.mustChangePassword = false; persist();
@@ -323,6 +347,6 @@ export function createAdapter() {
     },
 
     /** إعادة البيانات التجريبية لحالتها الأولى */
-    resetDemo() { try { localStorage.removeItem(KEY); sessionStorage.removeItem(KEY + '.me'); } catch { /* */ } location.reload(); },
+    resetDemo() { try { localStorage.removeItem(KEY); sessionStorage.removeItem(KEY + '.me'); sessionStorage.removeItem(KEY + '.as'); } catch { /* */ } location.reload(); },
   };
 }

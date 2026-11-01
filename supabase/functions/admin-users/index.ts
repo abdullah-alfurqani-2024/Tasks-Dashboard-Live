@@ -10,6 +10,7 @@
 //    reset_password { id, password }
 //    reset_all      { mode: 'same'|'login_no', password?, force, include_inactive }
 //                   كل المستخدمين عدا من ينفّذ الأمر: كلمة مرور موحدة، أو الرقم المدني/الوظيفي لكل مستخدم
+//    impersonate    { id }   (التجربة فقط) جلسة دخول بحساب المستخدم دون كلمة مروره ودون تغييرها
 //
 //  لا يستخدم أي مكتبة: fetch مباشرة إلى واجهات Supabase
 //
@@ -99,7 +100,7 @@ async function requireAdmin(req: Request) {
   if (!rows?.length || rows[0].role !== "admin" || !rows[0].is_active) {
     throw new AppError("هذه العملية لمدير النظام فقط.", 403);
   }
-  return user.id as string;
+  return { id: user.id as string, email: String(user.email || "") };
 }
 
 function clean(v: unknown) {
@@ -266,6 +267,42 @@ async function resetAll(body: Record<string, unknown>, callerId: string) {
   return { reset: done.length, skipped };
 }
 
+/**
+ * الدخول بحساب مستخدم آخر — نسخة التجربة فقط، لمدير النظام فقط.
+ * ينشئ جلسة لذلك المستخدم دون معرفة كلمة مروره ودون تغييرها، ودون إرسال أي بريد:
+ *   generate_link يصنع رمز دخول (لا يُرسل)، ثم verify يحوّله إلى جلسة
+ */
+async function impersonate(body: Record<string, unknown>, callerId: string, callerEmail: string) {
+  if (SCHEMA !== "support_tasks_staging") throw new AppError("الدخول بحساب مستخدم آخر متاح في نسخة التجربة فقط.", 403);
+  const id = String(body.id || "");
+  if (!id) throw new AppError("المستخدم غير محدد.");
+  if (id === callerId) throw new AppError("هذا حسابك أنت.");
+  const rows = await admin(`/rest/v1/profiles?id=eq.${id}&select=id,email,full_name,is_active`);
+  if (!rows?.length) throw new AppError("المستخدم غير موجود.", 404);
+  const u = rows[0];
+  if (!u.is_active) throw new AppError("الحساب معطّل في نسخة التجربة. فعّله أولاً.");
+
+  const link = await admin("/auth/v1/admin/generate_link", { method: "POST", body: JSON.stringify({ type: "magiclink", email: u.email }) });
+  const hashed = link?.hashed_token || link?.properties?.hashed_token;
+  if (!hashed) throw new AppError("تعذّر إنشاء جلسة الدخول.", 502);
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/verify`, {
+    method: "POST",
+    headers: { apikey: SERVICE_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "magiclink", token_hash: hashed }),
+  });
+  const s = await res.json().catch(() => null);
+  if (!res.ok || !s?.access_token) {
+    const msg = String(s?.msg || s?.error_description || s?.message || "");
+    if (/banned/i.test(msg)) throw new AppError("حساب الدخول لهذا المستخدم معطّل.");
+    throw new AppError("تعذّر إنشاء جلسة الدخول." + (msg ? ` (${msg})` : ""), 502);
+  }
+  if (s.user?.id && s.user.id !== id) throw new AppError("تعذّر إنشاء جلسة الدخول.", 502);
+  // يظهر في Supabase ← Edge Functions ← admin-users-staging ← Logs
+  console.log(`impersonate: ${callerEmail} (${callerId}) -> ${u.full_name} (${id})`);
+  // بلا رمز تجديد: الجلسة تنتهي بانتهاء صلاحية الرمز (ساعة افتراضياً)
+  return { session: { access_token: s.access_token, expires_in: s.expires_in, expires_at: s.expires_at, user: { id } }, name: u.full_name };
+}
+
 async function resetPassword(body: Record<string, unknown>) {
   const id = String(body.id || "");
   if (!id) throw new AppError("المستخدم غير محدد.");
@@ -284,13 +321,15 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
   try {
     SCHEMA = schemaFor(req);
-    const callerId = await requireAdmin(req);
+    const caller = await requireAdmin(req);
+    const callerId = caller.id;
     const body = await req.json().catch(() => ({}));
     switch (body.action) {
       case "create": return json({ user: await createUser(body) });
       case "update": return json({ user: await updateUser(body, callerId) });
       case "reset_password": return json(await resetPassword(body));
       case "reset_all": return json(await resetAll(body, callerId));
+      case "impersonate": return json(await impersonate(body, callerId, caller.email));
       default: throw new AppError("عملية غير معروفة.");
     }
   } catch (e) {

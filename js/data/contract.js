@@ -32,7 +32,9 @@
  * auth.signIn(login, password)   → User           login: الرقم المدني/الوظيفي أو البريد
  * auth.signOut()                 → void
  * auth.changePassword(newPw)     → void           ويجعل mustChangePassword = false
- * auth.onExpired(callback)       → void           تُستدعى إذا انتهت الجلسة ولم يمكن تجديدها
+ * auth.onExpired(callback)       → void           تُستدعى إذا انتهت الجلسة ولم يمكن تجديدها ('acting' = انتهى الدخول بحساب آخر)
+ * auth.actAs(userId)            → User           (التجربة، المدير) التصفح بحساب مستخدم آخر؛ User.actingAs = true
+ * auth.stopActing()             → User           العودة لحساب المدير
  *
  * tasks.list(filter)             → Task[]
  *        filter: { engineerId?, from?, to?, statusId?, taskTypeId?, correspondenceTypeId?, deleted?: 'exclude'|'only'|'include' }
