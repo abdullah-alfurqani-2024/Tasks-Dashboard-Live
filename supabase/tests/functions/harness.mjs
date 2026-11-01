@@ -1,0 +1,154 @@
+// محاكاة Supabase (GoTrue + PostgREST) لتشغيل دوال Edge محلياً
+const handlers = {};
+let current = '';
+globalThis.Deno = {
+  env: { get: (k) => ({ SUPABASE_URL: 'https://sb.test', SUPABASE_SERVICE_ROLE_KEY: 'service' })[k] },
+  serve: (fn) => { handlers[current] = fn; },
+};
+
+const auth = new Map();          // id -> { email, password, banned }
+const db = { support_tasks: [], support_tasks_staging: [] }; // profiles
+let seq = 0;
+const J = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+
+function match(row, params) {
+  for (const [k, v] of params) {
+    if (['select', 'order'].includes(k)) continue;
+    const [op, ...rest] = v.split('.'); const val = rest.join('.');
+    if (op === 'eq' && String(row[k] ?? '') !== val) return false;
+    if (op === 'neq' && String(row[k] ?? '') === val) return false;
+  }
+  return true;
+}
+
+globalThis.fetch = async (url, init = {}) => {
+  const u = new URL(url); const method = init.method || 'GET';
+  const h = Object.fromEntries(Object.entries(init.headers || {}).map(([k, v]) => [k.toLowerCase(), v]));
+  const body = init.body ? JSON.parse(init.body) : {};
+  if (u.pathname === '/auth/v1/user') {
+    const id = (h.authorization || '').replace('Bearer tok-', '');
+    return auth.has(id) ? J({ id }) : J({ msg: 'bad jwt' }, 401);
+  }
+  if (u.pathname === '/auth/v1/admin/users' && method === 'POST') {
+    if ([...auth.values()].some((a) => a.email === body.email)) return J({ msg: 'A user with this email address has already been registered' }, 422);
+    const id = `id${++seq}`; auth.set(id, { email: body.email, password: body.password }); return J({ id });
+  }
+  const m = u.pathname.match(/^\/auth\/v1\/admin\/users\/(.+)$/);
+  if (m) {
+    const a = auth.get(m[1]); if (!a) return J({ msg: 'not found' }, 404);
+    if (method === 'DELETE') { auth.delete(m[1]); return J({}); }
+    if (body.email !== undefined) {
+      if (body.email === '') return J({ msg: 'Unable to validate email address: invalid format' }, 400); // GoTrue يرفض البريد الفارغ
+      if ([...auth.entries()].some(([i, x]) => i !== m[1] && x.email === body.email)) return J({ msg: 'already been registered' }, 422);
+      a.email = body.email;
+    }
+    if (body.password) a.password = body.password;
+    if (body.ban_duration) a.banned = body.ban_duration !== 'none';
+    return J({ id: m[1] });
+  }
+  if (u.pathname === '/auth/v1/token') {
+    const e = [...auth.entries()].find(([, a]) => a.email === body.email && a.password === body.password);
+    if (!e) return J({ error_description: 'Invalid login credentials' }, 400);
+    if (e[1].banned) return J({ msg: 'User is banned' }, 400);
+    return J({ access_token: `tok-${e[0]}`, refresh_token: 'r', expires_in: 3600, user: { id: e[0] } });
+  }
+  if (u.pathname.startsWith('/rest/v1/')) {
+    const table = u.pathname.slice(9);
+    const schema = h['content-profile'] && method !== 'GET' ? h['content-profile'] : h['accept-profile'];
+    if (table === 'app_settings') return J([]);
+    const rows = db[schema];
+    const params = [...u.searchParams];
+    if (method === 'GET') return J(rows.filter((r) => match(r, params)));
+    if (method === 'POST') {
+      if (body.login_no && rows.some((r) => r.login_no === body.login_no)) return J({ code: '23505', message: 'duplicate key value violates unique constraint "profiles_login_no_key"' }, 409);
+      const r = { is_active: true, ...body }; rows.push(r); return J([r]);
+    }
+    if (method === 'PATCH') {
+      const hit = rows.filter((r) => match(r, params));
+      if (body.email === '') return J({ code: '23514', message: 'email empty' }, 400);
+      hit.forEach((r) => Object.assign(r, body)); return J(hit);
+    }
+  }
+  throw new Error('unmocked ' + method + ' ' + url);
+};
+
+current = 'admin'; await import('./.build/admin-users.mjs');
+current = 'login'; await import('./.build/auth-login.mjs');
+
+const call = async (fn, path, body, token) => {
+  const res = await handlers[fn](new Request(`https://sb.test/functions/v1/${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body),
+  }));
+  return { status: res.status, body: await res.json() };
+};
+
+// ---------- البيانات الأولية: مدير ومهندس ببريد حقيقي في السكيمتين ----------
+auth.set('admin', { email: 'admin@x.om', password: 'pw-admin' });
+auth.set('eng', { email: 'eng@x.om', password: 'pw-eng' });
+for (const s of Object.keys(db)) {
+  db[s].push({ id: 'admin', email: 'admin@x.om', role: 'admin', is_active: true, login_no: null, full_name: 'المدير' });
+  db[s].push({ id: 'eng', email: 'eng@x.om', role: 'engineer', is_active: true, login_no: null, full_name: 'مهندس' });
+}
+const T = 'tok-admin';
+const prof = (s, id) => db[s].find((r) => r.id === id);
+let pass = 0, fail = 0;
+const ok = (name, cond, extra = '') => { cond ? pass++ : fail++; console.log(cond ? '✅' : '❌', name, cond ? '' : extra); };
+
+// 1) إضافة رقم دون لمس البريد (الحالة التي سببت المشكلة)
+let r = await call('admin', 'admin-users-staging', { action: 'update', id: 'eng', login_no: '0012345', full_name: 'مهندس', short_name: '' }, T);
+ok('إضافة رقم: نجاح', r.status === 200, JSON.stringify(r));
+ok('إضافة رقم: البريد في الملف الشخصي باقٍ', prof('support_tasks_staging', 'eng').email === 'eng@x.om', prof('support_tasks_staging', 'eng').email);
+ok('إضافة رقم: بريد الدخول باقٍ', auth.get('eng').email === 'eng@x.om');
+ok('إضافة رقم: الإنتاج لم يتأثر', prof('support_tasks', 'eng').login_no === null);
+
+// 2) الدخول بالرقم ثم مرة ثانية ثم بالبريد
+for (const i of [1, 2, 3]) {
+  r = await call('login', 'auth-login-staging', { login: '0012345', password: 'pw-eng' });
+  ok(`الدخول بالرقم (مرة ${i})`, r.status === 200 && r.body.access_token === 'tok-eng', JSON.stringify(r));
+}
+r = await call('login', 'auth-login-staging', { login: '٠٠١٢٣٤٥', password: 'pw-eng' });
+ok('الدخول بأرقام عربية', r.status === 200);
+r = await call('login', 'auth-login-staging', { login: 'eng@x.om', password: 'pw-eng' });
+ok('الدخول بالبريد ما زال يعمل', r.status === 200);
+r = await call('login', 'auth-login-staging', { login: '0012345', password: 'wrong' });
+ok('كلمة مرور خاطئة: رسالة عامة', r.status === 400 && /الرقم أو كلمة المرور/.test(r.body.error));
+r = await call('login', 'auth-login-staging', { login: '999', password: 'pw-eng' });
+ok('رقم غير موجود: نفس الرسالة', r.status === 400 && /الرقم أو كلمة المرور/.test(r.body.error));
+r = await call('login', 'auth-login', { login: '0012345', password: 'pw-eng' });
+ok('رقم التجربة لا يعمل في الإنتاج', r.status === 400);
+
+// 3) تعديل الاسم فقط بعد الرقم (حفظ مرة ثانية)
+r = await call('admin', 'admin-users-staging', { action: 'update', id: 'eng', full_name: 'مهندس معدّل', short_name: '' }, T);
+ok('حفظ ثانٍ: البريد باقٍ', prof('support_tasks_staging', 'eng').email === 'eng@x.om' && auth.get('eng').email === 'eng@x.om');
+
+// 4) مسح البريد عمداً ← بريد داخلي، والدخول بالرقم يعمل
+r = await call('admin', 'admin-users-staging', { action: 'update', id: 'eng', email: '' }, T);
+ok('مسح البريد ← بريد داخلي', prof('support_tasks_staging', 'eng').email === 'n0012345@tasks.internal' && auth.get('eng').email === 'n0012345@tasks.internal', JSON.stringify(r));
+r = await call('login', 'auth-login-staging', { login: '0012345', password: 'pw-eng' });
+ok('الدخول بالرقم بعد مسح البريد', r.status === 200);
+
+// 5) تغيير الرقم لمن بريده داخلي ← البريد الداخلي يتبعه
+r = await call('admin', 'admin-users-staging', { action: 'update', id: 'eng', login_no: '777' }, T);
+ok('تغيير الرقم: البريد الداخلي يتبعه', auth.get('eng').email === 'n777@tasks.internal' && prof('support_tasks_staging', 'eng').email === 'n777@tasks.internal');
+r = await call('login', 'auth-login-staging', { login: '777', password: 'pw-eng' });
+ok('الدخول بالرقم الجديد', r.status === 200);
+
+// 6) إضافة بريد حقيقي من جديد
+r = await call('admin', 'admin-users-staging', { action: 'update', id: 'eng', email: 'Eng2@x.om' }, T);
+ok('إضافة بريد حقيقي', auth.get('eng').email === 'eng2@x.om' && prof('support_tasks_staging', 'eng').email === 'eng2@x.om');
+
+// 7) منع مسح الرقم والبريد معاً
+r = await call('admin', 'admin-users-staging', { action: 'update', id: 'eng', login_no: '', email: '' }, T);
+ok('لا يمكن ترك الحساب بلا رقم ولا بريد', r.status === 400);
+
+// 8) مستخدم جديد برقم فقط
+r = await call('admin', 'admin-users-staging', { action: 'create', login_no: '5555', email: '', password: 'pw-new-1', full_name: 'جديد', role: 'engineer' }, T);
+ok('إنشاء برقم فقط', r.status === 200 && r.body.user.email === 'n5555@tasks.internal', JSON.stringify(r));
+r = await call('login', 'auth-login-staging', { login: '5555', password: 'pw-new-1' });
+ok('دخول المستخدم الجديد بالرقم', r.status === 200);
+r = await call('admin', 'admin-users-staging', { action: 'create', login_no: '5555', password: 'pw-new-1', full_name: 'مكرر', role: 'engineer' }, T);
+ok('رقم مكرر عند الإنشاء', r.status === 400 && /الرقم/.test(r.body.error));
+r = await call('admin', 'admin-users-staging', { action: 'update', id: 'admin', login_no: '777' }, T);
+ok('رقم مكرر عند التعديل', r.status === 400 && /الرقم/.test(r.body.error));
+
+console.log(`\n${pass} ناجح، ${fail} فاشل`);

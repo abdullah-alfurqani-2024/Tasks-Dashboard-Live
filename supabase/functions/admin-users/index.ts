@@ -190,13 +190,18 @@ async function updateUser(body: Record<string, unknown>, callerId: string) {
       const dup = await admin(`/rest/v1/profiles?login_no=eq.${no}&id=neq.${id}&select=id`);
       if (dup?.length) throw new AppError("هذا الرقم مسجّل لمستخدم آخر.");
     }
-    // البريد الفارغ ← بريد داخلي من الرقم، والبريد الداخلي يتبع الرقم إذا تغيّر
-    if (body.email !== undefined && !newEmail) newEmail = internalEmail(no!);
-    else if (body.email === undefined && isInternal(oldEmail) && no) newEmail = internalEmail(no);
-    if (oldEmail === newEmail) newEmail = "";
-    else {
-      await admin(`/auth/v1/admin/users/${id}`, { method: "PUT", body: JSON.stringify({ email: newEmail, email_confirm: true }) });
-      patch.email = newEmail;
+    // البريد الجديد (target):
+    //   - كتب المدير بريداً ← هو
+    //   - مسح المدير البريد ← بريد داخلي من الرقم
+    //   - لم يُرسل البريد أصلاً ← لا تغيير، إلا البريد الداخلي فيتبع الرقم إذا تغيّر
+    let target = "";
+    if (body.email !== undefined) target = newEmail || internalEmail(no!);
+    else if (isInternal(oldEmail) && no) target = internalEmail(no);
+    newEmail = "";
+    if (target && target !== oldEmail) {
+      await admin(`/auth/v1/admin/users/${id}`, { method: "PUT", body: JSON.stringify({ email: target, email_confirm: true }) });
+      patch.email = target;
+      newEmail = target;
     }
   }
   if (!Object.keys(patch).length) throw new AppError("لا توجد تغييرات.");
