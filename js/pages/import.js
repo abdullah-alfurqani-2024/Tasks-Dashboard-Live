@@ -206,6 +206,21 @@ export default async function importPage(ctx, main) {
       return c.length === 1 ? c[0] : null;
     };
     const unknown = new Map();
+    // الحالات الجديدة (غير الموجودة في القوائم): نحدد نوعها مرة واحدة لكل اسم، لا لكل صف
+    // من الاسم إن كان واضحاً، وإلا من أغلب صفوفها (لها تاريخ انتهاء = مكتملة)
+    const guessKind = (n) => (/ملغ|الغاء/.test(n) ? 'cancelled' : /غير|قيد|جار|مفتوح|معلق|انتظار|متابعه|لم /.test(n) ? 'open' : /مكتمل|منجز|منتهي|انجز|اكتمل|مغلق|^تم/.test(n) ? 'done' : null);
+    const pendingKind = {};
+    if (S.map.status != null) {
+      const stats = {};
+      for (const r of rows) {
+        const name = cellText(r?.[S.map.status]);
+        if (!name || L.statuses.some((x) => normalizeAr(x.name) === normalizeAr(name))) continue;
+        const st = (stats[normalizeAr(name)] ||= { with: 0, without: 0 });
+        if (S.map.completedDate != null && parseDate(r[S.map.completedDate])) st.with++; else st.without++;
+      }
+      for (const [n, st] of Object.entries(stats)) pendingKind[n] = guessKind(n) || (st.with >= st.without ? 'done' : 'open');
+    }
+    S.pendingKind = pendingKind;
     const lk = (kind, name) => L[kind].find((x) => normalizeAr(x.name) === normalizeAr(name));
     const defOpen = L.statuses.find((s) => s.isActive && s.kind === 'open');
     const defDone = L.statuses.find((s) => s.isActive && s.kind === 'done');
@@ -262,7 +277,7 @@ export default async function importPage(ctx, main) {
       }
       let status = ref.status;
       if (!status) status = completedV ? defDone : defOpen;
-      const kind = status?.kind || (status?.pending ? (completedV ? 'done' : 'open') : null);
+      const kind = status?.kind || (status?.pending ? pendingKind[normalizeAr(status.pending)] : null);
       if (kind === 'done' && !completedV) {
         if (S.autoFix && receivedDate) { completedV = receivedDate; fixes.push('مكتملة بدون تاريخ انتهاء'); } else errors.push('الحالة مكتملة بدون تاريخ انتهاء');
       }
@@ -307,7 +322,7 @@ export default async function importPage(ctx, main) {
             ${S.autoFix ? html`<span class="chip"><span class="dot" style="color:var(--warn)"></span>أُصلحت تلقائياً (ضمن الجاهزة) <b>${num(ok.filter((r) => r.fixes.length).length)}</b></span>` : ''}
           </div>
           ${miss.length ? html`<div class="alert warn">ستُضاف هذه القيم إلى القوائم: ${miss.map(([k, v]) => html`<div><b>${{ taskTypes: 'أنواع المهام', correspondenceTypes: 'أنواع المراسلات', statuses: 'الحالات' }[k]}:</b> ${[...v].join('، ')}</div>`)}
-            ${missing.statuses.size ? html`<div class="small">الحالات الجديدة تُضاف كنوع «${completedHint()}» — راجعها في صفحة القوائم بعد الاستيراد.</div>` : ''}</div>` : ''}
+            ${missing.statuses.size ? html`<div class="small">نوع كل حالة جديدة: ${[...missing.statuses].map((n) => `«${n}» ← ${{ done: 'مكتملة', open: 'مفتوحة', cancelled: 'ملغاة' }[S.pendingKind[normalizeAr(n)]] || 'مفتوحة'}`).join('، ')}. يمكنك تغييره لاحقاً من صفحة القوائم.</div>` : ''}</div>` : ''}
           ${unknown.size ? html`<div class="alert bad">
             <b>أسماء مهندسين لم تُطابق أي حساب.</b> اختر الحساب المقابل لكل اسم، أو أضف المهندس من «المستخدمون» ثم اضغط «إعادة الفحص».
             <div class="form-grid" style="margin-top:10px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">
@@ -345,15 +360,23 @@ export default async function importPage(ctx, main) {
       const L = state.lookups;
       for (const [kind, names] of Object.entries(missing)) {
         for (const name of names) {
-          const doneUse = kind === 'statuses' && ok.some((r) => r.task._ref.status?.pending === name && r.task.completedDate);
-          await db.lookups.save(kind, { name, sortOrder: (L[kind].at(-1)?.sortOrder || 0) + 1, isActive: true, ...(kind === 'statuses' ? { kind: doneUse ? 'done' : 'open' } : {}) });
+          await db.lookups.save(kind, { name, sortOrder: (L[kind].at(-1)?.sortOrder || 0) + 1, isActive: true, ...(kind === 'statuses' ? { kind: S.pendingKind[normalizeAr(name)] || 'open' } : {}) });
         }
       }
       if (Object.values(missing).some((s) => s.size)) await loadReference({ force: true });
       const idOf = (kind, item) => (item?.pending ? state.lookups[kind].find((x) => normalizeAr(x.name) === normalizeAr(item.pending))?.id : item?.id) || null;
       const list = ok.map(({ task }) => {
         const { _ref, ...t } = task;
-        return { ...t, taskTypeId: idOf('taskTypes', _ref.taskType), correspondenceTypeId: idOf('correspondenceTypes', _ref.correspondenceType), statusId: idOf('statuses', _ref.status) };
+        const statusId = idOf('statuses', _ref.status);
+        // حماية أخيرة: نفس قاعدة قاعدة البيانات (المكتملة تحتاج تاريخ انتهاء، والمفتوحة بدونه)
+        const k = state.lookups.statuses.find((x) => x.id === statusId)?.kind;
+        let completedDate = t.completedDate;
+        if (k === 'open') completedDate = null;
+        if (k === 'done' && !completedDate) {
+          completedDate = t.receivedDate;
+          t.notes = [t.notes, '[استيراد] مكتملة بدون تاريخ انتهاء'].filter(Boolean).join(' — ');
+        }
+        return { ...t, completedDate, taskTypeId: idOf('taskTypes', _ref.taskType), correspondenceTypeId: idOf('correspondenceTypes', _ref.correspondenceType), statusId };
       });
       // 2) إدخال المهام على دفعات
       const n = await db.tasks.bulkCreate(list, (d, total) => { bar.style.width = `${Math.round((d / total) * 100)}%`; msg.textContent = `${num(d)} من ${num(total)}`; });
