@@ -1,8 +1,8 @@
 /**
- * حقل تاريخ بصيغة يوم/شهر/سنة في كل المتصفحات.
+ * حقل تاريخ بصيغة سنة/شهر/يوم في كل المتصفحات.
  * (حقل التاريخ الأصلي في المتصفح يتبع لغة المتصفح، فيظهر أحياناً شهر/يوم/سنة)
  *
- * الشكل: نص يكتب فيه المستخدم 31/10/2026 + زر تقويم.
+ * الشكل: نص يكتب فيه المستخدم 2026/10/31 + زر تقويم.
  * القيمة الفعلية في حقل مخفي يحمل name ويُرجع 'YYYY-MM-DD'، فبقية الكود يعمل كما هو:
  *   form.elements.from.value        ← '2026-10-31'
  *   form.elements.from.value = iso  ← يحدّث النص المعروض
@@ -13,7 +13,7 @@ import { html } from '../core/dom.js';
 import { fmtDate, parseDate, DATE_FORMAT_HINT } from '../core/format.js';
 import { icon } from './icons.js';
 
-// علامات LRM تجعل الكلمات بنفس ترتيب الأرقام داخل الحقل: يوم/شهر/سنة
+// علامات LRM تجعل الكلمات بنفس ترتيب الأرقام داخل الحقل: سنة/شهر/يوم
 const PLACEHOLDER = DATE_FORMAT_HINT.split('/').join('\u200E/');
 
 export function dateInput({ name, id, value = '', required = false, disabled = false }) {
@@ -62,11 +62,12 @@ function enhance(box) {
     if (changed) emit();
   };
 
-  // إضافة / تلقائياً أثناء الكتابة: 31 ← 31/ ، 3110 ← 31/10/
+  // إضافة / تلقائياً أثناء الكتابة: 2026 ← 2026/ ، 202610 ← 2026/10/
   text.addEventListener('input', (e) => {
     if (e.inputType?.startsWith('delete')) return;
     let v = text.value.replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[^\d/.-]/g, '').replace(/[.-]/g, '/');
-    if (/^\d{2}$/.test(v) || /^\d{1,2}\/\d{2}$/.test(v)) v += '/';
+    if (/^\d{4}$/.test(v) || /^\d{4}\/\d{2}$/.test(v)) v += '/';
+    else if (/^\d{5,8}$/.test(v)) v = [v.slice(0, 4), v.slice(4, 6), v.slice(6)].filter(Boolean).join('/'); // لصق 20261031
     text.value = v;
   });
   text.addEventListener('change', (e) => { e.stopPropagation(); commit(); });

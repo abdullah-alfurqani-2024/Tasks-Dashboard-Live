@@ -15,16 +15,16 @@ export function today() {
 }
 
 /* ───────────── صيغ العرض الموحّدة في كل النظام ─────────────
- *   التاريخ:          يوم/شهر/سنة               31/10/2026
- *   التاريخ والوقت:   يوم/شهر/سنة - ساعة:دقيقة:ثانية (نظام 24 ساعة)   31/10/2026 - 18:24:05
+ *   التاريخ:          سنة/شهر/يوم               2026/10/31
+ *   التاريخ والوقت:   سنة/شهر/يوم - ساعة:دقيقة:ثانية (نظام 24 ساعة)   2026/10/31 - 18:24:05
  */
-export const DATE_FORMAT_HINT = 'يوم/شهر/سنة';
+export const DATE_FORMAT_HINT = 'سنة/شهر/يوم';
 
-/** 'DD/MM/YYYY' ← 'YYYY-MM-DD' */
+/** 'YYYY/MM/DD' ← 'YYYY-MM-DD' */
 export function fmtDate(iso) {
   if (!iso) return '';
   const [y, m, d] = String(iso).slice(0, 10).split('-');
-  return `${d}/${m}/${y}`;
+  return `${y}/${m}/${d}`;
 }
 
 /** أجزاء الوقت المحلي (حسب المنطقة الزمنية للنظام) من timestamp */
@@ -36,11 +36,11 @@ export function localParts(ts) {
   return { y: p.year, mo: p.month, d: p.day, h: p.hour === '24' ? '00' : p.hour, mi: p.minute, s: p.second };
 }
 
-/** 'DD/MM/YYYY - HH:MM:SS' ← timestamp */
+/** 'YYYY/MM/DD - HH:MM:SS' ← timestamp */
 export function fmtDateTime(ts) {
   if (!ts) return '';
   const p = localParts(ts);
-  return `${p.d}/${p.mo}/${p.y} - ${p.h}:${p.mi}:${p.s}`;
+  return `${p.y}/${p.mo}/${p.d} - ${p.h}:${p.mi}:${p.s}`;
 }
 
 /** 'YYYY-MM-DD HH:MM:SS' بالوقت المحلي (للتصدير إلى Excel) ← timestamp */
@@ -90,7 +90,7 @@ export const PERIODS = [
 /** تحويل الأرقام العربية الهندية إلى لاتينية */
 export const latinDigits = (s) => String(s ?? '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d));
 
-/** يقرأ تاريخاً من صيغ مختلفة (Excel رقمي، DD/MM/YYYY، YYYY-MM-DD) ويعيد 'YYYY-MM-DD' أو null */
+/** يقرأ تاريخاً من صيغ مختلفة (Excel رقمي، YYYY/MM/DD، YYYY-MM-DD، YYYYMMDD، DD/MM/YYYY) ويعيد 'YYYY-MM-DD' أو null */
 export function parseDate(v) {
   if (v == null || v === '') return null;
   if (typeof v === 'number' && Number.isFinite(v)) {
@@ -99,6 +99,7 @@ export function parseDate(v) {
     return d.toISOString().slice(0, 10);
   }
   const s = latinDigits(v).trim();
+  if (/^\d{8}$/.test(s) && /^(19|20)/.test(s)) return parseDate(`${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6)}`);
   if (/^\d+(\.\d+)?$/.test(s)) return parseDate(Number(s));
   let m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
   let y, mo, d;

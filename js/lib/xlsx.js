@@ -20,7 +20,7 @@ const excelDate = (s) => {
 
 /**
  * sheets: [{ name, columns: [{ label, width?, type?: 'text'|'number'|'date'|'datetime' }], rows: any[][] }]
- * date ← 'YYYY-MM-DD' ويظهر 31/10/2026 ، datetime ← 'YYYY-MM-DD HH:MM:SS' ويظهر 31/10/2026 - 18:24:05
+ * date ← 'YYYY-MM-DD' ويظهر 2026/10/31 ، datetime ← 'YYYY-MM-DD HH:MM:SS' ويظهر 2026/10/31 - 18:24:05
  */
 export function writeXlsx(sheets) {
   const files = [];
@@ -73,7 +73,7 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
 </Relationships>` });
   files.push({ name: 'xl/styles.xml', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<numFmts count="2"><numFmt numFmtId="164" formatCode="dd/mm/yyyy"/><numFmt numFmtId="165" formatCode="dd/mm/yyyy\ \-\ hh:mm:ss"/></numFmts>
+<numFmts count="2"><numFmt numFmtId="164" formatCode="yyyy/mm/dd"/><numFmt numFmtId="165" formatCode="yyyy/mm/dd\ \-\ hh:mm:ss"/></numFmts>
 <fonts count="2"><font><sz val="10"/><name val="Droid Arabic Kufi"/></font><font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Droid Arabic Kufi"/></font></fonts>
 <fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1F5FA8"/><bgColor indexed="64"/></patternFill></fill></fills>
 <borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFD0D7E2"/></left><right style="thin"><color rgb="FFD0D7E2"/></right><top style="thin"><color rgb="FFD0D7E2"/></top><bottom style="thin"><color rgb="FFD0D7E2"/></bottom><diagonal/></border></borders>
