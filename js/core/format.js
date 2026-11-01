@@ -14,21 +14,40 @@ export function today() {
     .format(new Date());
 }
 
-/** 'YYYY-MM-DD' ← 'DD/MM/YYYY' */
+/* ───────────── صيغ العرض الموحّدة في كل النظام ─────────────
+ *   التاريخ:          يوم/شهر/سنة               31/10/2026
+ *   التاريخ والوقت:   يوم/شهر/سنة - ساعة:دقيقة:ثانية (نظام 24 ساعة)   31/10/2026 - 18:24:05
+ */
+export const DATE_FORMAT_HINT = 'يوم/شهر/سنة';
+
+/** 'DD/MM/YYYY' ← 'YYYY-MM-DD' */
 export function fmtDate(iso) {
   if (!iso) return '';
   const [y, m, d] = String(iso).slice(0, 10).split('-');
   return `${d}/${m}/${y}`;
 }
 
-/** تاريخ ووقت من timestamp */
+/** أجزاء الوقت المحلي (حسب المنطقة الزمنية للنظام) من timestamp */
+export function localParts(ts) {
+  const p = new Intl.DateTimeFormat('en-GB', {
+    timeZone: CONFIG.timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date(ts)).reduce((o, x) => ((o[x.type] = x.value), o), {});
+  return { y: p.year, mo: p.month, d: p.day, h: p.hour === '24' ? '00' : p.hour, mi: p.minute, s: p.second };
+}
+
+/** 'DD/MM/YYYY - HH:MM:SS' ← timestamp */
 export function fmtDateTime(ts) {
   if (!ts) return '';
-  const d = new Date(ts);
-  const p = new Intl.DateTimeFormat('en-GB', {
-    timeZone: CONFIG.timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
-  }).formatToParts(d).reduce((o, x) => ((o[x.type] = x.value), o), {});
-  return `${p.day}/${p.month}/${p.year} ${p.hour}:${p.minute}`;
+  const p = localParts(ts);
+  return `${p.d}/${p.mo}/${p.y} - ${p.h}:${p.mi}:${p.s}`;
+}
+
+/** 'YYYY-MM-DD HH:MM:SS' بالوقت المحلي (للتصدير إلى Excel) ← timestamp */
+export function localIsoDateTime(ts) {
+  if (!ts) return '';
+  const p = localParts(ts);
+  return `${p.y}-${p.mo}-${p.d} ${p.h}:${p.mi}:${p.s}`;
 }
 
 export function addDays(iso, n) {
@@ -76,7 +95,7 @@ export function parseDate(v) {
   if (v == null || v === '') return null;
   if (typeof v === 'number' && Number.isFinite(v)) {
     if (v < 1 || v > 80000) return null;
-    const d = new Date(Date.UTC(1899, 11, 30) + Math.round(v) * 864e5);
+    const d = new Date(Date.UTC(1899, 11, 30) + Math.floor(v + 1e-9) * 864e5); // الجزء العشري = الوقت
     return d.toISOString().slice(0, 10);
   }
   const s = latinDigits(v).trim();

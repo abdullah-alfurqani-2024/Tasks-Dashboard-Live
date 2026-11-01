@@ -8,6 +8,7 @@ import { setTitle } from '../core/session.js';
 import { exportTasks } from '../core/exporter.js';
 import { summarize } from '../lib/stats.js';
 import { icon } from '../ui/icons.js';
+import { dateInput } from '../ui/dateField.js';
 import { toastError } from '../ui/feedback.js';
 import { pageHead, options, loading, newPage } from '../ui/parts.js';
 
@@ -42,8 +43,8 @@ export default async function report(ctx, main) {
       <div class="field"><label for="r-corr">نوع المراسلة</label><select class="input" id="r-corr" name="correspondenceTypeId">${options(L.correspondenceTypes, F.correspondenceTypeId, 'الكل')}</select></div>
       <div class="field"><label for="r-st">الحالة</label><select class="input" id="r-st" name="statusId">${options(L.statuses, F.statusId, 'الكل')}</select></div>
       <div class="field"><label for="r-year">السنة</label><select class="input" id="r-year" name="year">${options(years, F.year, '—')}</select></div>
-      <div class="field"><label for="r-from">من</label><input class="input" type="date" id="r-from" name="from" value="${F.from}"></div>
-      <div class="field"><label for="r-to">إلى</label><input class="input" type="date" id="r-to" name="to" value="${F.to}"></div>
+      <div class="field"><label for="r-from">من</label>${dateInput({ name: 'from', id: 'r-from', value: F.from })}</div>
+      <div class="field"><label for="r-to">إلى</label>${dateInput({ name: 'to', id: 'r-to', value: F.to })}</div>
       <div class="field"><label for="r-sort">الترتيب حسب</label><select class="input" id="r-sort" name="sort">${options(SORTS, F.sort)}</select></div>
       <div class="field"><label for="r-dir">الاتجاه</label><select class="input" id="r-dir" name="dir">${options([['asc', 'تصاعدي'], ['desc', 'تنازلي']], F.dir)}</select></div>
       <div class="btns">

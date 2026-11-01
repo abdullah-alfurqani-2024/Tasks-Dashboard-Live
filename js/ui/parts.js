@@ -2,6 +2,7 @@
 import { html } from '../core/dom.js';
 import { PERIODS, periodRange } from '../core/format.js';
 import { icon } from './icons.js';
+import { dateInput } from './dateField.js';
 
 export const loading = (text = 'جارٍ التحميل…') => html`<div class="boot"><div class="spinner" aria-hidden="true"></div><p>${text}</p></div>`;
 
@@ -25,9 +26,9 @@ export function periodFields(F) {
     <div class="field"><label for="f-period">الفترة</label>
       <select class="input" id="f-period" name="period">${options(PERIODS, F.period)}</select></div>
     <div class="field" ${custom ? '' : 'hidden'} data-custom><label for="f-from">من</label>
-      <input class="input" type="date" id="f-from" name="from" value="${F.from}"></div>
+      ${dateInput({ name: 'from', id: 'f-from', value: F.from })}</div>
     <div class="field" ${custom ? '' : 'hidden'} data-custom><label for="f-to">إلى</label>
-      <input class="input" type="date" id="f-to" name="to" value="${F.to}"></div>`;
+      ${dateInput({ name: 'to', id: 'f-to', value: F.to })}</div>`;
 }
 
 /** حساب from/to من حالة الفلتر */

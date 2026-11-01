@@ -9,6 +9,9 @@ import { route, fallback, setGuard, start, navigate, currentPath, resolve } from
 import { setChrome, homePath, endSession } from './core/session.js';
 import { icon } from './ui/icons.js';
 import { toast, toastError } from './ui/feedback.js';
+import { watchDateFields } from './ui/dateField.js';
+
+watchDateFields(document.body);
 
 const main = document.getElementById('main');
 const topbar = document.getElementById('topbar');

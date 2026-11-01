@@ -11,11 +11,16 @@ const x = (s) => String(s ?? '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001
 
 const colName = (i) => { let s = ''; for (i++; i; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + ((i - 1) % 26)) + s; return s; };
 
-/** 'YYYY-MM-DD' ← رقم تاريخ Excel */
-const excelDate = (iso) => (Date.parse(iso.slice(0, 10) + 'T00:00:00Z') - Date.UTC(1899, 11, 30)) / 864e5;
+/** رقم تاريخ Excel ← 'YYYY-MM-DD' أو 'YYYY-MM-DD HH:MM:SS' (الوقت كما هو، بدون تحويل منطقة) */
+const excelDate = (s) => {
+  const [d, t = '00:00:00'] = String(s).split(/[ T]/);
+  const [h, mi, sec] = t.split(':').map((x) => Number(x) || 0);
+  return (Date.parse(d + 'T00:00:00Z') - Date.UTC(1899, 11, 30)) / 864e5 + (h * 3600 + mi * 60 + sec) / 86400;
+};
 
 /**
- * sheets: [{ name, columns: [{ label, width?, type?: 'text'|'number'|'date' }], rows: any[][] }]
+ * sheets: [{ name, columns: [{ label, width?, type?: 'text'|'number'|'date'|'datetime' }], rows: any[][] }]
+ * date ← 'YYYY-MM-DD' ويظهر 31/10/2026 ، datetime ← 'YYYY-MM-DD HH:MM:SS' ويظهر 31/10/2026 - 18:24:05
  */
 export function writeXlsx(sheets) {
   const files = [];
@@ -28,7 +33,8 @@ export function writeXlsx(sheets) {
         if (v == null || v === '') return '';
         const ref = colName(ci) + r;
         const type = sh.columns[ci]?.type;
-        if (type === 'date' && /^\d{4}-\d{2}-\d{2}/.test(v)) return `<c r="${ref}" s="2"><v>${excelDate(String(v))}</v></c>`;
+        if (type === 'date' && /^\d{4}-\d{2}-\d{2}/.test(v)) return `<c r="${ref}" s="2"><v>${excelDate(String(v).slice(0, 10))}</v></c>`;
+        if (type === 'datetime' && /^\d{4}-\d{2}-\d{2}/.test(v)) return `<c r="${ref}" s="5"><v>${excelDate(String(v))}</v></c>`;
         if ((type === 'number' || typeof v === 'number') && Number.isFinite(Number(v))) return `<c r="${ref}" s="3"><v>${Number(v)}</v></c>`;
         return `<c r="${ref}" t="inlineStr" s="4"><is><t xml:space="preserve">${x(v)}</t></is></c>`;
       }).join('')}</row>`;
@@ -67,17 +73,18 @@ ${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
 </Relationships>` });
   files.push({ name: 'xl/styles.xml', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<numFmts count="1"><numFmt numFmtId="164" formatCode="dd/mm/yyyy"/></numFmts>
+<numFmts count="2"><numFmt numFmtId="164" formatCode="dd/mm/yyyy"/><numFmt numFmtId="165" formatCode="dd/mm/yyyy\ \-\ hh:mm:ss"/></numFmts>
 <fonts count="2"><font><sz val="10"/><name val="Droid Arabic Kufi"/></font><font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Droid Arabic Kufi"/></font></fonts>
 <fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1F5FA8"/><bgColor indexed="64"/></patternFill></fill></fills>
 <borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFD0D7E2"/></left><right style="thin"><color rgb="FFD0D7E2"/></right><top style="thin"><color rgb="FFD0D7E2"/></top><bottom style="thin"><color rgb="FFD0D7E2"/></bottom><diagonal/></border></borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="5">
+<cellXfs count="6">
 <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
 <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
 <xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="top"/></xf>
 <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="top"/></xf>
 <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>
+<xf numFmtId="165" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="top"/></xf>
 </cellXfs>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>` });

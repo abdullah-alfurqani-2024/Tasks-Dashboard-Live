@@ -5,6 +5,7 @@ import { state, userName } from '../core/store.js';
 import { fmtDate, fmtDateTime, today, addDays } from '../core/format.js';
 import { LABEL_BY_COL } from '../core/fields.js';
 import { setTitle } from '../core/session.js';
+import { dateInput } from '../ui/dateField.js';
 import { dataTable } from '../ui/table.js';
 import { pageHead, options, loading, newPage } from '../ui/parts.js';
 
@@ -40,8 +41,8 @@ export default async function audit(ctx, main) {
   mount(root, html`
     ${pageHead({ title: 'سجل التعديلات', sub: 'كل إضافة وتعديل وحذف على المهام تُسجَّل تلقائياً في قاعدة البيانات ولا يمكن تعديل السجل.' })}
     <form class="card filters" id="filters">
-      <div class="field"><label for="a-from">من</label><input class="input" type="date" id="a-from" name="from" value="${F.from}"></div>
-      <div class="field"><label for="a-to">إلى</label><input class="input" type="date" id="a-to" name="to" value="${F.to}"></div>
+      <div class="field"><label for="a-from">من</label>${dateInput({ name: 'from', id: 'a-from', value: F.from })}</div>
+      <div class="field"><label for="a-to">إلى</label>${dateInput({ name: 'to', id: 'a-to', value: F.to })}</div>
       <div class="field"><label for="a-task">رقم المهمة</label><input class="input num" id="a-task" name="taskId" type="number" min="1" value="${F.taskId}" placeholder="الكل"></div>
       <div class="field"><label for="a-user">بواسطة</label><select class="input" id="a-user" name="userId">${options((state.users || []).map((u) => ({ id: u.id, name: u.fullName })), F.userId, 'الكل')}</select></div>
       <div class="field"><label for="a-act">العملية</label><select class="input" id="a-act" name="action">${options(Object.entries(ACTIONS).map(([k, [l]]) => [k, l]), F.action, 'الكل')}</select></div>

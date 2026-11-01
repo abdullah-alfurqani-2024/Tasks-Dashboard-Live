@@ -205,7 +205,15 @@ textarea.input { min-height: 84px; resize: vertical; }
 .check input { width: 17px; height: 17px; accent-color: var(--brand); }
 .form-grid { display: grid; gap: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .form-grid .span-2 { grid-column: 1 / -1; }
-input[type="date"].input { direction: rtl; }
+/* حقل التاريخ يوم/شهر/سنة */
+.date-field { position: relative; display: block; }
+.date-field .date-text { text-align: right; padding-left: 38px; font-variant-numeric: tabular-nums; }
+.date-field .date-btn { position: absolute; left: 4px; top: 50%; transform: translateY(-50%); border: 0; background: none; color: var(--muted); padding: 6px; border-radius: 6px; cursor: pointer; display: grid; }
+.date-field .date-btn:hover { background: var(--surface-2); color: var(--ink); }
+.date-field .date-btn:disabled { cursor: default; opacity: .5; }
+.date-field .date-btn svg { width: 17px; height: 17px; }
+.date-field .date-native { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
+.date-field.bad-date .date-text { border-color: var(--bad); }
 
 /* شريط الفلاتر */
 .filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; padding: 14px 16px; }

@@ -11,6 +11,7 @@ import { navigate } from '../core/router.js';
 import { modal, busy, toast, confirmBox, toastError } from './feedback.js';
 import { options } from './parts.js';
 import { icon } from './icons.js';
+import { dateInput } from './dateField.js';
 
 const kindOf = (statusId) => state.lookups.statuses.find((s) => s.id === Number(statusId))?.kind;
 
@@ -58,9 +59,9 @@ export function openTaskForm({ task = null, requesters = [], onSaved }) {
       <div class="field"><label for="t-status">${LABEL.statusId} <span class="req">*</span></label>
         <select class="input" id="t-status" name="statusId" required ${dis}>${options(activeItems('statuses', t.statusId), t.statusId, '— اختر —')}</select></div>
       <div class="field"><label for="t-rec">${LABEL.receivedDate} <span class="req">*</span></label>
-        <input class="input" type="date" id="t-rec" name="receivedDate" value="${t.receivedDate || ''}" required ${dis}></div>
+        ${dateInput({ name: 'receivedDate', id: 't-rec', value: t.receivedDate, required: true, disabled: !editable })}</div>
       <div class="field"><label for="t-done">${LABEL.completedDate} <span class="req" data-done-req hidden>*</span></label>
-        <input class="input" type="date" id="t-done" name="completedDate" value="${t.completedDate || ''}" ${dis}></div>
+        ${dateInput({ name: 'completedDate', id: 't-done', value: t.completedDate, disabled: !editable })}</div>
       <div class="field"><span class="label">${LABEL.durationDays}</span>
         <div class="input" id="t-dur" readonly aria-live="polite" style="display:flex;align-items:center">—</div></div>
       <div class="field" data-delay><label for="t-delay">${LABEL.delayReason}</label>
