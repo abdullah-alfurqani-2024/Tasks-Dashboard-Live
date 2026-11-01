@@ -50,8 +50,7 @@ on conflict (key) do update set value = excluded.value;
 
 -- المهام: نسخة كاملة بنفس الأرقام (تُستبدل مهام التجربة السابقة)
 alter table ${STG}.tasks disable trigger user;
-truncate ${STG}.task_audit;
-delete from ${STG}.tasks;
+truncate ${STG}.task_audit, ${STG}.tasks;
 insert into ${STG}.tasks (id, engineer_id, ref_no, requester, employee_name, subject, received_date, completed_date, notes,
   task_type_id, correspondence_type_id, status_id, delay_reason, created_at, created_by, updated_at, updated_by, deleted_at, deleted_by)
 overriding system value

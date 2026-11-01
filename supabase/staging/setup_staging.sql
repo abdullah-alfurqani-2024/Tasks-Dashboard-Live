@@ -610,8 +610,8 @@ begin
   on conflict (key) do update set value = excluded.value;
 
   -- المهام: تُستبدل كلها بنسخة من الإنتاج (بنفس الأرقام)، ويُفرَّغ سجل التعديلات
-  truncate support_tasks_staging.task_audit;
-  delete from support_tasks_staging.tasks;
+  -- truncate بدل delete: Supabase يرفض DELETE بدون WHERE في طلبات الواجهة (pg_safeupdate)
+  truncate support_tasks_staging.task_audit, support_tasks_staging.tasks;
   insert into support_tasks_staging.tasks (id, engineer_id, ref_no, requester, employee_name, subject, received_date, completed_date, notes,
     task_type_id, correspondence_type_id, status_id, delay_reason, created_at, created_by, updated_at, updated_by, deleted_at, deleted_by)
   overriding system value
@@ -667,8 +667,7 @@ on conflict (key) do update set value = excluded.value;
 
 -- المهام: نسخة كاملة بنفس الأرقام (تُستبدل مهام التجربة السابقة)
 alter table support_tasks_staging.tasks disable trigger user;
-truncate support_tasks_staging.task_audit;
-delete from support_tasks_staging.tasks;
+truncate support_tasks_staging.task_audit, support_tasks_staging.tasks;
 insert into support_tasks_staging.tasks (id, engineer_id, ref_no, requester, employee_name, subject, received_date, completed_date, notes,
   task_type_id, correspondence_type_id, status_id, delay_reason, created_at, created_by, updated_at, updated_by, deleted_at, deleted_by)
 overriding system value
