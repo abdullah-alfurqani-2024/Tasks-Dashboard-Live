@@ -8,7 +8,7 @@
 
 import { normalizeSettings } from '../../core/settings.js';
 
-const KEY = 'tsk.demo.v1';
+const KEY = 'tsk.demo.v2';
 const PASSWORD = 'demo1234';
 const wait = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 const err = (m) => Object.assign(new Error(m), { status: 400 });
@@ -37,11 +37,13 @@ function seed() {
     id: `u${i + 1}`, email: EMAILS[i], fullName, shortName, role, isActive: true, mustChangePassword: false,
   }));
   const lookups = {
-    taskTypes: ['صيانة أجهزة', 'تركيب أجهزة جديدة', 'تثبيت وتحديث البرامج', 'دعم فني للبرامج', 'فورمات وإعادة تثبيت النظام', 'شبكات واتصال', 'طابعات', 'حسابات وصلاحيات', 'بريد إلكتروني', 'أخرى']
+    taskTypes: ['مراسلة', 'طلب خدمة', 'اتصال', 'طلب مباشر', 'تكليف مباشر', 'أخرى']
       .map((name, i) => ({ id: i + 1, name, sortOrder: i + 1, isActive: true })),
-    correspondenceTypes: ['مراسلة', 'طلب خدمة', 'اتصال', 'حضور مباشر', 'تكليف مباشر'].map((name, i) => ({ id: i + 1, name, sortOrder: i + 1, isActive: true })),
-    statuses: [['قيد التنفيذ', 'open'], ['غير مكتمل', 'open'], ['مكتمل', 'done'], ['ملغي', 'cancelled']]
-      .map(([name, kind], i) => ({ id: i + 1, name, kind, sortOrder: i + 1, isActive: true })),
+    correspondenceTypes: ['المواصفات الفنية', 'التحليل والتقييم', 'أخرى'].map((name, i) => ({ id: i + 1, name, sortOrder: i + 1, isActive: true })),
+    // المعرّفات 1-2 مفتوحة، 3 مكتملة، 4 مغلقة بدون إنجاز (يعتمد عليها توليد البيانات أدناه)
+    statuses: [['غير مكتمل', 'open', 2], ['قائمة الانتظار', 'open', 3], ['مكتمل', 'done', 1], ['إعادة تحويل', 'cancelled', 4]]
+      .map(([name, kind, sortOrder], i) => ({ id: i + 1, name, kind, sortOrder, isActive: true }))
+      .sort((x, y) => x.sortOrder - y.sortOrder),
   };
   const engs = users.filter((u) => u.role === 'engineer' || u.role === 'admin');
   const tasks = [];
@@ -57,7 +59,7 @@ function seed() {
     tasks.push({
       id: i + 1, engineerId: e.id, refNo: String(240000 + Math.floor(rnd() * 9999)), requester: pick(REQ), employeeName: pick(EMP),
       subject: pick(SUBJ), receivedDate: rd, completedDate: cd, notes: rnd() < 0.3 ? 'تمت المتابعة مع الموظف' : '',
-      taskTypeId: 1 + Math.floor(rnd() * 10), correspondenceTypeId: 1 + Math.floor(rnd() * 5), statusId,
+      taskTypeId: 1 + Math.floor(rnd() * 6), correspondenceTypeId: 1 + Math.floor(rnd() * 3), statusId,
       delayReason: cd && dur > 7 ? 'انتظار توفر قطع الغيار' : '',
       createdAt: rd + 'T09:00:00Z', createdBy: e.id, updatedAt: rd + 'T09:00:00Z', updatedBy: e.id, deletedAt: null, deletedBy: null,
     });

@@ -35,7 +35,7 @@ ok, out = sql("truncate support_tasks.task_audit, support_tasks.tasks restart id
 assert ok, out
 
 ST = "(select id from support_tasks.task_statuses where name = '%s')"
-OPEN, DONE = ST % 'قيد التنفيذ', ST % 'مكتمل'
+OPEN, DONE = ST % 'غير مكتمل', ST % 'مكتمل'
 
 # ---------- المهام ----------
 check('مهندس يضيف مهمة لنفسه', True,

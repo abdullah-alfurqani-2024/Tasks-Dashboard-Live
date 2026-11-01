@@ -42,7 +42,7 @@ export default async function lists(ctx, main) {
       <div class="${cls} head"><span>الترتيب</span><span>الاسم</span>${isStatus ? html`<span class="hide-sm">نوع الحالة</span>` : ''}<span class="hide-sm">الحالة</span><span></span></div>
       ${items.map(row)}
       ${row(null)}
-      ${isStatus ? html`<div class="card-pad small muted">نوع الحالة يحدد السلوك: «مكتملة» تتطلب تاريخ الانتهاء وتدخل في نسبة الإنجاز، «مفتوحة» تمسح تاريخ الانتهاء وتُحسب في المتأخرة، «ملغاة» تُستبعد من نسبة الإنجاز.</div>` : ''}`);
+      ${isStatus ? html`<div class="card-pad small muted">نوع الحالة يحدد السلوك: «مكتملة» تتطلب تاريخ الانتهاء وتدخل في نسبة الإنجاز، «مفتوحة» تمسح تاريخ الانتهاء وتُحسب في المتأخرة، «مغلقة بدون إنجاز» (مثل إعادة تحويل) تُستبعد من نسبة الإنجاز ومن المتأخرة.</div>` : ''}`);
   }
 
   on(root, 'click', '[data-tab]', (e, b) => { tab = b.dataset.tab; history.replaceState(null, '', `#/lists?tab=${tab}`); draw(); });

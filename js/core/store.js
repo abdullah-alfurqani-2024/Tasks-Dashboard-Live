@@ -11,7 +11,7 @@ export const state = {
 };
 
 export const ROLE_LABELS = { admin: 'مدير النظام', head: 'رئيس القسم', engineer: 'مهندس', viewer: 'مشاهد' };
-export const STATUS_KIND_LABELS = { open: 'مفتوحة', done: 'مكتملة', cancelled: 'ملغاة' };
+export const STATUS_KIND_LABELS = { open: 'مفتوحة', done: 'مكتملة', cancelled: 'مغلقة بدون إنجاز' };
 
 /** مصفوفة الصلاحيات في الواجهة (قاعدة البيانات تفرض نفس القواعد بشكل مستقل) */
 const MATRIX = {

@@ -322,7 +322,7 @@ export default async function importPage(ctx, main) {
             ${S.autoFix ? html`<span class="chip"><span class="dot" style="color:var(--warn)"></span>أُصلحت تلقائياً (ضمن الجاهزة) <b>${num(ok.filter((r) => r.fixes.length).length)}</b></span>` : ''}
           </div>
           ${miss.length ? html`<div class="alert warn">ستُضاف هذه القيم إلى القوائم: ${miss.map(([k, v]) => html`<div><b>${{ taskTypes: 'أنواع المهام', correspondenceTypes: 'أنواع المراسلات', statuses: 'الحالات' }[k]}:</b> ${[...v].join('، ')}</div>`)}
-            ${missing.statuses.size ? html`<div class="small">نوع كل حالة جديدة: ${[...missing.statuses].map((n) => `«${n}» ← ${{ done: 'مكتملة', open: 'مفتوحة', cancelled: 'ملغاة' }[S.pendingKind[normalizeAr(n)]] || 'مفتوحة'}`).join('، ')}. يمكنك تغييره لاحقاً من صفحة القوائم.</div>` : ''}</div>` : ''}
+            ${missing.statuses.size ? html`<div class="small">نوع كل حالة جديدة: ${[...missing.statuses].map((n) => `«${n}» ← ${{ done: 'مكتملة', open: 'مفتوحة', cancelled: 'مغلقة بدون إنجاز' }[S.pendingKind[normalizeAr(n)]] || 'مفتوحة'}`).join('، ')}. يمكنك تغييره لاحقاً من صفحة القوائم.</div>` : ''}</div>` : ''}
           ${unknown.size ? html`<div class="alert bad">
             <b>أسماء مهندسين لم تُطابق أي حساب.</b> اختر الحساب المقابل لكل اسم، أو أضف المهندس من «المستخدمون» ثم اضغط «إعادة الفحص».
             <div class="form-grid" style="margin-top:10px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">

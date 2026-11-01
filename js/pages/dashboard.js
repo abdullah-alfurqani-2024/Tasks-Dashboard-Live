@@ -15,7 +15,7 @@ const DEFAULTS = { period: 'year', from: '', to: '', engineerId: '' };
 const SERIES = [
   { name: 'مكتملة', color: 'var(--c2)', key: 'done' },
   { name: 'مفتوحة', color: 'var(--c1)', key: 'open' },
-  { name: 'ملغاة', color: 'var(--c7)', key: 'cancelled' },
+  { name: 'مغلقة بدون إنجاز', color: 'var(--c7)', key: 'cancelled' },
 ];
 const PALETTE = ['var(--c1)', 'var(--c2)', 'var(--c3)', 'var(--c4)', 'var(--c5)', 'var(--c6)', 'var(--c8)', 'var(--c7)'];
 
@@ -57,7 +57,7 @@ export default async function dashboard(ctx, main) {
     const delayedByEng = new Map();
     for (const t of tasks) if (isDelayed(t, delayDays, t0)) delayedByEng.set(t.engineerId, (delayedByEng.get(t.engineerId) || 0) + 1);
     const stack = (g) => SERIES.map((x) => g[x.key]);
-    // ألوان الحالات حسب نوعها: مكتملة أخضر، مفتوحة أزرق/برتقالي، ملغاة رمادي
+    // ألوان الحالات حسب نوعها: مكتملة أخضر، مفتوحة أزرق/برتقالي، مغلقة بدون إنجاز رمادي
     const kindIdx = { done: 0, open: 0, cancelled: 0 };
     const KIND_COLORS = { done: ['var(--c2)', 'var(--c6)'], open: ['var(--c1)', 'var(--c3)', 'var(--c8)', 'var(--c4)'], cancelled: ['var(--c7)', 'var(--c5)'] };
     const statusColor = (id, i) => {
@@ -74,7 +74,7 @@ export default async function dashboard(ctx, main) {
         <div class="card kpi" style="--accent:var(--c3)"><span class="label">مفتوحة</span><span class="value num">${num(s.open)}</span><span class="note">منها متأخرة ${num(s.delayed)}</span></div>
         <div class="card kpi" style="--accent:var(--c5)"><span class="label">متأخرة</span><span class="value num">${num(s.delayed)}</span><span class="note">مفتوحة أكثر من ${daysAr(delayDays)}</span></div>
         <div class="card kpi" style="--accent:var(--c6)"><span class="label">متوسط مدة الإنجاز</span><span class="value num">${dec1(s.avgDuration)}</span><span class="note">يوم · تجاوزت المهلة ${num(s.lateDone)}</span></div>
-        <div class="card kpi" style="--accent:var(--c7)"><span class="label">ملغاة</span><span class="value num">${num(s.cancelled)}</span><span class="note">لا تدخل في نسبة الإنجاز</span></div>
+        <div class="card kpi" style="--accent:var(--c7)"><span class="label">مغلقة بدون إنجاز</span><span class="value num">${num(s.cancelled)}</span><span class="note">لا تدخل في نسبة الإنجاز</span></div>
       </div>
 
       <div class="grid grid-2" style="margin-top:16px">
@@ -92,7 +92,7 @@ export default async function dashboard(ctx, main) {
 
       ${viewAll && !F.engineerId ? html`<div class="card" style="margin-top:16px"><div class="card-head"><h2>أداء المهندسين</h2></div>
         <div class="table-wrap"><table class="table">
-          <thead><tr><th>المهندس</th><th>الإجمالي</th><th>مكتملة</th><th>مفتوحة</th><th>متأخرة</th><th>ملغاة</th><th>نسبة الإنجاز</th><th>متوسط المدة</th></tr></thead>
+          <thead><tr><th>المهندس</th><th>الإجمالي</th><th>مكتملة</th><th>مفتوحة</th><th>متأخرة</th><th>مغلقة</th><th>نسبة الإنجاز</th><th>متوسط المدة</th></tr></thead>
           <tbody>${byEng.map((g) => html`<tr class="clickable" data-eng="${g.key}">
             <td>${fullName.get(g.key) || g.label}</td><td class="num">${num(g.total)}</td><td class="num">${num(g.done)}</td><td class="num">${num(g.open)}</td>
             <td class="num" style="${delayedByEng.get(g.key) ? 'color:var(--warn);font-weight:600' : ''}">${num(delayedByEng.get(g.key) || 0)}</td>

@@ -44,7 +44,7 @@ export default async function tasksPage(ctx, main) {
       <div class="field"><label for="f-status">الحالة</label>
         <select class="input" id="f-status" name="status">
           <option value="">الكل</option>
-          <optgroup label="مجموعات">${options([['k:open', 'المفتوحة'], ['k:delayed', `المتأخرة (أكثر من ${daysAr(delayDays)})`], ['k:done', 'المكتملة'], ['k:cancelled', 'الملغاة']], F.status)}</optgroup>
+          <optgroup label="مجموعات">${options([['k:open', 'المفتوحة'], ['k:delayed', `المتأخرة (أكثر من ${daysAr(delayDays)})`], ['k:done', 'المكتملة'], ['k:cancelled', 'المغلقة بدون إنجاز']], F.status)}</optgroup>
           <optgroup label="الحالات">${options(state.lookups.statuses, F.status)}</optgroup>
         </select></div>
       <div class="field"><label for="f-type">نوع المهمة</label>
@@ -104,7 +104,7 @@ export default async function tasksPage(ctx, main) {
       <span class="chip"><span class="dot" style="color:var(--ok)"></span>مكتملة <b>${num(s.done)}</b></span>
       <span class="chip"><span class="dot" style="color:var(--info)"></span>مفتوحة <b>${num(s.open)}</b></span>
       ${s.delayed ? html`<span class="chip"><span class="dot" style="color:var(--warn)"></span>متأخرة <b>${num(s.delayed)}</b></span>` : ''}
-      ${s.cancelled ? html`<span class="chip"><span class="dot" style="color:var(--muted)"></span>ملغاة <b>${num(s.cancelled)}</b></span>` : ''}`);
+      ${s.cancelled ? html`<span class="chip"><span class="dot" style="color:var(--muted)"></span>مغلقة بدون إنجاز <b>${num(s.cancelled)}</b></span>` : ''}`);
     if (!table) {
       table = dataTable($('#tbl', root), {
         columns, rows, pageSize: 50, sortKey: 'receivedDate', sortDir: 'desc',

@@ -96,7 +96,7 @@ export default async function report(ctx, main) {
           <span class="chip">الإجمالي <b>${num(s.total)}</b></span>
           <span class="chip">مكتملة <b>${num(s.done)}</b></span>
           <span class="chip">مفتوحة <b>${num(s.open)}</b></span>
-          <span class="chip">ملغاة <b>${num(s.cancelled)}</b></span>
+          <span class="chip">مغلقة بدون إنجاز <b>${num(s.cancelled)}</b></span>
           <span class="chip">نسبة الإنجاز <b>${pct(s.rate)}</b></span>
           <span class="chip">متوسط المدة <b>${dec1(s.avgDuration)}</b> يوم</span>
         </div>
