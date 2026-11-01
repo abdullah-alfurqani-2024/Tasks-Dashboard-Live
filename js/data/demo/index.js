@@ -254,6 +254,11 @@ export function createAdapter() {
         need('admin');
         const row = db.users.find((x) => x.id === id);
         if (id === me.id && ((u.role && u.role !== 'admin') || u.isActive === false)) throw err('لا يمكنك تغيير دورك أو تعطيل حسابك بنفسك.');
+        if (u.email !== undefined) {
+          const email = u.email.trim().toLowerCase();
+          if (db.users.some((x) => x.email === email && x.id !== id)) throw err('هذا البريد مسجّل مسبقاً.');
+          row.email = email;
+        }
         for (const k of ['fullName', 'shortName', 'role', 'isActive']) if (u[k] !== undefined) row[k] = u[k];
         persist();
         const { password, ...out } = row; return out;

@@ -162,6 +162,7 @@ export function createAdapter(config) {
       async update(id, u) {
         const body = { action: 'update', id };
         if (u.fullName !== undefined) body.full_name = u.fullName;
+        if (u.email !== undefined) body.email = u.email;
         if (u.shortName !== undefined) body.short_name = u.shortName;
         if (u.role !== undefined) body.role = u.role;
         if (u.isActive !== undefined) body.is_active = u.isActive;

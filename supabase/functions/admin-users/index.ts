@@ -126,16 +126,40 @@ async function updateUser(body: Record<string, unknown>, callerId: string) {
     patch.role = body.role;
   }
   if (body.is_active !== undefined) patch.is_active = !!body.is_active;
+  let newEmail = "";
+  if (body.email !== undefined) {
+    newEmail = String(clean(body.email) || "").toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) throw new AppError("صيغة البريد غير صحيحة.");
+  }
   if (id === callerId && (patch.role && patch.role !== "admin" || patch.is_active === false)) {
     throw new AppError("لا يمكنك تغيير دورك أو تعطيل حسابك بنفسك.");
   }
+  // تغيير البريد: حساب الدخول أولاً (يرفض البريد المكرر)، ثم الملف الشخصي
+  let oldEmail = "";
+  if (newEmail) {
+    const cur = await admin(`/rest/v1/profiles?id=eq.${id}&select=email`);
+    if (!cur?.length) throw new AppError("المستخدم غير موجود.", 404);
+    oldEmail = cur[0].email;
+    if (oldEmail === newEmail) newEmail = "";
+    else {
+      await admin(`/auth/v1/admin/users/${id}`, { method: "PUT", body: JSON.stringify({ email: newEmail, email_confirm: true }) });
+      patch.email = newEmail;
+    }
+  }
   if (!Object.keys(patch).length) throw new AppError("لا توجد تغييرات.");
 
-  const rows = await admin(`/rest/v1/profiles?id=eq.${id}`, {
-    method: "PATCH",
-    headers: { Prefer: "return=representation" },
-    body: JSON.stringify(patch),
-  });
+  let rows;
+  try {
+    rows = await admin(`/rest/v1/profiles?id=eq.${id}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(patch),
+    });
+  } catch (e) {
+    // إرجاع بريد الدخول كما كان حتى لا يختلف عن الملف الشخصي
+    if (newEmail) await admin(`/auth/v1/admin/users/${id}`, { method: "PUT", body: JSON.stringify({ email: oldEmail, email_confirm: true }) }).catch(() => {});
+    throw e;
+  }
   if (!rows?.length) throw new AppError("المستخدم غير موجود.", 404);
 
   // الحساب المعطّل لا يستطيع تسجيل الدخول أصلاً

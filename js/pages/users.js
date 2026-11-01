@@ -84,7 +84,8 @@ export default async function users(ctx, main) {
         <div class="field"><label for="u-short">الاسم المختصر</label>
           <input class="input" id="u-short" name="shortName" value="${u?.shortName || ''}" maxlength="60"><span class="hint">يظهر في الجداول والرسوم.</span></div>
         <div class="field"><label for="u-email">البريد الإلكتروني <span class="req">*</span></label>
-          <input class="input ltr" style="display:block;text-align:left" id="u-email" name="email" type="email" value="${u?.email || ''}" ${isNew ? '' : 'disabled'} required></div>
+          <input class="input ltr" style="display:block;text-align:left" id="u-email" name="email" type="email" value="${u?.email || ''}" required>
+          ${isNew ? '' : html`<span class="hint">تغييره يغيّر بريد الدخول فوراً، وتبقى كلمة المرور كما هي.</span>`}</div>
         <div class="field"><label for="u-role">الدور <span class="req">*</span></label>
           <select class="input" id="u-role" name="role" ${self ? 'disabled' : ''}>${options(Object.entries(ROLE_LABELS), u?.role || 'engineer')}</select>
           <span class="hint" id="u-role-help">${ROLE_HELP[u?.role || 'engineer']}</span></div>
@@ -106,7 +107,7 @@ export default async function users(ctx, main) {
       const v = formData(f);
       const fail = (t) => { err.textContent = t; err.hidden = false; };
       if (!v.fullName?.trim()) return fail('اكتب الاسم الكامل.');
-      if (isNew && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.email || '')) return fail('البريد الإلكتروني غير صحيح.');
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test((v.email || '').trim())) return fail('البريد الإلكتروني غير صحيح.');
       if (isNew && (v.password || '').length < 8) return fail('كلمة المرور 8 أحرف على الأقل.');
       if (!isNew && !self && u.isActive && v.isActive === false
         && !(await confirmBox({ title: 'تعطيل الحساب', message: `تعطيل حساب ${u.fullName}؟ لن يستطيع الدخول، وتبقى مهامه محفوظة.`, okText: 'تعطيل', danger: true }))) return;
@@ -118,9 +119,11 @@ export default async function users(ctx, main) {
             showCredentials('تمت إضافة المستخدم', v.email.trim().toLowerCase(), v.password);
           } else {
             const patch = { fullName: v.fullName.trim(), shortName: v.shortName?.trim() || '' };
+            const email = v.email.trim().toLowerCase();
+            if (email !== u.email) patch.email = email;
             if (!self) { patch.role = v.role; patch.isActive = v.isActive; }
             const saved = await db.users.update(u.id, patch);
-            if (self) { Object.assign(state.user, { fullName: saved.fullName, shortName: saved.shortName }); refreshChrome(); }
+            if (self) { Object.assign(state.user, { fullName: saved.fullName, shortName: saved.shortName, email: saved.email }); refreshChrome(); }
             toast('تم الحفظ.', 'ok');
             m.close();
           }
