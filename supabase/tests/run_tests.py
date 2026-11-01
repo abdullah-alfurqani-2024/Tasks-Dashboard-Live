@@ -31,7 +31,7 @@ setup = ''.join(
     f"insert into auth.users (id, email) values ('{U[k]}', '{k}@x.om');"
     f"insert into support_tasks.profiles (id, email, full_name, role, is_active) values ('{U[k]}', '{k}@x.om', 'اسم {k}', '{r}', {'false' if k == 'off' else 'true'});"
     for k, r in roles.items())
-ok, out = sql("truncate support_tasks.task_audit, support_tasks.tasks restart identity cascade; delete from support_tasks.profiles; delete from auth.users; delete from support_tasks.task_types where name = 'كاميرات'; update support_tasks.app_settings set value = '0' where key = 'edit_lock_days';" + setup)
+ok, out = sql("drop schema if exists support_tasks_staging cascade; truncate support_tasks.task_audit, support_tasks.tasks restart identity cascade; delete from support_tasks.profiles; delete from auth.users; delete from support_tasks.task_types where name = 'كاميرات'; update support_tasks.app_settings set value = '0' where key = 'edit_lock_days';" + setup)
 assert ok, out
 
 ST = "(select id from support_tasks.task_statuses where name = '%s')"

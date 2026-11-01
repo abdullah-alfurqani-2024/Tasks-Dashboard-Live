@@ -57,6 +57,8 @@
  *
  * audit.list({ taskId?, from?, to?, limit? }) → AuditEntry[]   الأحدث أولاً
  *
+ * maintenance.refreshFromProduction() → { users, tasks, at }   اختياري: نسخة التجربة فقط
+ *
  * الأخطاء: كل دالة ترمي Error برسالة عربية جاهزة للعرض (e.message)
  */
 export {};

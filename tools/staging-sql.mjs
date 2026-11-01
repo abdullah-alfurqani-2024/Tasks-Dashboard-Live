@@ -70,5 +70,6 @@ select 'المستخدمون' as البيان, count(*) as العدد from ${STG
 union all select 'المهام', count(*) from ${STG}.tasks;
 `;
 
-writeFileSync(join(root, 'supabase/staging/setup_staging.sql'), header + '\n' + parts.join('\n\n') + '\n' + copy);
+const refresh = '\n' + readFileSync(join(root, 'supabase/staging/refresh_function.sql'), 'utf8');
+writeFileSync(join(root, 'supabase/staging/setup_staging.sql'), header + '\n' + parts.join('\n\n') + '\n' + refresh + '\n' + copy);
 console.log('written supabase/staging/setup_staging.sql');

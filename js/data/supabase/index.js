@@ -197,6 +197,14 @@ export function createAdapter(config) {
       },
     },
 
+    maintenance: {
+      /** نسخة التجربة فقط: نسخ بيانات الإنتاج إلى التجربة */
+      async refreshFromProduction() {
+        const r = await c.rpc('refresh_from_production');
+        return { users: r.users, tasks: r.tasks, at: r.at };
+      },
+    },
+
     audit: {
       async list(f = {}) {
         const q = { select: '*', order: 'changed_at.desc,id.desc', limit: String(f.limit || 500) };
