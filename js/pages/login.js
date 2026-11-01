@@ -15,8 +15,9 @@ export default function login(ctx, main) {
         <div class="brand"><span class="brand-mark">${icon('check')}</span><span>${CONFIG.appName}</span></div>
         <p class="lead">${CONFIG.orgName}</p>
         <form novalidate>
-          <div class="field"><label for="email">البريد الإلكتروني</label>
-            <input class="input ltr" style="display:block;text-align:left" id="email" name="email" type="email" autocomplete="username" required autofocus></div>
+          <div class="field"><label for="login">الرقم المدني أو الوظيفي</label>
+            <input class="input ltr" style="display:block;text-align:left" id="login" name="login" type="text" inputmode="numeric" autocomplete="username" required autofocus>
+            <span class="hint">أو البريد الإلكتروني إن كان مسجّلاً لحسابك.</span></div>
           <div class="field"><label for="password">كلمة المرور</label>
             <div class="pw-wrap"><input class="input" id="password" name="password" type="password" autocomplete="current-password" required>
               <button type="button" class="btn btn-ghost btn-icon btn-sm" data-eye aria-label="إظهار كلمة المرور">${icon('eye')}</button></div></div>
@@ -26,8 +27,8 @@ export default function login(ctx, main) {
         ${isDemo ? html`<div class="alert warn small" style="margin-top:18px">
           <b>حسابات تجريبية</b> (كلمة المرور <span class="ltr">${db.demoPassword}</span>):
           <div style="display:grid;gap:4px;margin-top:6px">${db.demoAccounts.map((a) => html`
-            <button type="button" class="btn btn-sm" data-demo="${a.email}" style="justify-content:space-between">
-              <span>${ROLE_LABELS[a.role]}</span><span class="ltr">${a.email}</span></button>`)}</div></div>` : ''}
+            <button type="button" class="btn btn-sm" data-demo="${a.loginNo}" style="justify-content:space-between">
+              <span>${ROLE_LABELS[a.role]}</span><span class="ltr">${a.loginNo}</span></button>`)}</div></div>` : ''}
       </div>
     </div>`);
 
@@ -39,21 +40,21 @@ export default function login(ctx, main) {
     e.currentTarget.innerHTML = String(icon(inp.type === 'password' ? 'eye' : 'eyeOff'));
   };
   main.querySelectorAll('[data-demo]').forEach((b) => {
-    b.onclick = () => { $('#email', main).value = b.dataset.demo; $('#password', main).value = db.demoPassword; form.requestSubmit(); };
+    b.onclick = () => { $('#login', main).value = b.dataset.demo; $('#password', main).value = db.demoPassword; form.requestSubmit(); };
   });
 
   form.onsubmit = async (e) => {
     e.preventDefault();
     errBox.hidden = true;
-    const { email, password } = formData(form);
-    if (!email.trim() || !password) {
-      errBox.textContent = 'اكتب البريد وكلمة المرور.';
+    const { login: id, password } = formData(form);
+    if (!id.trim() || !password) {
+      errBox.textContent = 'اكتب الرقم وكلمة المرور.';
       errBox.hidden = false;
       return;
     }
     await busy($('button[type=submit]', form), async () => {
       try {
-        const user = await db.auth.signIn(email, password);
+        const user = await db.auth.signIn(id, password);
         await startSession(user);
         const next = ctx.query.next && ctx.query.next.startsWith('/') && ctx.query.next !== '/login' ? ctx.query.next : homePath();
         navigate(user.mustChangePassword ? '/password' : next, { replace: true });

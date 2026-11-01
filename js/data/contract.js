@@ -4,7 +4,7 @@
  *
  * ───────────── أشكال البيانات (camelCase) ─────────────
  *
- * User    { id, email, fullName, shortName, role: 'admin'|'head'|'engineer'|'viewer',
+ * User    { id, loginNo, email, fullName, shortName, role: 'admin'|'head'|'engineer'|'viewer',
  *           isActive, mustChangePassword }
  *
  * Task    { id, engineerId, engineerName, engineerShort,
@@ -29,7 +29,7 @@
  * ───────────── الدوال ─────────────
  *
  * auth.restore()                 → User|null      استعادة الجلسة المحفوظة عند فتح الصفحة
- * auth.signIn(email, password)   → User
+ * auth.signIn(login, password)   → User           login: الرقم المدني/الوظيفي أو البريد
  * auth.signOut()                 → void
  * auth.changePassword(newPw)     → void           ويجعل mustChangePassword = false
  * auth.onExpired(callback)       → void           تُستدعى إذا انتهت الجلسة ولم يمكن تجديدها
@@ -48,8 +48,8 @@
  *                                                 item بدون id = إضافة
  *
  * users.list()                   → User[]
- * users.create({ email, password, fullName, shortName, role }) → User
- * users.update(id, { fullName?, shortName?, role?, isActive? }) → User
+ * users.create({ loginNo, email?, password, fullName, shortName, role }) → User   (الرقم أو البريد على الأقل)
+ * users.update(id, { loginNo?, email?, fullName?, shortName?, role?, isActive? }) → User
  * users.resetPassword(id, password) → void
  *
  * settings.load()                → Settings

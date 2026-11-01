@@ -95,7 +95,7 @@ function renderChrome() {
           <span class="who"><b>${u.shortName || u.fullName.split(' ').slice(0, 2).join(' ')}</b><span>${ROLE_LABELS[u.role]}</span></span>
         </button>
         <div class="dropdown-menu" id="user-menu" hidden>
-          <div class="small muted" style="padding:6px 10px">${u.fullName}<br><span class="ltr">${u.email}</span></div>
+          <div class="small muted" style="padding:6px 10px">${u.fullName}<br><span class="ltr">${u.loginNo || u.email}</span></div>
           <a href="#/password">${icon('key')}تغيير كلمة المرور</a>
           ${isDemo ? html`<button data-act="reset-demo">${icon('restore')}إعادة البيانات التجريبية</button>` : ''}
           <button data-act="logout">${icon('logout')}تسجيل الخروج</button>

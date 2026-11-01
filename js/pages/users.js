@@ -7,7 +7,8 @@ import { icon } from '../ui/icons.js';
 import { modal, busy, toast, toastError, confirmBox } from '../ui/feedback.js';
 import { dataTable } from '../ui/table.js';
 import { pageHead, options, loading, newPage, searchBox } from '../ui/parts.js';
-import { normalizeAr } from '../core/format.js';
+import { normalizeAr, latinDigits } from '../core/format.js';
+import { CONFIG } from '../config.js';
 import { normalizeSettings } from '../core/settings.js';
 
 const pwRules = () => normalizeSettings(state.settings || {});
@@ -31,9 +32,10 @@ async function copy(text) {
   try { await navigator.clipboard.writeText(text); toast('نُسخ.', 'ok', 1800); } catch { toast('انسخ النص يدوياً.', 'warn'); }
 }
 
-function showCredentials(title, email, password) {
+function showCredentials(title, u, password) {
   const force = pwRules().forcePasswordChange;
-  const text = `البريد: ${email}\nكلمة المرور${force ? ' المؤقتة' : ''}: ${password}\nالرابط: ${location.origin}${location.pathname}${force ? '\n(سيُطلب منك تغيير كلمة المرور عند أول دخول)' : ''}`;
+  const who = u.loginNo ? `الرقم: ${u.loginNo}` : `البريد: ${u.email}`;
+  const text = `${who}\nكلمة المرور${force ? ' المؤقتة' : ''}: ${password}\nالرابط: ${location.origin}${location.pathname}${force ? '\n(سيُطلب منك تغيير كلمة المرور عند أول دخول)' : ''}`;
   const m = modal({
     title, size: 'sm',
     body: html`<p style="margin-top:0">أرسل هذه البيانات للمستخدم. لن تظهر كلمة المرور مرة أخرى.</p>
@@ -50,14 +52,15 @@ export default async function users(ctx, main) {
   mount(root, html`
     ${pageHead({ title: 'المستخدمون', sub: 'المدير يضيف الحسابات ويحدد الأدوار. لا يوجد تسجيل ذاتي.', actions: html`<button class="btn btn-primary" data-act="new">${icon('plus')}مستخدم جديد</button>` })}
     ${isDemo ? '' : html`<div class="alert small" style="margin-bottom:14px">إضافة المستخدمين وتعطيلهم وإعادة كلمات المرور تتم عبر دالة <span class="ltr">admin-users</span> على Supabase. إذا ظهر خطأ «غير منشورة» راجع دليل التركيب.</div>`}
-    <div class="card filters"><div class="field wide">${searchBox('', 'الاسم أو البريد…')}</div></div>
+    <div class="card filters"><div class="field wide">${searchBox('', 'الاسم أو الرقم أو البريد…')}</div></div>
     <div class="card" id="tbl" style="margin-top:14px">${loading()}</div>`);
 
   let list = [];
   let q = '';
   const columns = [
     { key: 'fullName', label: 'الاسم', render: (u) => html`<b>${u.fullName}</b>${u.id === state.user.id ? html` <span class="badge info">أنت</span>` : ''}${u.shortName ? html`<div class="small muted">${u.shortName}</div>` : ''}` },
-    { key: 'email', label: 'البريد', render: (u) => html`<span class="ltr">${u.email}</span>` },
+    { key: 'loginNo', label: 'الرقم', cls: 'num', render: (u) => html`<span class="ltr">${u.loginNo || '—'}</span>` },
+    { key: 'email', label: 'البريد', render: (u) => html`<span class="ltr">${u.email || ''}</span>` },
     { key: 'role', label: 'الدور', render: (u) => html`<span class="badge ${ROLE_BADGE[u.role]}">${ROLE_LABELS[u.role]}</span>` },
     { key: 'isActive', label: 'الحالة', render: (u) => (u.isActive ? html`<span class="badge ok">نشط</span>` : html`<span class="badge">معطّل</span>`) },
     { key: 'mustChangePassword', label: 'كلمة المرور', render: (u) => (u.mustChangePassword ? html`<span class="small muted">بانتظار التغيير</span>` : '') },
@@ -65,7 +68,7 @@ export default async function users(ctx, main) {
       <button class="btn btn-sm" data-edit="${u.id}">${icon('edit')}تعديل</button>
       <button class="btn btn-sm" data-reset="${u.id}" title="إعادة تعيين كلمة المرور">${icon('key')}</button></div>` },
   ];
-  const view = () => list.filter((u) => !q || normalizeAr(`${u.fullName} ${u.shortName} ${u.email}`).includes(q));
+  const view = () => list.filter((u) => !q || normalizeAr(`${u.fullName} ${u.shortName} ${u.email} ${u.loginNo}`).includes(q));
   let table;
   async function load() {
     try {
@@ -87,9 +90,12 @@ export default async function users(ctx, main) {
           <input class="input" id="u-name" name="fullName" value="${u?.fullName || ''}" maxlength="200" required></div>
         <div class="field"><label for="u-short">الاسم المختصر</label>
           <input class="input" id="u-short" name="shortName" value="${u?.shortName || ''}" maxlength="60"><span class="hint">يظهر في الجداول والرسوم.</span></div>
-        <div class="field"><label for="u-email">البريد الإلكتروني <span class="req">*</span></label>
-          <input class="input ltr" style="display:block;text-align:left" id="u-email" name="email" type="email" value="${u?.email || ''}" required>
-          ${isNew ? '' : html`<span class="hint">تغييره يغيّر بريد الدخول فوراً، وتبقى كلمة المرور كما هي.</span>`}</div>
+        <div class="field"><label for="u-no">الرقم المدني أو الوظيفي <span class="req">*</span></label>
+          <input class="input ltr" style="display:block;text-align:left" id="u-no" name="loginNo" inputmode="numeric" maxlength="20" value="${u?.loginNo || ''}">
+          <span class="hint">يدخل به المستخدم. أرقام فقط.</span></div>
+        <div class="field"><label for="u-email">البريد الإلكتروني (اختياري)</label>
+          <input class="input ltr" style="display:block;text-align:left" id="u-email" name="email" type="email" value="${u?.email || ''}">
+          <span class="hint">${isNew ? 'يمكن الدخول به أيضاً.' : 'تغييره يغيّر بريد الدخول فوراً، وتبقى كلمة المرور كما هي.'}${CONFIG.env === 'staging' && !isNew ? ' ⚠️ حسابات الدخول مشتركة مع الإنتاج: تغيير البريد هنا يغيّره هناك أيضاً.' : ''}</span></div>
         <div class="field"><label for="u-role">الدور <span class="req">*</span></label>
           <select class="input" id="u-role" name="role" ${self ? 'disabled' : ''}>${options(Object.entries(ROLE_LABELS), u?.role || 'engineer')}</select>
           <span class="hint" id="u-role-help">${ROLE_HELP[u?.role || 'engineer']}</span></div>
@@ -111,23 +117,27 @@ export default async function users(ctx, main) {
       const v = formData(f);
       const fail = (t) => { err.textContent = t; err.hidden = false; };
       if (!v.fullName?.trim()) return fail('اكتب الاسم الكامل.');
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test((v.email || '').trim())) return fail('البريد الإلكتروني غير صحيح.');
+      const loginNo = latinDigits(v.loginNo || '').replace(/\s+/g, '');
+      const email = (v.email || '').trim().toLowerCase();
+      if (!loginNo && !email) return fail('اكتب الرقم المدني أو الوظيفي (أو البريد على الأقل).');
+      if (loginNo && !/^[0-9]{1,20}$/.test(loginNo)) return fail('الرقم أرقام فقط (حتى 20 خانة).');
+      if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail('البريد الإلكتروني غير صحيح.');
       if (isNew && (v.password || '').length < pwRules().minPasswordLength) return fail(`كلمة المرور ${pwRules().minPasswordLength} أحرف على الأقل.`);
       if (!isNew && !self && u.isActive && v.isActive === false
         && !(await confirmBox({ title: 'تعطيل الحساب', message: `تعطيل حساب ${u.fullName}؟ لن يستطيع الدخول، وتبقى مهامه محفوظة.`, okText: 'تعطيل', danger: true }))) return;
       await busy($('[data-save]', m.el), async () => {
         try {
           if (isNew) {
-            await db.users.create({ email: v.email.trim().toLowerCase(), password: v.password, fullName: v.fullName.trim(), shortName: v.shortName?.trim(), role: v.role });
+            await db.users.create({ loginNo, email, password: v.password, fullName: v.fullName.trim(), shortName: v.shortName?.trim(), role: v.role });
             m.close();
-            showCredentials('تمت إضافة المستخدم', v.email.trim().toLowerCase(), v.password);
+            showCredentials('تمت إضافة المستخدم', { loginNo, email }, v.password);
           } else {
             const patch = { fullName: v.fullName.trim(), shortName: v.shortName?.trim() || '' };
-            const email = v.email.trim().toLowerCase();
-            if (email !== u.email) patch.email = email;
+            if (email !== (u.email || '')) patch.email = email;
+            if (loginNo !== (u.loginNo || '')) patch.loginNo = loginNo;
             if (!self) { patch.role = v.role; patch.isActive = v.isActive; }
             const saved = await db.users.update(u.id, patch);
-            if (self) { Object.assign(state.user, { fullName: saved.fullName, shortName: saved.shortName, email: saved.email }); refreshChrome(); }
+            if (self) { Object.assign(state.user, { fullName: saved.fullName, shortName: saved.shortName, email: saved.email, loginNo: saved.loginNo }); refreshChrome(); }
             toast('تم الحفظ.', 'ok');
             m.close();
           }
@@ -161,7 +171,7 @@ export default async function users(ctx, main) {
       try {
         await db.users.resetPassword(u.id, pw);
         m.close();
-        showCredentials('كلمة المرور الجديدة', u.email, pw);
+        showCredentials('كلمة المرور الجديدة', u, pw);
         await load();
       } catch (ex) { err.textContent = ex.message; err.hidden = false; }
     });

@@ -1,6 +1,6 @@
 // يولّد supabase/staging/setup_staging.sql من ملفات الإنتاج 01-04 بتغيير اسم السكيما
 // الاستخدام: node tools/staging-sql.mjs
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const root = new URL('..', import.meta.url).pathname;
@@ -26,10 +26,11 @@ const copy = `
 begin;
 
 -- المستخدمون: نفس الحسابات تدخل نسخة التجربة بنفس كلمات المرور
-insert into ${STG}.profiles (id, email, full_name, short_name, role, is_active, must_change_password, created_at, updated_at)
-select id, email, full_name, short_name, role::text::${STG}.user_role, is_active, false, created_at, updated_at
+update ${STG}.profiles set login_no = null where login_no is not null;
+insert into ${STG}.profiles (id, email, login_no, full_name, short_name, role, is_active, must_change_password, created_at, updated_at)
+select id, email, login_no, full_name, short_name, role::text::${STG}.user_role, is_active, false, created_at, updated_at
 from ${PROD}.profiles
-on conflict (id) do update set email = excluded.email, full_name = excluded.full_name, short_name = excluded.short_name,
+on conflict (id) do update set email = excluded.email, login_no = excluded.login_no, full_name = excluded.full_name, short_name = excluded.short_name,
   role = excluded.role, is_active = excluded.is_active;
 
 -- القوائم كما هي في الإنتاج
@@ -69,6 +70,10 @@ select 'المستخدمون' as البيان, count(*) as العدد from ${STG
 union all select 'المهام', count(*) from ${STG}.tasks;
 `;
 
+// ملفات التعديل اللاحقة (07 فما بعد) تعالج السكيمتين بنفسها، فتُضاف كما هي
+const migrations = readdirSync(join(root, 'supabase/sql')).filter((f) => /^(0[7-9]|[1-9]\d)_.*\.sql$/.test(f)).sort()
+  .map((f) => `-- ===================== ${f} =====================\n` + readFileSync(join(root, 'supabase/sql', f), 'utf8'));
+parts.push(...migrations);
 const refresh = '\n' + readFileSync(join(root, 'supabase/staging/refresh_function.sql'), 'utf8');
 writeFileSync(join(root, 'supabase/staging/setup_staging.sql'), header + '\n' + parts.join('\n\n') + '\n' + refresh + '\n' + copy);
 console.log('written supabase/staging/setup_staging.sql');

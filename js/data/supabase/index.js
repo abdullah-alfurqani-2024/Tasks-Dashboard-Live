@@ -3,12 +3,14 @@
  */
 import { createClient, ApiError } from './client.js';
 import { normalizeSettings } from '../../core/settings.js';
+import { latinDigits as latin } from '../../core/format.js';
 
 const TASK_COLS = 'id,engineer_id,engineer_name,engineer_short,ref_no,requester,employee_name,subject,received_date,completed_date,notes,task_type_id,task_type,correspondence_type_id,correspondence_type,status_id,status,status_kind,delay_reason,duration_days,created_at,created_by,updated_at,updated_by,deleted_at,deleted_by';
 const LOOKUP_TABLES = { taskTypes: 'task_types', correspondenceTypes: 'correspondence_types', statuses: 'task_statuses' };
 
+const INTERNAL = '@tasks.internal';
 const toUser = (r) => r && ({
-  id: r.id, email: r.email, fullName: r.full_name, shortName: r.short_name || '',
+  id: r.id, email: r.email?.endsWith(INTERNAL) ? '' : r.email, loginNo: r.login_no || '', fullName: r.full_name, shortName: r.short_name || '',
   role: r.role, isActive: r.is_active, mustChangePassword: r.must_change_password,
 });
 
@@ -81,8 +83,10 @@ export function createAdapter(config) {
         if (!(await c.ensureSession())) return null;
         try { return await loadMe(); } catch { return null; }
       },
-      async signIn(email, password) {
-        await c.signIn(email.trim().toLowerCase(), password);
+      async signIn(login, password) {
+        const id = latin(login).trim().toLowerCase();
+        if (id.includes('@')) await c.signIn(id, password);
+        else await c.signInVia(config.supabase.loginFunction || 'auth-login', id, password);
         return loadMe();
       },
       async signOut() { me = null; await c.signOut(); },
@@ -157,7 +161,7 @@ export function createAdapter(config) {
       },
       async create(u) {
         const r = await c.invoke(fn, {
-          action: 'create', email: u.email, password: u.password, full_name: u.fullName, short_name: u.shortName, role: u.role,
+          action: 'create', login_no: u.loginNo || null, email: u.email || '', password: u.password, full_name: u.fullName, short_name: u.shortName, role: u.role,
         });
         return toUser(r.user);
       },
@@ -165,6 +169,7 @@ export function createAdapter(config) {
         const body = { action: 'update', id };
         if (u.fullName !== undefined) body.full_name = u.fullName;
         if (u.email !== undefined) body.email = u.email;
+        if (u.loginNo !== undefined) body.login_no = u.loginNo || null;
         if (u.shortName !== undefined) body.short_name = u.shortName;
         if (u.role !== undefined) body.role = u.role;
         if (u.isActive !== undefined) body.is_active = u.isActive;

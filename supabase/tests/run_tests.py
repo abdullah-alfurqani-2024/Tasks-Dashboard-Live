@@ -110,5 +110,20 @@ check('المدير يغيّر دور مستخدم', True, f"update profiles set
 check('المستخدم يؤكد تغيير كلمة المرور', True,
       "select mark_password_changed(); select must_change_password from profiles where id = auth.uid()", 'eng1', 'f')
 
+# ---------- الرقم المدني/الوظيفي (07_login_no.sql) ----------
+# الرقم يُكتب عبر دالة admin-users (مفتاح الخادم)، فالاختبار هنا للقيود نفسها
+check('إضافة رقم لمستخدم (من الخادم)', True,
+      f"update profiles set login_no = '0012345' where id = '{U['eng1']}' returning login_no", None, '0012345')
+check('الرقم لا يتكرر', False,
+      f"update profiles set login_no = '0012345' where id = '{U['eng2']}'", None, None)
+check('الرقم أرقام فقط', False,
+      f"update profiles set login_no = '12a45' where id = '{U['eng2']}'", None, None)
+check('الرقم حتى 20 خانة', False,
+      f"update profiles set login_no = '123456789012345678901' where id = '{U['eng2']}'", None, None)
+check('المستخدم لا يغيّر الرقم من الواجهة مباشرة', False,
+      f"update profiles set login_no = '999' where id = '{U['eng1']}'", 'eng1', None)
+check('المدير لا يغيّر الرقم إلا عبر الدالة', False,
+      f"update profiles set login_no = '999' where id = '{U['eng2']}'", 'admin', None)
+
 print(f'\n{passed} ناجح، {failed} فاشل')
 sys.exit(1 if failed else 0)

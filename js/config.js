@@ -20,12 +20,14 @@ const ENVIRONMENTS = {
     label: '',
     schema: 'support_tasks',               // سكيما البيانات الحقيقية
     adminFunction: 'admin-users',          // دالة إدارة المستخدمين للإنتاج
+    loginFunction: 'auth-login',           // دالة الدخول بالرقم للإنتاج
   },
   staging: {
     hosts: [],                             // الافتراضي لكل رابط غير الإنتاج
     label: 'نسخة التجربة — البيانات هنا ليست بيانات القسم الحقيقية',
     schema: 'support_tasks_staging',
     adminFunction: 'admin-users-staging',
+    loginFunction: 'auth-login-staging',
   },
 };
 
@@ -44,6 +46,7 @@ export const CONFIG = {
     anonKey: 'sb_publishable_1AEljmkY7c2yqSzwNCDuQQ_ggBQvJqI', // المفتاح العام (Publishable) — آمن في المتصفح
     schema: env.schema,                 // يجب إضافتها في Supabase ← Data API ← Exposed schemas
     adminFunction: env.adminFunction,   // Edge Function لإدارة المستخدمين
+    loginFunction: env.loginFunction,   // Edge Function للدخول بالرقم المدني/الوظيفي
   },
   timeZone: 'Asia/Muscat',
 };

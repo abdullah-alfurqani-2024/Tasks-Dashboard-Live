@@ -122,6 +122,16 @@ export function createClient({ url, anonKey, schema = 'public' }) {
       const { data } = await raw('/auth/v1/token?grant_type=password', { method: 'POST', body: { email, password } });
       return saveSession(data);
     },
+    /** الدخول بالرقم عبر Edge Function تبحث عن البريد على الخادم */
+    async signInVia(fn, login, password) {
+      try {
+        const { data } = await raw(`/functions/v1/${fn}`, { method: 'POST', body: { login, password } });
+        return saveSession(data);
+      } catch (e) {
+        if (e.status === 404) throw new ApiError(`دالة الدخول بالرقم غير منشورة على Supabase (${fn}). استخدم البريد أو راجع دليل التركيب.`, 404);
+        throw e;
+      }
+    },
     async signOut() {
       try { if (session) await raw('/auth/v1/logout', { method: 'POST', token: session.access_token }); } catch { /* الخروج محلياً على أي حال */ }
       clearSession();

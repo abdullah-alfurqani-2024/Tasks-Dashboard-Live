@@ -7,8 +7,9 @@
  */
 
 import { normalizeSettings } from '../../core/settings.js';
+import { latinDigits } from '../../core/format.js';
 
-const KEY = 'tsk.demo.v2';
+const KEY = 'tsk.demo.v3';
 const PASSWORD = 'demo1234';
 const wait = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 const err = (m) => Object.assign(new Error(m), { status: 400 });
@@ -34,7 +35,7 @@ function seed() {
   const rnd = () => ((s = (s * 1103515245 + 12345) % 2147483648) / 2147483648);
   const pick = (a) => a[Math.floor(rnd() * a.length)];
   const users = NAMES.map(([fullName, shortName, role], i) => ({
-    id: `u${i + 1}`, email: EMAILS[i], fullName, shortName, role, isActive: true, mustChangePassword: false,
+    id: `u${i + 1}`, email: EMAILS[i], loginNo: String(1000 + i + 1), fullName, shortName, role, isActive: true, mustChangePassword: false,
   }));
   const lookups = {
     taskTypes: ['مراسلة', 'طلب خدمة', 'اتصال', 'طلب مباشر', 'تكليف مباشر', 'أخرى']
@@ -125,15 +126,16 @@ export function createAdapter() {
 
   return {
     name: 'demo',
-    demoAccounts: db.users.map((u) => ({ email: u.email, role: u.role })),
+    demoAccounts: db.users.map((u) => ({ email: u.email, loginNo: u.loginNo, role: u.role })),
     demoPassword: PASSWORD,
 
     auth: {
       async restore() { await wait(50); return me ? { ...me } : null; },
-      async signIn(email, password) {
+      async signIn(login, password) {
         await wait(300);
-        const u = db.users.find((x) => x.email === email.trim().toLowerCase());
-        if (!u || password !== (u.password || PASSWORD)) throw err('البريد أو كلمة المرور غير صحيحة.');
+        const id = latinDigits(login).trim().toLowerCase();
+        const u = db.users.find((x) => (id.includes('@') ? x.email === id : x.loginNo === id));
+        if (!u || password !== (u.password || PASSWORD)) throw err('الرقم أو كلمة المرور غير صحيحة.');
         if (!u.isActive) throw err('هذا الحساب معطّل. تواصل مع مدير النظام.');
         me = u;
         try { sessionStorage.setItem(KEY + '.me', u.id); } catch { /* */ }
@@ -248,11 +250,14 @@ export function createAdapter() {
       async list() { await wait(40); return db.users.map(({ password, ...u }) => ({ ...u })); },
       async create(u) {
         need('admin');
-        const email = u.email.trim().toLowerCase();
-        if (db.users.some((x) => x.email === email)) throw err('هذا البريد مسجّل مسبقاً.');
+        const email = (u.email || '').trim().toLowerCase();
+        const loginNo = (u.loginNo || '').trim();
+        if (!email && !loginNo) throw err('اكتب الرقم أو البريد على الأقل.');
+        if (email && db.users.some((x) => x.email === email)) throw err('هذا البريد مسجّل مسبقاً.');
+        if (loginNo && db.users.some((x) => x.loginNo === loginNo)) throw err('هذا الرقم مسجّل لمستخدم آخر.');
         const st = normalizeSettings(db.settings);
         if ((u.password || '').length < st.minPasswordLength) throw err(`كلمة المرور ${st.minPasswordLength} أحرف على الأقل.`);
-        const row = { id: `u${++db.seq.user}`, email, fullName: u.fullName.trim(), shortName: u.shortName?.trim() || '', role: u.role, isActive: true, mustChangePassword: st.forcePasswordChange, password: u.password };
+        const row = { id: `u${++db.seq.user}`, email, loginNo, fullName: u.fullName.trim(), shortName: u.shortName?.trim() || '', role: u.role, isActive: true, mustChangePassword: st.forcePasswordChange, password: u.password };
         db.users.push(row); persist();
         const { password, ...out } = row; return out;
       },
@@ -262,9 +267,15 @@ export function createAdapter() {
         if (id === me.id && ((u.role && u.role !== 'admin') || u.isActive === false)) throw err('لا يمكنك تغيير دورك أو تعطيل حسابك بنفسك.');
         if (u.email !== undefined) {
           const email = u.email.trim().toLowerCase();
-          if (db.users.some((x) => x.email === email && x.id !== id)) throw err('هذا البريد مسجّل مسبقاً.');
+          if (email && db.users.some((x) => x.email === email && x.id !== id)) throw err('هذا البريد مسجّل مسبقاً.');
           row.email = email;
         }
+        if (u.loginNo !== undefined) {
+          const no = (u.loginNo || '').trim();
+          if (no && db.users.some((x) => x.loginNo === no && x.id !== id)) throw err('هذا الرقم مسجّل لمستخدم آخر.');
+          row.loginNo = no;
+        }
+        if (!row.email && !row.loginNo) throw err('اكتب الرقم أو البريد على الأقل.');
         for (const k of ['fullName', 'shortName', 'role', 'isActive']) if (u[k] !== undefined) row[k] = u[k];
         persist();
         const { password, ...out } = row; return out;

@@ -4,8 +4,9 @@
 //  لذلك تتم هذه العمليات هنا على خادم Supabase، وبعد التحقق أن الطالب «مدير نظام» مفعّل.
 //
 //  الطلب: POST  { action, ...data }  مع ترويسة Authorization: Bearer <access token>
-//    create         { email, password, full_name, short_name?, role }
-//    update         { id, full_name?, short_name?, role?, is_active? }
+//    create         { login_no?, email?, password, full_name, short_name?, role }   (الرقم أو البريد على الأقل)
+//    update         { id, login_no?, email?, full_name?, short_name?, role?, is_active? }
+//  المستخدم بلا بريد يُعطى بريد دخول داخلياً (n<الرقم>@tasks.internal) لا يُرسل إليه شيء
 //    reset_password { id, password }
 //
 //  لا يستخدم أي مكتبة: fetch مباشرة إلى واجهات Supabase
@@ -26,6 +27,19 @@ function schemaFor(req: Request) {
   throw new AppError("تعذّر تحديد نسخة النظام من اسم الدالة.", 500);
 }
 const ROLES = ["admin", "head", "engineer", "viewer"];
+const INTERNAL_DOMAIN = "tasks.internal";
+const internalEmail = (no: string) => `n${no}@${INTERNAL_DOMAIN}`;
+const isInternal = (email: string) => email.endsWith(`@${INTERNAL_DOMAIN}`);
+const toLatin = (v: string) =>
+  v.replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d))).replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)));
+/** الرقم: أرقام فقط حتى 20 خانة، أو null إذا تُرك فارغاً */
+function cleanNo(v: unknown) {
+  const no = toLatin(String(v ?? "")).replace(/\s+/g, "");
+  if (!no) return null;
+  if (!/^[0-9]{1,20}$/.test(no)) throw new AppError("الرقم يجب أن يكون أرقاماً فقط (حتى 20 خانة).");
+  return no;
+}
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -62,6 +76,7 @@ async function admin(path: string, init: RequestInit = {}) {
 }
 
 function translate(msg: string): string {
+  if (/login_no/i.test(msg)) return "هذا الرقم مسجّل لمستخدم آخر.";
   if (/already been registered|already exists|duplicate key/i.test(msg)) return "هذا البريد مسجّل مسبقاً.";
   if (/password/i.test(msg) && /(short|least|weak)/i.test(msg)) return "كلمة المرور أقصر من الحد الذي تقبله Supabase (Authentication ← Providers ← Email ← Minimum password length).";
   if (/invalid.*email|email.*invalid/i.test(msg)) return "صيغة البريد غير صحيحة.";
@@ -104,11 +119,18 @@ function checkPassword(p: unknown, min: number) {
 }
 
 async function createUser(body: Record<string, unknown>) {
-  const email = String(clean(body.email) || "").toLowerCase();
+  const login_no = cleanNo(body.login_no);
+  const typed = String(clean(body.email) || "").toLowerCase();
   const full_name = String(clean(body.full_name) || "");
   const short_name = clean(body.short_name) || null;
   const role = String(body.role || "engineer");
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new AppError("صيغة البريد غير صحيحة.");
+  if (!login_no && !typed) throw new AppError("اكتب الرقم أو البريد على الأقل.");
+  if (typed && !EMAIL_RE.test(typed)) throw new AppError("صيغة البريد غير صحيحة.");
+  if (login_no) {
+    const dup = await admin(`/rest/v1/profiles?login_no=eq.${login_no}&select=id`);
+    if (dup?.length) throw new AppError("هذا الرقم مسجّل لمستخدم آخر.");
+  }
+  const email = typed || internalEmail(login_no!);
   if (!full_name) throw new AppError("الاسم الكامل مطلوب.");
   if (!ROLES.includes(role)) throw new AppError("دور غير معروف.");
   const rules = await passwordRules();
@@ -122,7 +144,7 @@ async function createUser(body: Record<string, unknown>) {
     const rows = await admin("/rest/v1/profiles", {
       method: "POST",
       headers: { Prefer: "return=representation" },
-      body: JSON.stringify({ id: user.id, email, full_name, short_name, role, must_change_password: rules.force }),
+      body: JSON.stringify({ id: user.id, email, login_no, full_name, short_name, role, must_change_password: rules.force }),
     });
     return rows[0];
   } catch (e) {
@@ -147,20 +169,30 @@ async function updateUser(body: Record<string, unknown>, callerId: string) {
     patch.role = body.role;
   }
   if (body.is_active !== undefined) patch.is_active = !!body.is_active;
+  if (body.login_no !== undefined) patch.login_no = cleanNo(body.login_no);
   let newEmail = "";
   if (body.email !== undefined) {
     newEmail = String(clean(body.email) || "").toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) throw new AppError("صيغة البريد غير صحيحة.");
+    if (newEmail && !EMAIL_RE.test(newEmail)) throw new AppError("صيغة البريد غير صحيحة.");
   }
   if (id === callerId && (patch.role && patch.role !== "admin" || patch.is_active === false)) {
     throw new AppError("لا يمكنك تغيير دورك أو تعطيل حسابك بنفسك.");
   }
   // تغيير البريد: حساب الدخول أولاً (يرفض البريد المكرر)، ثم الملف الشخصي
   let oldEmail = "";
-  if (newEmail) {
-    const cur = await admin(`/rest/v1/profiles?id=eq.${id}&select=email`);
+  if (body.email !== undefined || body.login_no !== undefined) {
+    const cur = await admin(`/rest/v1/profiles?id=eq.${id}&select=email,login_no`);
     if (!cur?.length) throw new AppError("المستخدم غير موجود.", 404);
     oldEmail = cur[0].email;
+    const no = body.login_no !== undefined ? (patch.login_no as string | null) : cur[0].login_no;
+    if (!no && !(newEmail || (body.email === undefined && !isInternal(oldEmail)))) throw new AppError("اكتب الرقم أو البريد على الأقل.");
+    if (no && no !== cur[0].login_no) {
+      const dup = await admin(`/rest/v1/profiles?login_no=eq.${no}&id=neq.${id}&select=id`);
+      if (dup?.length) throw new AppError("هذا الرقم مسجّل لمستخدم آخر.");
+    }
+    // البريد الفارغ ← بريد داخلي من الرقم، والبريد الداخلي يتبع الرقم إذا تغيّر
+    if (body.email !== undefined && !newEmail) newEmail = internalEmail(no!);
+    else if (body.email === undefined && isInternal(oldEmail) && no) newEmail = internalEmail(no);
     if (oldEmail === newEmail) newEmail = "";
     else {
       await admin(`/auth/v1/admin/users/${id}`, { method: "PUT", body: JSON.stringify({ email: newEmail, email_confirm: true }) });

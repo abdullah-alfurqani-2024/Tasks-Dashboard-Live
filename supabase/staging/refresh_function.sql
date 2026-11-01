@@ -25,10 +25,12 @@ begin
   alter table support_tasks_staging.tasks disable trigger user;
 
   -- المستخدمون: نفس الحسابات، وتُحدَّث أسماؤهم وأدوارهم من الإنتاج
-  insert into support_tasks_staging.profiles (id, email, full_name, short_name, role, is_active, must_change_password, created_at, updated_at)
-  select id, email, full_name, short_name, role::text::support_tasks_staging.user_role, is_active, false, created_at, updated_at
+  -- الأرقام تُمسح أولاً ثم تُنسخ، حتى لا يتعارض رقم في التجربة مع رقم مستخدم آخر في الإنتاج
+  update support_tasks_staging.profiles set login_no = null where login_no is not null;
+  insert into support_tasks_staging.profiles (id, email, login_no, full_name, short_name, role, is_active, must_change_password, created_at, updated_at)
+  select id, email, login_no, full_name, short_name, role::text::support_tasks_staging.user_role, is_active, false, created_at, updated_at
   from support_tasks.profiles
-  on conflict (id) do update set email = excluded.email, full_name = excluded.full_name, short_name = excluded.short_name,
+  on conflict (id) do update set email = excluded.email, login_no = excluded.login_no, full_name = excluded.full_name, short_name = excluded.short_name,
     role = excluded.role, is_active = excluded.is_active;
 
   -- القوائم
