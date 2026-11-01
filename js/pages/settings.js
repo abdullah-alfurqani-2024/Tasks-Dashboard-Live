@@ -10,7 +10,7 @@ import { icon } from '../ui/icons.js';
 import { busy, toast, confirmBox } from '../ui/feedback.js';
 import { pageHead, newPage } from '../ui/parts.js';
 
-export const VERSION = '1.0.0';
+import { VERSION } from '../version.js';
 
 export default async function settings(ctx, main) {
   setTitle('الإعدادات');
@@ -42,7 +42,8 @@ export default async function settings(ctx, main) {
         <div class="card-head"><h2>معلومات النظام</h2></div>
         <div class="card-pad stack small">
           <div>الإصدار: <b class="ltr">${VERSION}</b></div>
-          <div>قاعدة البيانات: <b class="ltr">${backendName}</b>${isDemo ? ' (تجريبي — داخل المتصفح)' : ''}</div>
+          <div>النسخة: <b>${CONFIG.env === 'production' ? 'الإنتاج' : 'التجربة'}</b></div>
+          <div>قاعدة البيانات: <b class="ltr">${backendName}</b>${isDemo ? ' (تجريبي — داخل المتصفح)' : html` · السكيما <span class="ltr">${CONFIG.supabase.schema}</span>`}</div>
           ${!isDemo ? html`<div>الخادم: <span class="ltr">${CONFIG.supabase.url}</span></div>` : ''}
           <div>المنطقة الزمنية: <span class="ltr">${CONFIG.timeZone}</span></div>
           <div>وقت الجهاز: ${fmtDateTime(new Date().toISOString())}</div>

@@ -148,6 +148,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .dropdown-menu button:hover, .dropdown-menu a:hover { background: var(--surface-2); text-decoration: none; }
 .dropdown-menu svg { width: 17px; height: 17px; color: var(--muted); }
 .demo-banner { background: var(--warn-soft); color: var(--warn); text-align: center; padding: 6px 12px; font-size: .88rem; border-bottom: 1px solid var(--line); }
+.demo-banner.env-staging { background: #7a3cc1; color: #fff; font-weight: 600; }
+.update-bar { position: fixed; z-index: 70; inset-inline: 0; bottom: 0; display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap;
+  padding: 10px 16px; background: var(--brand); color: var(--brand-ink); box-shadow: var(--shadow-lg); }
+.update-bar .btn-primary { background: var(--brand-ink); color: var(--brand); border-color: var(--brand-ink); }
 
 /* ---------------- المحتوى ---------------- */
 .main { max-width: 1400px; margin: 0 auto; padding: 22px 18px 60px; outline: none; }

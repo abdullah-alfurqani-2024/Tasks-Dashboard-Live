@@ -49,6 +49,7 @@ function utcOffset(timeZone) {
 export function createAdapter(config) {
   const c = createClient(config.supabase);
   const tz = utcOffset(config.timeZone);
+  const fn = config.supabase.adminFunction || 'admin-users';
   let me = null;
 
   async function loadMe() {
@@ -155,7 +156,7 @@ export function createAdapter(config) {
         return (await c.select('profiles', { select: '*', order: 'full_name.asc' })).map(toUser);
       },
       async create(u) {
-        const r = await c.invoke('admin-users', {
+        const r = await c.invoke(fn, {
           action: 'create', email: u.email, password: u.password, full_name: u.fullName, short_name: u.shortName, role: u.role,
         });
         return toUser(r.user);
@@ -167,11 +168,11 @@ export function createAdapter(config) {
         if (u.shortName !== undefined) body.short_name = u.shortName;
         if (u.role !== undefined) body.role = u.role;
         if (u.isActive !== undefined) body.is_active = u.isActive;
-        const r = await c.invoke('admin-users', body);
+        const r = await c.invoke(fn, body);
         return toUser(r.user);
       },
       async resetPassword(id, password) {
-        await c.invoke('admin-users', { action: 'reset_password', id, password });
+        await c.invoke(fn, { action: 'reset_password', id, password });
       },
     },
 

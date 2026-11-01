@@ -25,5 +25,6 @@ export async function endSession({ silent = false } = {}) {
 }
 
 export function setTitle(t) {
-  document.title = t ? `${t} — ${CONFIG.appName}` : CONFIG.appName;
+  const base = CONFIG.env === 'staging' ? `[تجربة] ${CONFIG.appName}` : CONFIG.appName;
+  document.title = t ? `${t} — ${base}` : base;
 }

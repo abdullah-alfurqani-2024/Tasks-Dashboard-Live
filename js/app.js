@@ -10,6 +10,7 @@ import { setChrome, homePath, endSession } from './core/session.js';
 import { icon } from './ui/icons.js';
 import { toast, toastError } from './ui/feedback.js';
 import { watchDateFields } from './ui/dateField.js';
+import { checkOnStart, watchUpdates } from './core/updates.js';
 
 watchDateFields(document.body);
 
@@ -66,6 +67,10 @@ function renderChrome() {
   if (isDemo) {
     banner.hidden = false;
     mount(banner, html`وضع تجريبي: البيانات وهمية ومحفوظة في متصفحك فقط. لربط قاعدة البيانات اكتب بيانات Supabase في <span class="ltr">js/config.js</span>.`);
+  } else if (CONFIG.envLabel) {
+    banner.hidden = false;
+    banner.classList.add('env-staging');
+    mount(banner, html`${CONFIG.envLabel}`);
   }
   if (!u) { topbar.hidden = true; topbar.innerHTML = ''; return; }
   topbar.hidden = false;
@@ -157,6 +162,8 @@ setChrome(renderChrome);
 
 /* ───────────── الإقلاع ───────────── */
 async function boot() {
+  if (await checkOnStart()) return; // إصدار أحدث على الخادم: يُعاد التحميل تلقائياً
+  watchUpdates();
   db.auth.onExpired(() => {
     if (!state.user) return;
     toast('انتهت الجلسة، سجّل الدخول من جديد.', 'warn');

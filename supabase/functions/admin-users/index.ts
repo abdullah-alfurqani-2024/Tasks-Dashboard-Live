@@ -9,12 +9,22 @@
 //    reset_password { id, password }
 //
 //  لا يستخدم أي مكتبة: fetch مباشرة إلى واجهات Supabase
+//
+//  نفس الكود يُنشر مرتين، والسكيما تُعرف من اسم الدالة:
+//    admin-users          ← support_tasks          (الإنتاج)
+//    admin-users-staging  ← support_tasks_staging  (التجربة)
 // =====================================================================
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-// السكيما التي فيها جداول النظام (نفس قيمة schema في js/config.js)
-const SCHEMA = "support_tasks";
+// السكيما التي فيها جداول النظام: تُحدَّد من اسم الدالة في كل طلب (انظر schemaFor)
+let SCHEMA = "";
+function schemaFor(req: Request) {
+  const path = new URL(req.url).pathname;
+  if (path.includes("admin-users-staging")) return "support_tasks_staging";
+  if (path.includes("admin-users")) return "support_tasks";
+  throw new AppError("تعذّر تحديد نسخة النظام من اسم الدالة.", 500);
+}
 const ROLES = ["admin", "head", "engineer", "viewer"];
 
 const cors = {
@@ -200,6 +210,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
   try {
+    SCHEMA = schemaFor(req);
     const callerId = await requireAdmin(req);
     const body = await req.json().catch(() => ({}));
     switch (body.action) {
