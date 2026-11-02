@@ -230,6 +230,11 @@ export function createAdapter(config) {
         const r = await c.rpc('refresh_from_production');
         return { users: r.users, tasks: r.tasks, at: r.at };
       },
+      /** نسخة التجربة فقط: حذف كل المهام وسجلها نهائياً ← { tasks } */
+      async purgeAllTasks() {
+        const r = await c.rpc('purge_all_tasks');
+        return { tasks: r.tasks, at: r.at };
+      },
     },
 
     audit: {

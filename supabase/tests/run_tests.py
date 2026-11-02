@@ -1,6 +1,6 @@
 """اختبار ملفات SQL والصلاحيات على PostgreSQL محلي مع محاكاة Supabase.
 التشغيل: python3 run_tests.py  (يتطلب خادماً على المنفذ 5544 — انظر README)"""
-import subprocess, sys, uuid
+import os, subprocess, sys, uuid
 
 PSQL = ['psql', '-h', '/var/tmp/pgtest', '-p', '5544', '-U', 'postgres', '-d', 't', '-X', '-q', '-t', '-A', '-v', 'ON_ERROR_STOP=1']
 U = {k: str(uuid.uuid4()) for k in ('admin', 'head', 'eng1', 'eng2', 'viewer', 'off')}
@@ -124,6 +124,25 @@ check('المستخدم لا يغيّر الرقم من الواجهة مباش�
       f"update profiles set login_no = '999' where id = '{U['eng1']}'", 'eng1', None)
 check('المدير لا يغيّر الرقم إلا عبر الدالة', False,
       f"update profiles set login_no = '999' where id = '{U['eng2']}'", 'admin', None)
+
+# ---------- نسخة التجربة: الإعداد والنسخ وحذف كل المهام ----------
+setup_stg = open(os.path.join(os.path.dirname(__file__), '..', 'staging', 'setup_staging.sql'), encoding='utf-8').read()
+ok, out = sql(setup_stg)
+passed += ok; failed += not ok
+print('✅' if ok else '❌', 'تنفيذ setup_staging.sql', '' if ok else out[:300])
+prod_n = sql('select count(*) from support_tasks.tasks')[1]
+check('التجربة: نُسخت المهام من الإنتاج', True, 'select count(*) from support_tasks_staging.tasks', None, prod_n)
+check('حذف الكل: المهندس مرفوض', False, 'select support_tasks_staging.purge_all_tasks()', 'eng1', 'لمدير النظام')
+check('حذف الكل: الزائر بلا دخول مرفوض', False, 'set role anon; select support_tasks_staging.purge_all_tasks()', None, None)
+check('حذف الكل: المدير', True, "select support_tasks_staging.purge_all_tasks()->>'tasks'", 'admin', prod_n)
+check('حذف الكل: لم يبق شيء في التجربة', True,
+      'select (select count(*) from support_tasks_staging.tasks) + (select count(*) from support_tasks_staging.task_audit)', None, '0')
+check('حذف الكل: الإنتاج لم يتأثر', True, 'select count(*) from support_tasks.tasks', None, prod_n)
+check('حذف الكل: الدالة غير موجودة في الإنتاج', True,
+      "select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'support_tasks' and p.proname = 'purge_all_tasks'", None, '0')
+check('بعد الحذف: إضافة مهمة تبدأ من 1', True,
+      f"set search_path = support_tasks_staging, public; insert into tasks (subject, received_date, status_id) select 'جديدة', '2026-11-01', id from task_statuses where kind = 'open' limit 1 returning id", 'eng1', '1')
+check('الاستعادة من الإنتاج ما زالت تعمل', True, "select support_tasks_staging.refresh_from_production()->>'tasks'", 'admin', prod_n)
 
 print(f'\n{passed} ناجح، {failed} فاشل')
 sys.exit(1 if failed else 0)
