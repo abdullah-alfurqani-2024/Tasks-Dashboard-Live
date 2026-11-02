@@ -69,7 +69,7 @@ export function createAdapter(config) {
     }
     me = toUser(rows[0]);
     if (c.acting) {
-      // التصفح بحساب مستخدم آخر: لا نطلب تغيير كلمة المرور (حسابات الدخول مشتركة مع الإنتاج)
+      // التصفح بحساب مستخدم آخر: لا نطلب تغيير كلمة مروره (هي له، لا لمن يتصفح)
       me.actingAs = true;
       me.mustChangePassword = false;
     }
@@ -237,10 +237,11 @@ export function createAdapter(config) {
     },
 
     maintenance: {
-      /** نسخة التجربة فقط: نسخ بيانات الإنتاج إلى التجربة */
-      async refreshFromProduction() {
-        const r = await c.rpc('refresh_from_production');
-        return { users: r.users, tasks: r.tasks, at: r.at };
+      /** نسخة التجربة فقط: نسخ بيانات الإنتاج (مشروع مستقل) إلى التجربة عبر دالة refresh-staging
+       *  o: { mode: 'login_no'|'same', password, force } */
+      async refreshFromProduction(o = {}) {
+        const r = await c.invoke(config.supabase.refreshFunction || 'refresh-staging', { mode: o.mode, password: o.password || undefined, force: !!o.force });
+        return { users: r.users, created: r.created, tasks: r.tasks, skippedTasks: r.skipped_tasks, deactivated: r.deactivated, notes: r.notes || [], at: r.at };
       },
       /** حذف كل المهام وسجلها نهائياً ← { tasks }. في الإنتاج يحتاج إعداد «السماح بحذف كل المهام» */
       async purgeAllTasks() {

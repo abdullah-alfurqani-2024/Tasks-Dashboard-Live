@@ -61,7 +61,8 @@ export default async function settings(ctx, main) {
         <div class="card-head"><h2>بيانات نسخة التجربة</h2></div>
         <div class="card-pad stack">
           <p style="margin:0">يستبدل كل بيانات التجربة بنسخة حديثة من الإنتاج: المستخدمون، والقوائم، والإعدادات، وكل المهام.
-            ما أضفته أو عدّلته هنا للتجربة سيُحذف. <b>بيانات الإنتاج لا تتغير</b> (تُقرأ فقط).</p>
+            ما أضفته أو عدّلته هنا للتجربة سيُحذف. <b>بيانات الإنتاج لا تتغير</b> (تُقرأ فقط).
+            حسابات الدخول في التجربة مستقلة عن الإنتاج، وتختار كلمات مرورها عند كل تحديث.</p>
           <div><button class="btn btn-primary" data-refresh>${icon('download')}تحديث بيانات التجربة من الإنتاج</button></div>
           <div class="small muted" data-refresh-result></div>
         </div>
@@ -100,16 +101,43 @@ export default async function settings(ctx, main) {
       } catch (ex) { err.textContent = ex.message; err.hidden = false; }
     });
   };
-  $('[data-refresh]', root)?.addEventListener('click', async (e) => {
-    const btn = e.currentTarget;
-    if (!(await confirmBox({ title: 'تحديث بيانات التجربة', message: 'ستُستبدل كل مهام التجربة وسجل تعديلاتها بنسخة من الإنتاج. هل تريد المتابعة؟', okText: 'تحديث', danger: true }))) return;
-    await busy(btn, async () => {
+  $('[data-refresh]', root)?.addEventListener('click', () => {
+    const min = state.settings?.minPasswordLength || 6;
+    const m = modal({
+      title: 'تحديث بيانات التجربة من الإنتاج',
+      body: html`<form class="stack" novalidate>
+        <div class="alert warn">ستُستبدل كل بيانات التجربة (المستخدمون والقوائم والإعدادات والمهام وسجلها) بنسخة من الإنتاج. الإنتاج يُقرأ فقط.</div>
+        <div class="field"><span class="label">كلمات مرور التجربة (عدا حسابك أنت)</span>
+          <label class="check"><input type="radio" name="mode" value="login_no" checked> الرقم المدني/الوظيفي لكل مستخدم</label>
+          <label class="check"><input type="radio" name="mode" value="same"> كلمة مرور موحدة للجميع</label>
+          <input class="input ltr" style="display:block;text-align:left" name="password" minlength="${min}" placeholder="كلمة المرور الموحدة" aria-label="كلمة المرور الموحدة">
+          <span class="hint" data-pw-hint></span></div>
+        <label class="check"><input type="checkbox" name="force"> إلزام كل مستخدم بتغيير كلمة مروره عند أول دخول للتجربة</label>
+        <div class="alert bad" data-err hidden></div></form>`,
+      footer: html`<button class="btn btn-primary" data-ok>${icon('download')}تحديث</button><button class="btn" data-x>إلغاء</button>`,
+    });
+    const f = $('form', m.el), errBox = $('[data-err]', m.el), hint = $('[data-pw-hint]', m.el);
+    const sync = () => {
+      const byNo = f.elements.mode.value === 'login_no';
+      hint.textContent = byNo ? `اختيارية: تُستخدم لمن ليس له رقم أو رقمه أقصر من ${min} خانات.` : `${min} أحرف على الأقل.`;
+    };
+    f.addEventListener('change', sync); sync();
+    $('[data-x]', m.el).onclick = () => m.close();
+    $('[data-ok]', m.el).onclick = (e) => busy(e.currentTarget, async () => {
+      const mode = f.elements.mode.value, password = f.elements.password.value, force = f.elements.force.checked;
+      errBox.hidden = true;
+      if ((mode === 'same' || password) && password.length < min) { errBox.textContent = `كلمة المرور ${min} أحرف على الأقل.`; errBox.hidden = false; return; }
       try {
-        const r = await db.maintenance.refreshFromProduction();
+        const r = await db.maintenance.refreshFromProduction({ mode, password, force });
         await loadReference({ force: true });
-        $('[data-refresh-result]', root).textContent = `آخر تحديث: ${fmtDateTime(r.at)} — ${r.users} مستخدم، ${r.tasks} مهمة.`;
+        m.close();
+        const out = $('[data-refresh-result]', root);
+        mount(out, html`آخر تحديث: ${fmtDateTime(r.at)} — ${r.users} مستخدم (${r.created || 0} جديد)، ${r.tasks} مهمة.
+          ${r.deactivated ? html`<br>عُطّل ${r.deactivated} من مستخدمي التجربة لا نظير لهم في الإنتاج.` : ''}
+          ${r.skippedTasks ? html`<br>لم تُنسخ ${r.skippedTasks} مهمة (مهندسها غير موجود).` : ''}
+          ${r.notes?.length ? html`<div class="alert warn small" style="margin-top:6px">${r.notes.map((x) => html`<div>${x.name} — ${x.note}</div>`)}</div>` : ''}`);
         toast(`تم نسخ ${r.tasks} مهمة و${r.users} مستخدماً من الإنتاج.`, 'ok');
-      } catch (ex) { toastError(ex); }
+      } catch (ex) { errBox.textContent = ex.message; errBox.hidden = false; }
     });
   });
   function syncPurge() {

@@ -1,8 +1,8 @@
 """اختبار ملفات SQL والصلاحيات على PostgreSQL محلي مع محاكاة Supabase.
 التشغيل: python3 run_tests.py  (يتطلب خادماً على المنفذ 5544 — انظر README)"""
-import os, subprocess, sys, uuid
+import json, os, subprocess, sys, uuid
 
-PSQL = ['psql', '-h', '/var/tmp/pgtest', '-p', '5544', '-U', 'postgres', '-d', 't', '-X', '-q', '-t', '-A', '-v', 'ON_ERROR_STOP=1']
+PSQL = ['psql', '-h', '/var/tmp/pgtest', '-p', '5544', '-U', 'postgres', '-d', os.environ.get('TEST_DB', 't'), '-X', '-q', '-t', '-A', '-v', 'ON_ERROR_STOP=1']
 U = {k: str(uuid.uuid4()) for k in ('admin', 'head', 'eng1', 'eng2', 'viewer', 'off')}
 passed = failed = 0
 
@@ -189,8 +189,37 @@ setup_stg = open(os.path.join(os.path.dirname(__file__), '..', 'staging', 'setup
 ok, out = sql(setup_stg)
 passed += ok; failed += not ok
 print('✅' if ok else '❌', 'تنفيذ setup_staging.sql', '' if ok else out[:300])
-prod_n = sql('select count(*) from support_tasks.tasks')[1]
-check('التجربة: نُسخت المهام من الإنتاج', True, 'select count(*) from support_tasks_staging.tasks', None, prod_n)
+sql(open(os.path.join(os.path.dirname(__file__), '..', 'staging', 'link_production.sql'), encoding='utf-8').read())
+prod_n = sql('select count(*) from support_tasks.tasks where deleted_at is null')[1]
+# نسخة الإنتاج كما تبنيها دالة refresh-staging (هنا من سكيما الإنتاج في نفس القاعدة لغرض الاختبار)
+def snapshot(keep='[]', admin_role="role", force='false'):
+    return f"""support_tasks_staging.apply_production_snapshot(jsonb_build_object(
+      'keep', '{keep}'::jsonb, 'force', {force},
+      'users', (select jsonb_agg(jsonb_build_object('id', id, 'source_id', id, 'email', email, 'login_no', login_no, 'full_name', full_name,
+                 'short_name', short_name, 'role', case when role = 'admin' then {admin_role}::text else role::text end, 'is_active', is_active)) from support_tasks.profiles),
+      'lookups', jsonb_build_object(
+         'task_types', (select jsonb_agg(to_jsonb(x)) from support_tasks.task_types x),
+         'correspondence_types', (select jsonb_agg(to_jsonb(x)) from support_tasks.correspondence_types x),
+         'task_statuses', (select jsonb_agg(to_jsonb(x)) from support_tasks.task_statuses x)),
+      'settings', (select jsonb_agg(jsonb_build_object('key', key, 'value', value)) from support_tasks.app_settings),
+      'tasks', (select coalesce(jsonb_agg(to_jsonb(t)), '[]') from support_tasks.tasks t where deleted_at is null)))"""
+SNAP_KEEP = snapshot(keep=json.dumps([U['admin']]), admin_role="'viewer'")
+SNAP_VIEWER = snapshot(admin_role="'viewer'")
+check('النسخ: المتصفح (مدير) لا يستطيع استدعاء دالة الكتابة', False, f"select {snapshot()}", 'admin', None)
+check('النسخ: دالة refresh-staging (مفتاح الخادم) تنسخ المهام', True, f"set role service_role; select {snapshot()}->>'tasks'", None, prod_n)
+check('النسخ: المهام مربوطة بمهندسيها في التجربة', True,
+      "select count(*) from support_tasks_staging.tasks t join support_tasks_staging.profiles p on p.id = t.engineer_id where p.source_id is not null", None, prod_n)
+check('النسخ: أسباب المراجعة تُنسخ', True,
+      "select (select count(*) from support_tasks_staging.tasks where review_reasons is not null) = (select count(*) from support_tasks.tasks where review_reasons is not null and deleted_at is null)", None, 't')
+check('النسخ: من ينفّذ يبقى مديراً حتى لو تغيّر دوره في الإنتاج', True,
+      f"set role service_role; select {SNAP_KEEP}; reset role; select role from support_tasks_staging.profiles where id = '{U['admin']}'", None, 'admin')
+check('النسخ: غير المنفّذ يأخذ دوره من الإنتاج', True,
+      f"set role service_role; select {SNAP_VIEWER}; reset role; select role from support_tasks_staging.profiles where id = '{U['admin']}'", None, 'viewer')
+sql(f"set role service_role; select {snapshot()}")
+sql("insert into auth.users (id, email) values ('99999999-9999-9999-9999-999999999999', 'old@x.om') on conflict do nothing; "
+    "insert into support_tasks_staging.profiles (id, email, full_name, role) values ('99999999-9999-9999-9999-999999999999', 'old@x.om', 'قديم', 'engineer') on conflict do nothing")
+check('النسخ: مستخدم التجربة الذي لا نظير له في الإنتاج يُعطَّل', True,
+      f"set role service_role; select {snapshot()}->>'deactivated'; reset role; select is_active from support_tasks_staging.profiles where email = 'old@x.om'", None, 'f')
 check('حذف الكل: المهندس مرفوض', False, 'select support_tasks_staging.purge_all_tasks()', 'eng1', 'لمدير النظام')
 check('حذف الكل: الزائر بلا دخول مرفوض', False, 'set role anon; select support_tasks_staging.purge_all_tasks()', None, None)
 sql("insert into support_tasks_staging.app_settings (key, value) values ('allow_purge_tasks', 'false') on conflict (key) do update set value = 'false'")
@@ -201,7 +230,7 @@ check('حذف الكل: الإنتاج لم يتأثر', True, 'select count(*) 
 check('حذف الكل: ملف التجربة لا يحتوي دالة الإنتاج', True, f"select {int('support_tasks.purge_all_tasks' in setup_stg)}", None, '0')
 check('بعد الحذف: إضافة مهمة تبدأ من 1', True,
       f"set search_path = support_tasks_staging, public; insert into tasks (subject, received_date, status_id) select 'جديدة', '2026-11-01', id from task_statuses where kind = 'open' limit 1 returning id", 'eng1', '1')
-check('الاستعادة من الإنتاج ما زالت تعمل', True, "select support_tasks_staging.refresh_from_production()->>'tasks'", 'admin', prod_n)
+check('النسخ يعمل بعد الحذف', True, f"set role service_role; select {snapshot()}->>'tasks'", None, prod_n)
 
 print(f'\n{passed} ناجح، {failed} فاشل')
 sys.exit(1 if failed else 0)
