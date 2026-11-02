@@ -156,6 +156,19 @@ check('المصفوفة الفارغة تُحفظ null', True,
 check('سجل التعديلات يسجّل المراجعة', True,
       f"select count(*) > 0 from task_audit where task_id = {rid} and 'review_reasons' = any(changed_fields)", None, 't')
 
+# ---------- الاستيراد كما في الملف (11_import_as_is.sql) ----------
+raw = check('مستوردة كما هي: بلا تاريخ استقبال، مكتملة بلا انتهاء، موضوع فارغ', True,
+      f"insert into tasks (engineer_id, subject, received_date, completed_date, status_id, review_reasons) values ('{U['eng1']}', '', null, null, {DONE}, array['تاريخ الاستقبال فارغ']) returning id", 'admin')
+check('مستوردة كما هي: الانتهاء قبل الاستقبال', True,
+      f"insert into tasks (engineer_id, subject, received_date, completed_date, status_id, review_reasons) values ('{U['eng1']}', 'س', '2026-02-03', '2026-02-01', {DONE}, array['الانتهاء قبل الاستقبال']) returning id", 'admin')
+check('مستوردة كما هي: غير مكتملة ويبقى تاريخ انتهائها', True,
+      f"insert into tasks (engineer_id, subject, received_date, completed_date, status_id, review_reasons) values ('{U['eng1']}', 'س', '2026-02-03', '2026-02-05', {OPEN}, array['غير مكتملة ولها تاريخ انتهاء']) returning completed_date", 'admin', '2026-02-05')
+check('بلا مراجعة: تاريخ الاستقبال مطلوب', False,
+      f"insert into tasks (subject, received_date, status_id) values ('x', null, {OPEN})", 'eng1', 'تاريخ الاستقبال')
+check('تمت المراجعة وهي ناقصة: مرفوض', False, f"update tasks set review_reasons = null where id = {raw}", 'eng1', None)
+check('المهندس يصلحها ثم «تمت المراجعة»', True,
+      f"update tasks set subject = 'مصلحة', received_date = '2026-03-01', completed_date = '2026-03-02', review_reasons = null where id = {raw} returning subject", 'eng1', 'مصلحة')
+
 # ---------- نسخة التجربة: الإعداد والنسخ وحذف كل المهام ----------
 setup_stg = open(os.path.join(os.path.dirname(__file__), '..', 'staging', 'setup_staging.sql'), encoding='utf-8').read()
 ok, out = sql(setup_stg)

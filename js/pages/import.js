@@ -2,8 +2,8 @@
  * استيراد المهام من Excel أو CSV (مدير النظام)
  * 1) اختيار الملف  2) مطابقة الأعمدة والخيارات  3) المعاينة  4) الاستيراد
  *
- * لا يُفقد أي صف فيه بيانات: الصف الذي فيه مشكلة (تاريخ غير مفهوم، موضوع فارغ، مكرر محتمل…)
- * يُصلَح تلقائياً ويُستورد مع «أسباب المراجعة»، فيظهر في «تحتاج مراجعة» ليصلحه المهندس لاحقاً.
+ * لا يُفقد أي صف فيه بيانات، ولا يُغيَّر شيء من قيمه: الصف الذي فيه مشكلة (تاريخ فارغ أو غير مفهوم،
+ * موضوع فارغ، مكرر محتمل…) يُستورد كما هو في الملف مع «أسباب المراجعة»، ليصلحه المهندس لاحقاً.
  * لا يمنع الاستيراد إلا اسم مهندس لا يطابق أي حساب، وعلى المدير اختيار الحساب المقابل له.
  */
 import { db } from '../data/index.js';
@@ -162,8 +162,8 @@ export default async function importPage(ctx, main) {
           ${S.engineerMode === 'column' ? html`<div class="field" style="max-width:420px"><label for="i-blank">المهمة التي لا يوجد فيها اسم مهندس تُسند إلى</label>
             <select class="input" id="i-blank" data-k="blankEngineer">${options(engs.map((e) => ({ id: e.id, name: e.fullName, isActive: e.isActive })), S.blankEngineer, '— اختر (عند الحاجة) —')}</select>
             <span class="hint">وتظهر في «تحتاج مراجعة» ليُسندها رئيس القسم أو المدير للمهندس الصحيح.</span></div>` : ''}
-          <div class="alert small">لا يُترك أي صف فيه بيانات: ما فيه مشكلة (تاريخ غير مفهوم، موضوع فارغ، مهمة مكررة محتملة…) يُصلَح تلقائياً
-            ويُستورد مع علامة <b>«تحتاج مراجعة»</b> وسببها، ليصلحه المهندس لاحقاً.</div>
+          <div class="alert small">لا يُترك أي صف فيه بيانات، ولا يُغيَّر شيء من قيمه: ما فيه مشكلة (تاريخ فارغ أو غير مفهوم، موضوع فارغ، مهمة مكررة محتملة…)
+            يُستورد <b>كما هو في الملف</b> مع علامة <b>«تحتاج مراجعة»</b> وسببها، ليصلحه المهندس لاحقاً.</div>
           <div><button class="btn btn-primary" data-act="preview">${icon('eye')}معاينة</button></div>
         </div>
       </div>`);
@@ -249,7 +249,6 @@ export default async function importPage(ctx, main) {
     let empty = 0;         // صفوف فارغة تماماً
     const g = (r, k) => (S.map[k] == null ? '' : r[S.map[k]]);
     const blankEng = S.blankEngineer ? engs.find((e) => e.id === S.blankEngineer) : null;
-    const t0 = today();
 
     rows.forEach((r, i) => {
       if (!r || r.every((c) => c == null || String(c).trim() === '')) { empty++; return; }
@@ -263,19 +262,14 @@ export default async function importPage(ctx, main) {
       const content = ['subject', 'receivedDate', 'completedDate', 'refNo', 'requester', 'employeeName', 'notes', 'delayReason'].some((k) => cellText(g(r, k)));
       if (!content) { blank.push({ line, text: r.map(cellText).filter(Boolean).join(' · ') }); return; }
 
-      let subjectV = subject;
-      if (!subject) { subjectV = '(بدون موضوع)'; reasons.push('الموضوع فارغ'); }
-      let completedV = completedDate;
+      // القيم كما هي في الملف: لا نضع شيئاً من عندنا، ونسجّل المشكلة سبباً للمراجعة
+      const subjectV = subject;
+      if (!subject) reasons.push('الموضوع فارغ');
+      const completedV = completedDate;
       if (cellText(doneRaw) && !completedDate) reasons.push(`تاريخ الانتهاء غير مفهوم «${cellText(doneRaw)}»`);
-      let receivedDate = receivedParsed;
-      if (!receivedParsed) {
-        receivedDate = completedV || t0;
-        reasons.push(`${cellText(recRaw) ? `تاريخ الاستقبال غير مفهوم «${cellText(recRaw)}»` : 'تاريخ الاستقبال فارغ'}، ووُضع ${completedV ? 'تاريخ الانتهاء' : 'تاريخ الاستيراد'} مكانه`);
-      }
-      if (completedV && completedV < receivedDate) {
-        reasons.push(`تاريخ الانتهاء ${fmtDate(completedV)} قبل تاريخ الاستقبال، ووُضع تاريخ الاستقبال مكانه`);
-        completedV = receivedDate;
-      }
+      const receivedDate = receivedParsed;
+      if (!receivedParsed) reasons.push(cellText(recRaw) ? `تاريخ الاستقبال غير مفهوم «${cellText(recRaw)}»` : 'تاريخ الاستقبال فارغ');
+      if (completedV && receivedDate && completedV < receivedDate) reasons.push('تاريخ الانتهاء قبل تاريخ الاستقبال');
 
       let eng = null;
       const engName = cellText(g(r, 'engineer'));
@@ -296,13 +290,18 @@ export default async function importPage(ctx, main) {
         else reasons.push(`${TARGETS.find((t) => t.key === k).label} «${name}» غير موجود في القوائم`);
       }
       let status = ref.status;
-      if (!status) status = completedV ? defDone : defOpen;
+      if (!status) {
+        // الحالة إلزامية في قاعدة البيانات: نختار الأقرب ونطلب مراجعتها
+        status = completedV ? defDone : defOpen;
+        if (S.map.status != null) reasons.push(`الحالة فارغة في الملف، واختيرت «${status?.name || ''}»`);
+      }
       const kind = status?.kind || (status?.pending ? pendingKind[normalizeAr(status.pending)] : null);
-      if (kind === 'done' && !completedV) { completedV = receivedDate; reasons.push('مكتملة بدون تاريخ انتهاء، ووُضع تاريخ الاستقبال'); }
+      if (kind === 'done' && !completedV && !(cellText(doneRaw))) reasons.push('مكتملة بدون تاريخ انتهاء');
+      if (kind === 'open' && completedV) reasons.push('الحالة غير مكتملة ولها تاريخ انتهاء');
 
       const task = {
         engineerId: eng?.id, refNo: cellText(g(r, 'refNo')), requester: cellText(g(r, 'requester')), employeeName: cellText(g(r, 'employeeName')),
-        subject: subjectV, receivedDate, completedDate: kind === 'open' ? null : completedV, notes: cellText(g(r, 'notes')), delayReason: cellText(g(r, 'delayReason')),
+        subject: subjectV, receivedDate, completedDate: completedV, notes: cellText(g(r, 'notes')), delayReason: cellText(g(r, 'delayReason')),
         _ref: { ...ref, status },
       };
       let exists = false;
@@ -411,14 +410,11 @@ export default async function importPage(ctx, main) {
         const { _ref, ...t } = task;
         const why = [...reasons];
         const statusId = idOf('statuses', _ref.status);
-        // حماية أخيرة: نفس قاعدة قاعدة البيانات (المكتملة تحتاج تاريخ انتهاء، والمفتوحة بدونه)
+        // حماية أخيرة: ما يخالف قواعد الإدخال لا يُغيَّر، بل يُعلَّم للمراجعة (قاعدة البيانات تقبله فقط مع أسباب المراجعة)
         const k = state.lookups.statuses.find((x) => x.id === statusId)?.kind;
-        let completedDate = t.completedDate;
-        if (k === 'open') completedDate = null;
-        if (k === 'done' && !completedDate) {
-          completedDate = t.receivedDate;
-          why.push('مكتملة بدون تاريخ انتهاء، ووُضع تاريخ الاستقبال');
-        }
+        const completedDate = t.completedDate;
+        if (k === 'done' && !completedDate && !why.some((x) => x.includes('انتهاء'))) why.push('مكتملة بدون تاريخ انتهاء');
+        if (k === 'open' && completedDate && !why.some((x) => x.includes('ولها تاريخ انتهاء'))) why.push('الحالة غير مكتملة ولها تاريخ انتهاء');
         return { ...t, completedDate, reviewReasons: why, taskTypeId: idOf('taskTypes', _ref.taskType), correspondenceTypeId: idOf('correspondenceTypes', _ref.correspondenceType), statusId };
       });
       // 2) إدخال المهام على دفعات

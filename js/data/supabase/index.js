@@ -31,7 +31,7 @@ const toLookup = (r) => ({ id: r.id, name: r.name, sortOrder: r.sort_order, isAc
 function taskRow(t) {
   const row = {
     ref_no: t.refNo || null, requester: t.requester || null, employee_name: t.employeeName || null,
-    subject: t.subject, received_date: t.receivedDate, completed_date: t.completedDate || null,
+    subject: t.subject ?? '', received_date: t.receivedDate || null, completed_date: t.completedDate || null,
     notes: t.notes || null, task_type_id: t.taskTypeId || null, correspondence_type_id: t.correspondenceTypeId || null,
     status_id: t.statusId, delay_reason: t.delayReason || null,
   };

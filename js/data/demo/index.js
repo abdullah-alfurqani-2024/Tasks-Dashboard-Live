@@ -93,7 +93,7 @@ export function createAdapter() {
       ...t, reviewReasons: t.reviewReasons || [], engineerName: u.fullName, engineerShort: u.shortName,
       taskType: lk('taskTypes', t.taskTypeId)?.name || '', correspondenceType: lk('correspondenceTypes', t.correspondenceTypeId)?.name || '',
       status: st.name, statusKind: st.kind,
-      durationDays: t.completedDate ? Math.round((Date.parse(t.completedDate) - Date.parse(t.receivedDate)) / 864e5) : null,
+      durationDays: t.completedDate && t.receivedDate ? Math.round((Date.parse(t.completedDate) - Date.parse(t.receivedDate)) / 864e5) : null,
     };
   };
 
@@ -108,7 +108,8 @@ export function createAdapter() {
     db.audit.unshift({ id: ++db.seq.audit, taskId, action, changedBy: me.id, changedAt: new Date().toISOString(), changedFields: fields, oldData: a ? pickF(a) : null, newData: pickF(b) });
   }
 
-  function validate(t) {
+  function validate(t, flagged = false) {
+    if (flagged) return; // مستوردة تنتظر المراجعة: تُحفظ كما في الملف
     const st = db.lookups.statuses.find((s) => s.id === Number(t.statusId));
     if (!t.subject?.trim()) throw err('الموضوع مطلوب.');
     if (!t.receivedDate) throw err('تاريخ الاستقبال مطلوب.');
@@ -188,11 +189,12 @@ export function createAdapter() {
           if (f.statusId && t.statusId !== Number(f.statusId)) return false;
           if (f.taskTypeId && t.taskTypeId !== Number(f.taskTypeId)) return false;
           if (f.correspondenceTypeId && t.correspondenceTypeId !== Number(f.correspondenceTypeId)) return false;
+          if ((f.from || f.to) && !t.receivedDate) return false;
           if (f.from && t.receivedDate < f.from) return false;
           if (f.to && t.receivedDate > f.to) return false;
           if (f.review && !t.reviewReasons?.length) return false;
           return true;
-        }).map(view).sort((a, b) => b.receivedDate.localeCompare(a.receivedDate) || b.id - a.id);
+        }).map(view).sort((a, b) => (b.receivedDate || '9999').localeCompare(a.receivedDate || '9999') || b.id - a.id);
       },
       async create(input) {
         await wait();
@@ -215,7 +217,7 @@ export function createAdapter() {
         if (role() === 'viewer') throw err('لا تملك صلاحية لهذه العملية.');
         if (locked(row)) throw err(`المهمة مقفلة: مضى على إنجازها أكثر من ${db.settings.editLockDays} يوم. اطلب من مدير النظام أو رئيس القسم تعديلها.`);
         const t = clean(input);
-        validate(t);
+        validate(t, input.reviewReasons !== undefined ? !!input.reviewReasons?.length : !!row.reviewReasons?.length);
         const before = { ...row };
         Object.assign(row, t, { updatedAt: new Date().toISOString(), updatedBy: me.id });
         if (input.engineerId && role() !== 'engineer') row.engineerId = input.engineerId;
@@ -253,7 +255,7 @@ export function createAdapter() {
         let n = 0;
         for (const input of list) {
           const t = clean(input);
-          validate(t);
+          validate(t, !!input.reviewReasons?.length);
           const now = new Date().toISOString();
           db.tasks.push({ id: ++db.seq.task, engineerId: input.engineerId, ...t, reviewReasons: input.reviewReasons?.length ? input.reviewReasons : null, createdAt: now, createdBy: me.id, updatedAt: now, updatedBy: me.id, deletedAt: null, deletedBy: null });
           if (++n % 100 === 0) { onProgress?.(n, list.length); await wait(10); }
