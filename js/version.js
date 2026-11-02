@@ -1,2 +1,2 @@
 /** رقم الإصدار — يُحدَّث مع version.json عبر tools/release.mjs */
-export const VERSION = '1.5.0';
+export const VERSION = '1.6.0';

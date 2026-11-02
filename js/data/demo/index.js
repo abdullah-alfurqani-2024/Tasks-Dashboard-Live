@@ -276,10 +276,11 @@ export function createAdapter() {
         need('admin');
         const email = (u.email || '').trim().toLowerCase();
         const loginNo = (u.loginNo || '').trim();
-        if (!email && !loginNo) throw err('اكتب الرقم أو البريد على الأقل.');
+        if (!loginNo) throw err('الرقم المدني أو الوظيفي مطلوب.');
         if (email && db.users.some((x) => x.email === email)) throw err('هذا البريد مسجّل مسبقاً.');
         if (loginNo && db.users.some((x) => x.loginNo === loginNo)) throw err('هذا الرقم مسجّل لمستخدم آخر.');
         const st = normalizeSettings(db.settings);
+        if (!u.password) u = { ...u, password: loginNo };
         if ((u.password || '').length < st.minPasswordLength) throw err(`كلمة المرور ${st.minPasswordLength} أحرف على الأقل.`);
         const row = { id: `u${++db.seq.user}`, email, loginNo, fullName: u.fullName.trim(), shortName: u.shortName?.trim() || '', role: u.role, isActive: true, mustChangePassword: st.forcePasswordChange, password: u.password };
         db.users.push(row); persist();
@@ -289,6 +290,7 @@ export function createAdapter() {
         need('admin');
         const row = db.users.find((x) => x.id === id);
         if (id === me.id && ((u.role && u.role !== 'admin') || u.isActive === false)) throw err('لا يمكنك تغيير دورك أو تعطيل حسابك بنفسك.');
+        if (!(u.loginNo !== undefined ? (u.loginNo || '').trim() : row.loginNo)) throw err('الرقم المدني أو الوظيفي مطلوب. أضف رقم هذا المستخدم أولاً.');
         if (u.email !== undefined) {
           const email = u.email.trim().toLowerCase();
           if (email && db.users.some((x) => x.email === email && x.id !== id)) throw err('هذا البريد مسجّل مسبقاً.');
@@ -299,7 +301,6 @@ export function createAdapter() {
           if (no && db.users.some((x) => x.loginNo === no && x.id !== id)) throw err('هذا الرقم مسجّل لمستخدم آخر.');
           row.loginNo = no;
         }
-        if (!row.email && !row.loginNo) throw err('اكتب الرقم أو البريد على الأقل.');
         for (const k of ['fullName', 'shortName', 'role', 'isActive']) if (u[k] !== undefined) row[k] = u[k];
         persist();
         const { password, ...out } = row; return out;

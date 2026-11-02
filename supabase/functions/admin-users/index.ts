@@ -4,8 +4,8 @@
 //  لذلك تتم هذه العمليات هنا على خادم Supabase، وبعد التحقق أن الطالب «مدير نظام» مفعّل.
 //
 //  الطلب: POST  { action, ...data }  مع ترويسة Authorization: Bearer <access token>
-//    create         { login_no?, email?, password, full_name, short_name?, role }   (الرقم أو البريد على الأقل)
-//    update         { id, login_no?, email?, full_name?, short_name?, role?, is_active? }
+//    create         { login_no, email?, password?, full_name, short_name?, role }   (الرقم إلزامي، وكلمة المرور الافتراضية = الرقم)
+//    update         { id, login_no?, email?, full_name?, short_name?, role?, is_active? }   (لا يُحفظ مستخدم بلا رقم)
 //  المستخدم بلا بريد يُعطى بريد دخول داخلياً (n<الرقم>@tasks.internal) لا يُرسل إليه شيء
 //    reset_password { id, password }
 //    reset_all      { mode: 'same'|'login_no', password?, force, include_inactive }
@@ -127,21 +127,22 @@ async function createUser(body: Record<string, unknown>) {
   const full_name = String(clean(body.full_name) || "");
   const short_name = clean(body.short_name) || null;
   const role = String(body.role || "engineer");
-  if (!login_no && !typed) throw new AppError("اكتب الرقم أو البريد على الأقل.");
+  if (!login_no) throw new AppError("الرقم المدني أو الوظيفي مطلوب.");
   if (typed && !EMAIL_RE.test(typed)) throw new AppError("صيغة البريد غير صحيحة.");
   if (login_no) {
     const dup = await admin(`/rest/v1/profiles?login_no=eq.${login_no}&select=id`);
     if (dup?.length) throw new AppError("هذا الرقم مسجّل لمستخدم آخر.");
   }
-  const email = typed || internalEmail(login_no!);
+  const email = typed || internalEmail(login_no);
   if (!full_name) throw new AppError("الاسم الكامل مطلوب.");
   if (!ROLES.includes(role)) throw new AppError("دور غير معروف.");
   const rules = await passwordRules();
-  checkPassword(body.password, rules.min);
+  const password = body.password === undefined || body.password === "" ? login_no : body.password;
+  checkPassword(password, rules.min);
 
   const user = await admin("/auth/v1/admin/users", {
     method: "POST",
-    body: JSON.stringify({ email, password: body.password, email_confirm: true, user_metadata: { full_name } }),
+    body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { full_name } }),
   });
   try {
     const rows = await admin("/rest/v1/profiles", {
@@ -183,12 +184,13 @@ async function updateUser(body: Record<string, unknown>, callerId: string) {
   }
   // تغيير البريد: حساب الدخول أولاً (يرفض البريد المكرر)، ثم الملف الشخصي
   let oldEmail = "";
-  if (body.email !== undefined || body.login_no !== undefined) {
+  {
     const cur = await admin(`/rest/v1/profiles?id=eq.${id}&select=email,login_no`);
     if (!cur?.length) throw new AppError("المستخدم غير موجود.", 404);
     oldEmail = cur[0].email;
     const no = body.login_no !== undefined ? (patch.login_no as string | null) : cur[0].login_no;
-    if (!no && !(newEmail || (body.email === undefined && !isInternal(oldEmail)))) throw new AppError("اكتب الرقم أو البريد على الأقل.");
+    // الرقم إلزامي: لا يُحفظ أي تعديل لمستخدم يبقى بلا رقم
+    if (!no) throw new AppError("الرقم المدني أو الوظيفي مطلوب. أضف رقم هذا المستخدم أولاً.");
     if (no && no !== cur[0].login_no) {
       const dup = await admin(`/rest/v1/profiles?login_no=eq.${no}&id=neq.${id}&select=id`);
       if (dup?.length) throw new AppError("هذا الرقم مسجّل لمستخدم آخر.");

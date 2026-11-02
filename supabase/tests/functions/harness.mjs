@@ -165,6 +165,26 @@ ok('رقم مكرر عند الإنشاء', r.status === 400 && /الرقم/.tes
 r = await call('admin', 'admin-users-staging', { action: 'update', id: 'admin', login_no: '777' }, T);
 ok('رقم مكرر عند التعديل', r.status === 400 && /الرقم/.test(r.body.error));
 
+// 8ب) الرقم إلزامي، وكلمة المرور الافتراضية = الرقم
+r = await call('admin', 'admin-users-staging', { action: 'create', email: 'only@x.om', password: 'pw-only-1', full_name: 'بريد فقط', role: 'engineer' }, T);
+ok('إنشاء بلا رقم مرفوض', r.status === 400 && /الرقم/.test(r.body.error), JSON.stringify(r));
+r = await call('admin', 'admin-users-staging', { action: 'create', login_no: '66778899', full_name: 'بلا كلمة', role: 'engineer' }, T);
+ok('إنشاء بلا كلمة مرور ← الرقم', r.status === 200 && [...auth.values()].some((a) => a.email === 'n66778899@tasks.internal' && a.password === '66778899'), JSON.stringify(r));
+r = await call('login', 'auth-login-staging', { login: '66778899', password: '66778899' });
+ok('الدخول بالرقم ككلمة مرور', r.status === 200);
+r = await call('admin', 'admin-users-staging', { action: 'create', login_no: '321', full_name: 'رقم قصير جديد', role: 'engineer' }, T);
+ok('رقم أقصر من 6 بلا كلمة مرور: يُطلب كتابتها', r.status === 400 && /كلمة المرور/.test(r.body.error));
+r = await call('admin', 'admin-users-staging', { action: 'create', login_no: '321', password: 'longer-pw', full_name: 'رقم قصير جديد', role: 'engineer' }, T);
+ok('رقم قصير مقبول مع كلمة مرور مكتوبة', r.status === 200);
+r = await call('admin', 'admin-users-staging', { action: 'update', id: 'eng', login_no: '' }, T);
+ok('مسح الرقم مرفوض', r.status === 400 && /الرقم/.test(r.body.error));
+db.support_tasks_staging.push({ id: 'nono', email: 'nono@x.om', role: 'engineer', is_active: true, login_no: null, full_name: 'بلا رقم' });
+auth.set('nono', { email: 'nono@x.om', password: 'pw-nono' });
+r = await call('admin', 'admin-users-staging', { action: 'update', id: 'nono', full_name: 'بلا رقم 2' }, T);
+ok('تعديل مستخدم بلا رقم دون إضافة رقم: مرفوض', r.status === 400 && /الرقم/.test(r.body.error));
+r = await call('admin', 'admin-users-staging', { action: 'update', id: 'nono', full_name: 'صار له رقم', login_no: '9988776' }, T);
+ok('تعديل مع إضافة الرقم: ينجح والبريد باقٍ', r.status === 200 && auth.get('nono').email === 'nono@x.om');
+
 // 9) إعادة تعيين كلمات المرور للكل
 auth.set('off', { email: 'off@x.om', password: 'pw-off' });
 db.support_tasks_staging.push({ id: 'off', email: 'off@x.om', role: 'engineer', is_active: false, login_no: '4444444', full_name: 'معطّل' });

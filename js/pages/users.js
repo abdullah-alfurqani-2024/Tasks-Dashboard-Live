@@ -52,6 +52,7 @@ export default async function users(ctx, main) {
   mount(root, html`
     ${pageHead({ title: 'المستخدمون', sub: 'المدير يضيف الحسابات ويحدد الأدوار. لا يوجد تسجيل ذاتي.', actions: html`<button class="btn" data-act="reset-all">${icon('key')}كلمات المرور للكل</button><button class="btn btn-primary" data-act="new">${icon('plus')}مستخدم جديد</button>` })}
     ${isDemo ? '' : html`<div class="alert small" style="margin-bottom:14px">إضافة المستخدمين وتعطيلهم وإعادة كلمات المرور تتم عبر دالة <span class="ltr">admin-users</span> على Supabase. إذا ظهر خطأ «غير منشورة» راجع دليل التركيب.</div>`}
+    <div class="alert warn" id="no-number" style="margin-bottom:14px" hidden></div>
     <div class="card filters"><div class="field wide">${searchBox('', 'الاسم أو الرقم أو البريد…')}</div></div>
     <div class="card" id="tbl" style="margin-top:14px">${loading()}</div>`);
 
@@ -61,7 +62,7 @@ export default async function users(ctx, main) {
   const canActAs = isDemo || CONFIG.env === 'staging';
   const columns = [
     { key: 'fullName', label: 'الاسم', render: (u) => html`<b>${u.fullName}</b>${u.id === state.user.id ? html` <span class="badge info">أنت</span>` : ''}${u.shortName ? html`<div class="small muted">${u.shortName}</div>` : ''}` },
-    { key: 'loginNo', label: 'الرقم', cls: 'num', render: (u) => html`<span class="ltr">${u.loginNo || '—'}</span>` },
+    { key: 'loginNo', label: 'الرقم', cls: 'num', render: (u) => (u.loginNo ? html`<span class="ltr">${u.loginNo}</span>` : html`<span class="badge bad">بلا رقم</span>`) },
     { key: 'email', label: 'البريد', render: (u) => html`<span class="ltr">${u.email || ''}</span>` },
     { key: 'role', label: 'الدور', render: (u) => html`<span class="badge ${ROLE_BADGE[u.role]}">${ROLE_LABELS[u.role]}</span>` },
     { key: 'isActive', label: 'الحالة', render: (u) => (u.isActive ? html`<span class="badge ok">نشط</span>` : html`<span class="badge">معطّل</span>`) },
@@ -77,6 +78,10 @@ export default async function users(ctx, main) {
     try {
       list = await db.users.list();
       state.users = list;
+      const missing = list.filter((u) => !u.loginNo);
+      const warn = $('#no-number', root);
+      warn.hidden = !missing.length;
+      if (missing.length) mount(warn, html`<b>${missing.length} من المستخدمين بلا رقم مدني/وظيفي</b> (${missing.map((u) => u.fullName).join('، ')}). الرقم إلزامي: أضفه من «تعديل»، ولن يُحفظ أي تعديل آخر لهم قبل إضافته.`);
       if (!table) table = dataTable($('#tbl', root), { columns, rows: view(), sortKey: 'fullName', sortDir: 'asc', pageSize: 50 });
       else table.setRows(view());
     } catch (e) { mount($('#tbl', root), html`<div class="card-pad"><div class="alert bad">${e.message}</div></div>`); }
@@ -85,7 +90,8 @@ export default async function users(ctx, main) {
   function form(u) {
     const isNew = !u;
     const self = u?.id === state.user.id;
-    const pw = tempPassword();
+    const min = pwRules().minPasswordLength;
+    const temp = tempPassword();
     const m = modal({
       title: isNew ? 'مستخدم جديد' : `تعديل: ${u.fullName}`,
       body: html`<form class="form-grid" novalidate>
@@ -95,7 +101,7 @@ export default async function users(ctx, main) {
           <input class="input" id="u-short" name="shortName" value="${u?.shortName || ''}" maxlength="60"><span class="hint">يظهر في الجداول والرسوم.</span></div>
         <div class="field"><label for="u-no">الرقم المدني أو الوظيفي <span class="req">*</span></label>
           <input class="input ltr" style="display:block;text-align:left" id="u-no" name="loginNo" inputmode="numeric" maxlength="20" value="${u?.loginNo || ''}">
-          <span class="hint">يدخل به المستخدم. أرقام فقط.</span></div>
+          <span class="hint">إلزامي. يدخل به المستخدم. أرقام فقط.</span></div>
         <div class="field"><label for="u-email">البريد الإلكتروني (اختياري)</label>
           <input class="input ltr" style="display:block;text-align:left" id="u-email" name="email" type="email" value="${u?.email || ''}">
           <span class="hint">${isNew ? 'يمكن الدخول به أيضاً.' : 'تغييره يغيّر بريد الدخول فوراً، وتبقى كلمة المرور كما هي.'}${CONFIG.env === 'staging' && !isNew ? ' ⚠️ حسابات الدخول مشتركة مع الإنتاج: تغيير البريد هنا يغيّره هناك أيضاً.' : ''}</span></div>
@@ -103,8 +109,8 @@ export default async function users(ctx, main) {
           <select class="input" id="u-role" name="role" ${self ? 'disabled' : ''}>${options(Object.entries(ROLE_LABELS), u?.role || 'engineer')}</select>
           <span class="hint" id="u-role-help">${ROLE_HELP[u?.role || 'engineer']}</span></div>
         ${isNew ? html`<div class="field"><label for="u-pw">كلمة المرور <span class="req">*</span></label>
-          <input class="input ltr" style="display:block;text-align:left" id="u-pw" name="password" value="${pw}" minlength="${pwRules().minPasswordLength}" required>
-          <span class="hint">يمكنك كتابة غيرها (${pwRules().minPasswordLength} أحرف على الأقل).${pwRules().forcePasswordChange ? ' سيُطلب تغييرها عند أول دخول.' : ''}</span></div>`
+          <input class="input ltr" style="display:block;text-align:left" id="u-pw" name="password" value="" placeholder="تُملأ بالرقم تلقائياً" minlength="${min}" required>
+          <span class="hint" id="u-pw-hint">تلقائياً: نفس الرقم المدني/الوظيفي، ويمكنك كتابة غيرها (${min} أحرف على الأقل).${pwRules().forcePasswordChange ? ' سيُطلب تغييرها عند أول دخول.' : ''}</span></div>`
           : html`<div class="field"><span class="label">الحساب</span>
           <label class="check"><input type="checkbox" name="isActive" ${u.isActive ? 'checked' : ''} ${self ? 'disabled' : ''}> نشط (يستطيع الدخول)</label>
           ${self ? html`<span class="hint">لا يمكنك تغيير دورك أو تعطيل حسابك بنفسك.</span>` : ''}</div>`}
@@ -115,6 +121,20 @@ export default async function users(ctx, main) {
     const f = $('form', m.el);
     const err = $('[data-err]', m.el);
     f.elements.role.onchange = () => { $('#u-role-help', m.el).textContent = ROLE_HELP[f.elements.role.value]; };
+    f.addEventListener('input', () => { err.hidden = true; });
+    if (isNew) {
+      // كلمة المرور الأولى = الرقم، ما لم يكتب المدير غيرها
+      // (الرقم الأقصر من الحد الأدنى لا يصلح كلمة مرور، فتُقترح كلمة عشوائية)
+      let touched = false;
+      const pwIn = f.elements.password, hint = $('#u-pw-hint', m.el), base = hint.textContent;
+      pwIn.addEventListener('input', () => { touched = true; });
+      f.elements.loginNo.addEventListener('input', () => {
+        const no = latinDigits(f.elements.loginNo.value).replace(/\s+/g, '');
+        const short = !!no && no.length < min;
+        hint.textContent = short ? `الرقم أقصر من ${min} خانات فلا يصلح كلمة مرور؛ اقترحنا كلمة عشوائية ويمكنك تغييرها.` : base;
+        if (!touched) pwIn.value = !no ? '' : short ? temp : no;
+      });
+    }
     $('[data-x]', m.el).onclick = () => m.close();
     const submit = async () => {
       const v = formData(f);
@@ -122,10 +142,10 @@ export default async function users(ctx, main) {
       if (!v.fullName?.trim()) return fail('اكتب الاسم الكامل.');
       const loginNo = latinDigits(v.loginNo || '').replace(/\s+/g, '');
       const email = (v.email || '').trim().toLowerCase();
-      if (!loginNo && !email) return fail('اكتب الرقم المدني أو الوظيفي (أو البريد على الأقل).');
-      if (loginNo && !/^[0-9]{1,20}$/.test(loginNo)) return fail('الرقم أرقام فقط (حتى 20 خانة).');
+      if (!loginNo) return fail('الرقم المدني أو الوظيفي مطلوب.');
+      if (!/^[0-9]{1,20}$/.test(loginNo)) return fail('الرقم أرقام فقط (حتى 20 خانة).');
       if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail('البريد الإلكتروني غير صحيح.');
-      if (isNew && (v.password || '').length < pwRules().minPasswordLength) return fail(`كلمة المرور ${pwRules().minPasswordLength} أحرف على الأقل.`);
+      if (isNew && (v.password || '').length < min) return fail(`كلمة المرور ${min} أحرف على الأقل.`);
       if (!isNew && !self && u.isActive && v.isActive === false
         && !(await confirmBox({ title: 'تعطيل الحساب', message: `تعطيل حساب ${u.fullName}؟ لن يستطيع الدخول، وتبقى مهامه محفوظة.`, okText: 'تعطيل', danger: true }))) return;
       await busy($('[data-save]', m.el), async () => {
@@ -168,9 +188,9 @@ export default async function users(ctx, main) {
           ${html`<br><b>حسابات الدخول مشتركة بين نسختي التجربة والإنتاج</b>، فالتغيير يسري على الإنتاج أيضاً أينما نُفّذ.`}
         </div>
         <div class="field"><span class="label">كلمة المرور الجديدة</span>
-          <label class="check"><input type="radio" name="mode" value="same" checked> كلمة مرور موحدة للجميع</label>
+          <label class="check"><input type="radio" name="mode" value="same"> كلمة مرور موحدة للجميع</label>
           <input class="input ltr" style="display:block;text-align:left" name="password" value="${tempPassword()}" minlength="${min}" aria-label="كلمة المرور الموحدة">
-          <label class="check"><input type="radio" name="mode" value="loginNo"> الرقم المدني/الوظيفي لكل مستخدم</label>
+          <label class="check"><input type="radio" name="mode" value="loginNo" checked> الرقم المدني/الوظيفي لكل مستخدم</label>
           <span class="hint">من ليس له رقم، أو رقمه أقصر من ${min} خانات (حد Supabase)، يُترك كما هو ويظهر في النتيجة.</span></div>
         <label class="check"><input type="checkbox" name="force" ${forcePasswordChange ? 'checked' : ''}> إلزام كل مستخدم بتغييرها عند أول دخول</label>
         <label class="check"><input type="checkbox" name="includeInactive"> تشمل الحسابات المعطّلة</label>
