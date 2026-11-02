@@ -65,7 +65,7 @@ function seed() {
       createdAt: rd + 'T09:00:00Z', createdBy: e.id, updatedAt: rd + 'T09:00:00Z', updatedBy: e.id, deletedAt: null, deletedBy: null,
     });
   }
-  return { users, lookups, tasks, audit: [], settings: normalizeSettings(), seq: { task: tasks.length, audit: 0, lookup: 100, user: users.length } };
+  return { users, lookups, tasks, audit: [], settings: normalizeSettings({ allowPurgeTasks: true }), seq: { task: tasks.length, audit: 0, lookup: 100, user: users.length } };
 }
 
 function load() {
@@ -352,6 +352,7 @@ export function createAdapter() {
       async purgeAllTasks() {
         await wait(200);
         need('admin');
+        if (!normalizeSettings(db.settings).allowPurgeTasks) throw err('حذف كل المهام موقوف. فعّل «السماح بحذف كل المهام» من الإعدادات أولاً.');
         const n = db.tasks.length;
         db.tasks = []; db.audit = []; db.seq.task = 0; db.seq.audit = 0; persist();
         return { tasks: n, at: new Date().toISOString() };

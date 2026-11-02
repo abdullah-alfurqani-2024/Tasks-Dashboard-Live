@@ -210,6 +210,7 @@ export function createAdapter(config) {
         return normalizeSettings({
           editLockDays: m.edit_lock_days, delayThresholdDays: m.delay_threshold_days,
           minPasswordLength: m.min_password_length, forcePasswordChange: m.force_password_change,
+          allowPurgeTasks: m.allow_purge_tasks,
         });
       },
       async save(s) {
@@ -219,6 +220,7 @@ export function createAdapter(config) {
           { key: 'delay_threshold_days', value: n.delayThresholdDays },
           { key: 'min_password_length', value: n.minPasswordLength },
           { key: 'force_password_change', value: n.forcePasswordChange },
+          { key: 'allow_purge_tasks', value: n.allowPurgeTasks },
         ], 'key');
         return this.load();
       },
@@ -230,7 +232,7 @@ export function createAdapter(config) {
         const r = await c.rpc('refresh_from_production');
         return { users: r.users, tasks: r.tasks, at: r.at };
       },
-      /** نسخة التجربة فقط: حذف كل المهام وسجلها نهائياً ← { tasks } */
+      /** حذف كل المهام وسجلها نهائياً ← { tasks }. في الإنتاج يحتاج إعداد «السماح بحذف كل المهام» */
       async purgeAllTasks() {
         const r = await c.rpc('purge_all_tasks');
         return { tasks: r.tasks, at: r.at };

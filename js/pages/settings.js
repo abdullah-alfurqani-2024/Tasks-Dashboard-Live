@@ -11,12 +11,15 @@ import { busy, toast, toastError, confirmBox, modal } from '../ui/feedback.js';
 import { pageHead, newPage } from '../ui/parts.js';
 
 import { VERSION } from '../version.js';
+import { exportTasks } from '../core/exporter.js';
 
 export default async function settings(ctx, main) {
   setTitle('الإعدادات');
   const s = await db.settings.load();
   state.settings = s;
   const root = newPage(main);
+  // التجربة (على Supabase): الحذف متاح دائماً. الإنتاج والوضع التجريبي: يحتاج إعداد «السماح بحذف كل المهام» ونسخة احتياطية
+  const guarded = isDemo || CONFIG.env !== 'staging';
   mount(root, html`
     ${pageHead({ title: 'الإعدادات' })}
     <div class="grid grid-2">
@@ -34,6 +37,9 @@ export default async function settings(ctx, main) {
             <input class="input num" id="s-pwmin" name="minPasswordLength" type="number" min="${PW_FLOOR}" max="72" value="${s.minPasswordLength}">
             <span class="hint">أقل قيمة ممكنة ${PW_FLOOR}، وهو حد خدمة الدخول في Supabase ولا يمكن النزول عنه. إذا رفعتها هنا فارفعها أيضاً في Supabase ← Authentication ← Providers ← Email ← Minimum password length.</span></div>
           <label class="check"><input type="checkbox" name="forcePasswordChange" ${s.forcePasswordChange ? 'checked' : ''}> إلزام المستخدم بتغيير كلمة المرور التي يضعها المدير عند أول دخول</label>
+          ${guarded ? html`<h3 style="margin-top:8px">مرحلة التجهيز</h3>
+          <label class="check"><input type="checkbox" name="allowPurgeTasks" ${s.allowPurgeTasks ? 'checked' : ''}> السماح بـ«حذف كل المهام»</label>
+          <span class="hint">لإعادة الاستيراد من Excel أثناء التجهيز. <b>أطفئه عند بدء العمل الفعلي في النظام</b>، فيرفض الخادم الحذف حتى لو ضُغط الزر.</span>` : ''}
           <div class="alert bad" data-err hidden></div>
           <div><button class="btn btn-primary" type="submit">${icon('check')}حفظ</button></div>
         </div>
@@ -60,13 +66,17 @@ export default async function settings(ctx, main) {
           <div class="small muted" data-refresh-result></div>
         </div>
       </div>` : ''}
-      ${(CONFIG.env === 'staging' || isDemo) && db.maintenance?.purgeAllTasks ? html`
+      ${db.maintenance?.purgeAllTasks ? html`
       <div class="card span-2">
         <div class="card-head"><h2>حذف كل المهام</h2></div>
         <div class="card-pad stack">
-          <p style="margin:0">يحذف <b>نهائياً</b> كل مهام نسخة التجربة وسجل تعديلاتها، لتستورد الملف من جديد. لا يمكن التراجع.
-            المستخدمون والقوائم والإعدادات تبقى كما هي، و<b>الإنتاج لا يتأثر</b>.</p>
+          ${guarded
+            ? html`<p style="margin:0">يحذف <b>نهائياً</b> كل المهام وسجل تعديلاتها، لتستورد ملف Excel من جديد.
+              قبل الحذف يُنزَّل إلى جهازك ملف Excel بكل المهام الحالية (نسخة احتياطية). المستخدمون والقوائم والإعدادات تبقى كما هي.</p>`
+            : html`<p style="margin:0">يحذف <b>نهائياً</b> كل مهام نسخة التجربة وسجل تعديلاتها، لتستورد الملف من جديد. لا يمكن التراجع.
+              المستخدمون والقوائم والإعدادات تبقى كما هي، و<b>الإنتاج لا يتأثر</b>.</p>`}
           <div><button class="btn btn-danger" data-purge>${icon('trash')}حذف كل المهام</button></div>
+          <div class="small muted" data-purge-off hidden>موقوف: فعّل «السماح بحذف كل المهام» في «قواعد العمل» ثم احفظ.</div>
           <div class="small muted" data-purge-result></div>
         </div>
       </div>` : ''}
@@ -84,7 +94,8 @@ export default async function settings(ctx, main) {
     if (!Number.isInteger(pwMin) || pwMin < PW_FLOOR || pwMin > 72) { err.textContent = `أقل طول لكلمة المرور بين ${PW_FLOOR} و 72.`; err.hidden = false; return; }
     await busy($('button[type=submit]', form), async () => {
       try {
-        state.settings = await db.settings.save({ editLockDays: lock, delayThresholdDays: delay, minPasswordLength: pwMin, forcePasswordChange: v.forcePasswordChange });
+        state.settings = await db.settings.save({ editLockDays: lock, delayThresholdDays: delay, minPasswordLength: pwMin, forcePasswordChange: v.forcePasswordChange, allowPurgeTasks: !!v.allowPurgeTasks });
+        syncPurge();
         toast('تم حفظ الإعدادات.', 'ok');
       } catch (ex) { err.textContent = ex.message; err.hidden = false; }
     });
@@ -101,12 +112,22 @@ export default async function settings(ctx, main) {
       } catch (ex) { toastError(ex); }
     });
   });
+  function syncPurge() {
+    const btn = $('[data-purge]', root);
+    if (!btn || !guarded) return;
+    const off = !state.settings?.allowPurgeTasks;
+    btn.disabled = off;
+    $('[data-purge-off]', root).hidden = !off;
+  }
+  syncPurge();
   $('[data-purge]', root)?.addEventListener('click', () => {
     const WORD = 'حذف الكل';
     const m = modal({
       title: 'حذف كل المهام', size: 'sm',
       body: html`<form class="stack" novalidate>
-        <div class="alert bad">ستُحذف كل مهام نسخة التجربة وسجل تعديلاتها <b>نهائياً</b>، ولا يمكن استعادتها.</div>
+        <div class="alert bad">${guarded
+          ? html`ستُحذف كل المهام وسجل تعديلاتها <b>نهائياً</b>. سيُنزَّل أولاً ملف Excel بالمهام الحالية، احتفظ به.`
+          : html`ستُحذف كل مهام نسخة التجربة وسجل تعديلاتها <b>نهائياً</b>، ولا يمكن استعادتها.`}</div>
         <div class="field"><label for="purge-confirm">للتأكيد اكتب «${WORD}»</label>
           <input class="input" id="purge-confirm" name="confirm" autocomplete="off"></div>
         <div class="alert bad" data-err hidden></div></form>`,
@@ -118,9 +139,15 @@ export default async function settings(ctx, main) {
       errBox.hidden = true;
       if (f.elements.confirm.value.trim() !== WORD) { errBox.textContent = `اكتب «${WORD}» للتأكيد.`; errBox.hidden = false; return; }
       try {
+        let saved = 0;
+        if (guarded) {
+          // نسخة احتياطية قبل الحذف (المهام غير المحذوفة، بنفس أعمدة ملف الاستيراد)
+          const all = await db.tasks.list({});
+          if (all.length) { exportTasks(all, { format: 'xlsx', name: 'backup_before_delete' }); saved = all.length; }
+        }
         const r = await db.maintenance.purgeAllTasks();
         m.close();
-        $('[data-purge-result]', root).textContent = `${fmtDateTime(r.at)}: حُذفت ${r.tasks} مهمة.`;
+        $('[data-purge-result]', root).textContent = `${fmtDateTime(r.at)}: حُذفت ${r.tasks} مهمة.${saved ? ` النسخة الاحتياطية (${saved} مهمة) نُزّلت إلى جهازك.` : ''}`;
         toast(`حُذفت ${r.tasks} مهمة. يمكنك الاستيراد الآن.`, 'ok');
       } catch (ex) { errBox.textContent = ex.message; errBox.hidden = false; }
     });

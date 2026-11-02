@@ -71,8 +71,11 @@ union all select 'المهام', count(*) from ${STG}.tasks;
 `;
 
 // ملفات التعديل اللاحقة (07 فما بعد) تعالج السكيمتين بنفسها، فتُضاف كما هي
+// (عدا الملفات المعلَّمة @production-only)
 const migrations = readdirSync(join(root, 'supabase/sql')).filter((f) => /^(0[7-9]|[1-9]\d)_.*\.sql$/.test(f)).sort()
-  .map((f) => `-- ===================== ${f} =====================\n` + readFileSync(join(root, 'supabase/sql', f), 'utf8'));
+  .map((f) => [f, readFileSync(join(root, 'supabase/sql', f), 'utf8')])
+  .filter(([, sql]) => !sql.includes('@production-only'))
+  .map(([f, sql]) => `-- ===================== ${f} =====================\n` + sql);
 parts.push(...migrations);
 const refresh = ['refresh_function.sql', 'purge_tasks.sql']
   .map((f) => '\n' + readFileSync(join(root, 'supabase/staging', f), 'utf8')).join('\n');

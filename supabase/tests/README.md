@@ -27,7 +27,7 @@ su postgres -c "/usr/lib/postgresql/16/bin/pg_ctl -D /var/tmp/pgtest/data -o '-k
 P="psql -h /var/tmp/pgtest -p 5544 -U postgres -X -q -v ON_ERROR_STOP=1"
 $P -c "create database t"
 $P -d t -f supabase/tests/00_supabase_stub.sql
-for f in supabase/sql/0[1-4]*.sql; do $P -d t -f "$f"; done
+for f in supabase/sql/0[1-4]*.sql supabase/sql/0[7-9]*.sql; do $P -d t -f "$f"; done
 
 python3 supabase/tests/run_tests.py
 ```
