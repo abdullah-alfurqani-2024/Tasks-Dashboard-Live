@@ -26,7 +26,8 @@ function changes(a) {
   if (a.action === 'insert') {
     const d = a.newData || {};
     return html`<div class="diff"><div><b>${d.subject || ''}</b></div>
-      <div class="muted">${value('engineer_id', d.engineer_id)} · ${value('status_id', d.status_id)} · ${value('received_date', d.received_date)}</div></div>`;
+      <div class="muted">${value('engineer_id', d.engineer_id)} · ${value('status_id', d.status_id)} · ${value('received_date', d.received_date)}</div>
+      ${d.entered_by ? html`<div class="small muted">عبر الاستيراد بواسطة ${value('engineer_id', d.entered_by)}</div>` : ''}</div>`;
   }
   if (a.action === 'delete' || a.action === 'restore') return html`<span class="muted">${a.action === 'delete' ? 'حذف ناعم (يمكن الاستعادة)' : 'أُعيدت المهمة'}</span>`;
   const fields = (a.changedFields || []).filter((c) => c !== 'deleted_at' && c !== 'deleted_by');

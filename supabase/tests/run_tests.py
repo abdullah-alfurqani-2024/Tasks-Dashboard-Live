@@ -169,6 +169,21 @@ check('تمت المراجعة وهي ناقصة: مرفوض', False, f"update t
 check('المهندس يصلحها ثم «تمت المراجعة»', True,
       f"update tasks set subject = 'مصلحة', received_date = '2026-03-01', completed_date = '2026-03-02', review_reasons = null where id = {raw} returning subject", 'eng1', 'مصلحة')
 
+# ---------- المهمة المستوردة باسم مهندسها (12_import_owner.sql) ----------
+imp = check('الاستيراد: المهمة تُسجَّل باسم المهندس', True,
+      f"insert into tasks (engineer_id, created_by, subject, received_date, status_id) values ('{U['eng2']}', '{U['eng2']}', 'مستوردة', '2026-04-01', {OPEN}) returning id", 'admin')
+check('الاستيراد: أُدخلت بواسطة المهندس', True, f"select created_by = '{U['eng2']}' and updated_by = '{U['eng2']}' from tasks where id = {imp}", None, 't')
+check('الاستيراد: سطر الإضافة في السجل باسم المهندس', True,
+      f"select changed_by = '{U['eng2']}' from task_audit where task_id = {imp} and action = 'insert'", None, 't')
+check('الاستيراد: من أدخلها فعلاً محفوظ في السجل', True,
+      f"select new_data->>'entered_by' = '{U['admin']}' from task_audit where task_id = {imp} and action = 'insert'", None, 't')
+check('المهندس لا يُدخل باسم غيره', True,
+      f"insert into tasks (created_by, subject, received_date, status_id) values ('{U['eng2']}', 'محاولة', '2026-04-01', {OPEN}) returning created_by = '{U['eng1']}'", 'eng1', 't')
+check('رئيس القسم لا يُدخل باسم غيره', True,
+      f"insert into tasks (engineer_id, created_by, subject, received_date, status_id) values ('{U['eng2']}', '{U['eng2']}', 'من الرئيس', '2026-04-01', {OPEN}) returning created_by = '{U['head']}'", 'head', 't')
+check('الإدخال العادي من المدير باسمه', True,
+      f"insert into tasks (engineer_id, subject, received_date, status_id) values ('{U['eng2']}', 'عادية', '2026-04-01', {OPEN}) returning created_by = '{U['admin']}'", 'admin', 't')
+
 # ---------- نسخة التجربة: الإعداد والنسخ وحذف كل المهام ----------
 setup_stg = open(os.path.join(os.path.dirname(__file__), '..', 'staging', 'setup_staging.sql'), encoding='utf-8').read()
 ok, out = sql(setup_stg)

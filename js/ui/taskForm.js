@@ -170,10 +170,10 @@ export function openTaskForm({ task = null, requesters = [], onSaved }) {
   $('[data-history]', m.el)?.addEventListener('click', () => { m.close(); navigate(`/audit?task=${t.id}`); });
   $('[data-delete]', m.el)?.addEventListener('click', async () => {
     if (!(await confirmBox({ title: 'حذف المهمة', message: `حذف المهمة #${t.id} «${t.subject}»؟ يمكن استعادتها لاحقاً من فلتر «المحذوفة».`, okText: 'حذف', danger: true }))) return;
-    try { await db.tasks.remove(t.id); toast('حُذفت المهمة.', 'ok'); m.close(); onSaved?.({ ...t, deletedAt: new Date().toISOString() }, 'delete'); } catch (e) { toastError(e); }
+    try { await db.tasks.remove(t.id); refreshReviewCount(); toast('حُذفت المهمة.', 'ok'); m.close(); onSaved?.({ ...t, deletedAt: new Date().toISOString() }, 'delete'); } catch (e) { toastError(e); }
   });
   $('[data-restore]', m.el)?.addEventListener('click', async () => {
-    try { await db.tasks.restore(t.id); toast('استُعيدت المهمة.', 'ok'); m.close(); onSaved?.({ ...t, deletedAt: null }, 'restore'); } catch (e) { toastError(e); }
+    try { await db.tasks.restore(t.id); refreshReviewCount(); toast('استُعيدت المهمة.', 'ok'); m.close(); onSaved?.({ ...t, deletedAt: null }, 'restore'); } catch (e) { toastError(e); }
   });
   return m;
 }

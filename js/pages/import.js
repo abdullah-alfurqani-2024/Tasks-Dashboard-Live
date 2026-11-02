@@ -415,7 +415,7 @@ export default async function importPage(ctx, main) {
         const completedDate = t.completedDate;
         if (k === 'done' && !completedDate && !why.some((x) => x.includes('انتهاء'))) why.push('مكتملة بدون تاريخ انتهاء');
         if (k === 'open' && completedDate && !why.some((x) => x.includes('ولها تاريخ انتهاء'))) why.push('الحالة غير مكتملة ولها تاريخ انتهاء');
-        return { ...t, completedDate, reviewReasons: why, taskTypeId: idOf('taskTypes', _ref.taskType), correspondenceTypeId: idOf('correspondenceTypes', _ref.correspondenceType), statusId };
+        return { ...t, createdBy: t.engineerId, completedDate, reviewReasons: why, taskTypeId: idOf('taskTypes', _ref.taskType), correspondenceTypeId: idOf('correspondenceTypes', _ref.correspondenceType), statusId };
       });
       // 2) إدخال المهام على دفعات
       const n = await db.tasks.bulkCreate(list, (d, total) => { bar.style.width = `${Math.round((d / total) * 100)}%`; msg.textContent = `${num(d)} من ${num(total)}`; });

@@ -36,6 +36,8 @@ function taskRow(t) {
     status_id: t.statusId, delay_reason: t.delayReason || null,
   };
   if (t.engineerId) row.engineer_id = t.engineerId;
+  // الاستيراد يسجّل المهمة باسم مهندسها (تقبله قاعدة البيانات من مدير النظام فقط)
+  if (t.createdBy) row.created_by = t.createdBy;
   // أسباب المراجعة: يضعها الاستيراد، ومسحها = «تمت المراجعة»
   if (t.reviewReasons !== undefined) row.review_reasons = t.reviewReasons?.length ? t.reviewReasons : null;
   return row;
