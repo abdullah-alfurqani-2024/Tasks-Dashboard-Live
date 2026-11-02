@@ -31,7 +31,7 @@ setup = ''.join(
     f"insert into auth.users (id, email) values ('{U[k]}', '{k}@x.om');"
     f"insert into support_tasks.profiles (id, email, full_name, role, is_active) values ('{U[k]}', '{k}@x.om', 'اسم {k}', '{r}', {'false' if k == 'off' else 'true'});"
     for k, r in roles.items())
-ok, out = sql("drop schema if exists support_tasks_staging cascade; truncate support_tasks.task_audit, support_tasks.tasks restart identity cascade; delete from support_tasks.profiles; delete from auth.users; delete from support_tasks.task_types where name = 'كاميرات'; update support_tasks.app_settings set value = '0' where key = 'edit_lock_days';" + setup)
+ok, out = sql("drop schema if exists support_tasks_staging cascade; truncate support_tasks.task_audit, support_tasks.tasks restart identity cascade; update support_tasks.app_settings set updated_by = null; delete from support_tasks.profiles; delete from auth.users; delete from support_tasks.task_types where name = 'كاميرات'; update support_tasks.app_settings set value = '0' where key = 'edit_lock_days';" + setup)
 assert ok, out
 
 ST = "(select id from support_tasks.task_statuses where name = '%s')"
@@ -125,6 +125,50 @@ check('المستخدم لا يغيّر الرقم من الواجهة مباش�
 check('المدير لا يغيّر الرقم إلا عبر الدالة', False,
       f"update profiles set login_no = '999' where id = '{U['eng2']}'", 'admin', None)
 
+# ---------- حذف كل المهام في الإنتاج (09_purge_tasks.sql) ----------
+sql("insert into app_settings (key, value) values ('allow_purge_tasks', 'true') on conflict (key) do update set value = 'true'")
+n_before = sql('select count(*) from support_tasks.tasks')[1]
+check('حذف الكل (إنتاج): المهندس مرفوض', False, 'select purge_all_tasks()', 'eng1', 'لمدير النظام')
+check('حذف الكل (إنتاج): رئيس القسم مرفوض', False, 'select purge_all_tasks()', 'head', 'لمدير النظام')
+check('المدير يوقف الإعداد', True, "update app_settings set value = 'false' where key = 'allow_purge_tasks' returning key", 'admin', 'allow_purge_tasks')
+check('حذف الكل (إنتاج): موقوف بالإعداد', False, 'select purge_all_tasks()', 'admin', 'موقوف')
+check('حذف الكل (إنتاج): لم يُحذف شيء', True, 'select count(*) from support_tasks.tasks', None, n_before)
+check('المدير يفعّل الإعداد', True, "update app_settings set value = 'true' where key = 'allow_purge_tasks' returning key", 'admin', 'allow_purge_tasks')
+check('حذف الكل (إنتاج): مسموح للمدير', True, "select purge_all_tasks()->>'tasks'", 'admin', n_before)
+check('حذف الكل (إنتاج): الجداول فارغة', True,
+      'select (select count(*) from support_tasks.tasks) + (select count(*) from support_tasks.task_audit)', None, '0')
+check('بعد الحذف: إضافة مهمة في الإنتاج تبدأ من 1', True,
+      f"insert into tasks (subject, received_date, status_id) values ('بعد الحذف', '2026-11-02', {OPEN}) returning id", 'eng1', '1')
+check('بعد الحذف: السجل يعمل', True, 'select count(*) from support_tasks.task_audit', None, '1')
+sql(f"insert into tasks (engineer_id, subject, received_date, status_id) values ('{U['eng2']}', 'ثانية', '2026-11-02', {OPEN})")
+
+# ---------- مهام تحتاج مراجعة (10_review.sql) ----------
+rid = check('المدير (الاستيراد) يضيف مهمة مع أسباب المراجعة', True,
+      f"insert into tasks (engineer_id, subject, received_date, status_id, review_reasons) values ('{U['eng1']}', 'مراجعة', '2026-11-01', {OPEN}, array['تاريخ الاستقبال غير مفهوم «x»']) returning id", 'admin')
+check('العرض يحتوي أسباب المراجعة', True, f"select review_reasons[1] from v_tasks where id = {rid}", 'eng1', 'غير مفهوم')
+check('المهندس لا يضيف أسباب مراجعة', False,
+      f"insert into tasks (subject, received_date, status_id, review_reasons) values ('x', '2026-11-01', {OPEN}, array['y'])", 'eng1', 'الاستيراد')
+check('المهندس لا يغيّر الأسباب', False, f"update tasks set review_reasons = array['أخرى'] where id = {rid}", 'eng1', 'الاستيراد')
+check('المهندس يعدّل مهمته والأسباب باقية', True, f"update tasks set notes = 'أصلحتها' where id = {rid} returning array_length(review_reasons, 1)", 'eng1', '1')
+check('المهندس يضغط «تمت المراجعة»', True, f"update tasks set review_reasons = null where id = {rid} returning coalesce(array_length(review_reasons, 1), 0)", 'eng1', '0')
+check('المصفوفة الفارغة تُحفظ null', True,
+      f"insert into tasks (engineer_id, subject, received_date, status_id, review_reasons) values ('{U['eng1']}', 'فارغة', '2026-11-01', {OPEN}, '{{}}') returning review_reasons is null", 'admin', 't')
+check('سجل التعديلات يسجّل المراجعة', True,
+      f"select count(*) > 0 from task_audit where task_id = {rid} and 'review_reasons' = any(changed_fields)", None, 't')
+
+# ---------- الاستيراد كما في الملف (11_import_as_is.sql) ----------
+raw = check('مستوردة كما هي: بلا تاريخ استقبال، مكتملة بلا انتهاء، موضوع فارغ', True,
+      f"insert into tasks (engineer_id, subject, received_date, completed_date, status_id, review_reasons) values ('{U['eng1']}', '', null, null, {DONE}, array['تاريخ الاستقبال فارغ']) returning id", 'admin')
+check('مستوردة كما هي: الانتهاء قبل الاستقبال', True,
+      f"insert into tasks (engineer_id, subject, received_date, completed_date, status_id, review_reasons) values ('{U['eng1']}', 'س', '2026-02-03', '2026-02-01', {DONE}, array['الانتهاء قبل الاستقبال']) returning id", 'admin')
+check('مستوردة كما هي: غير مكتملة ويبقى تاريخ انتهائها', True,
+      f"insert into tasks (engineer_id, subject, received_date, completed_date, status_id, review_reasons) values ('{U['eng1']}', 'س', '2026-02-03', '2026-02-05', {OPEN}, array['غير مكتملة ولها تاريخ انتهاء']) returning completed_date", 'admin', '2026-02-05')
+check('بلا مراجعة: تاريخ الاستقبال مطلوب', False,
+      f"insert into tasks (subject, received_date, status_id) values ('x', null, {OPEN})", 'eng1', 'تاريخ الاستقبال')
+check('تمت المراجعة وهي ناقصة: مرفوض', False, f"update tasks set review_reasons = null where id = {raw}", 'eng1', None)
+check('المهندس يصلحها ثم «تمت المراجعة»', True,
+      f"update tasks set subject = 'مصلحة', received_date = '2026-03-01', completed_date = '2026-03-02', review_reasons = null where id = {raw} returning subject", 'eng1', 'مصلحة')
+
 # ---------- نسخة التجربة: الإعداد والنسخ وحذف كل المهام ----------
 setup_stg = open(os.path.join(os.path.dirname(__file__), '..', 'staging', 'setup_staging.sql'), encoding='utf-8').read()
 ok, out = sql(setup_stg)
@@ -134,12 +178,12 @@ prod_n = sql('select count(*) from support_tasks.tasks')[1]
 check('التجربة: نُسخت المهام من الإنتاج', True, 'select count(*) from support_tasks_staging.tasks', None, prod_n)
 check('حذف الكل: المهندس مرفوض', False, 'select support_tasks_staging.purge_all_tasks()', 'eng1', 'لمدير النظام')
 check('حذف الكل: الزائر بلا دخول مرفوض', False, 'set role anon; select support_tasks_staging.purge_all_tasks()', None, None)
-check('حذف الكل: المدير', True, "select support_tasks_staging.purge_all_tasks()->>'tasks'", 'admin', prod_n)
+sql("insert into support_tasks_staging.app_settings (key, value) values ('allow_purge_tasks', 'false') on conflict (key) do update set value = 'false'")
+check('حذف الكل: المدير (التجربة لا تحتاج الإعداد)', True, "select support_tasks_staging.purge_all_tasks()->>'tasks'", 'admin', prod_n)
 check('حذف الكل: لم يبق شيء في التجربة', True,
       'select (select count(*) from support_tasks_staging.tasks) + (select count(*) from support_tasks_staging.task_audit)', None, '0')
 check('حذف الكل: الإنتاج لم يتأثر', True, 'select count(*) from support_tasks.tasks', None, prod_n)
-check('حذف الكل: الدالة غير موجودة في الإنتاج', True,
-      "select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'support_tasks' and p.proname = 'purge_all_tasks'", None, '0')
+check('حذف الكل: ملف التجربة لا يحتوي دالة الإنتاج', True, f"select {int('support_tasks.purge_all_tasks' in setup_stg)}", None, '0')
 check('بعد الحذف: إضافة مهمة تبدأ من 1', True,
       f"set search_path = support_tasks_staging, public; insert into tasks (subject, received_date, status_id) select 'جديدة', '2026-11-01', id from task_statuses where kind = 'open' limit 1 returning id", 'eng1', '1')
 check('الاستعادة من الإنتاج ما زالت تعمل', True, "select support_tasks_staging.refresh_from_production()->>'tasks'", 'admin', prod_n)

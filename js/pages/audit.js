@@ -18,6 +18,7 @@ function value(col, v) {
   if (LOOKUP_OF[col]) return state.lookups[LOOKUP_OF[col]].find((x) => x.id === Number(v))?.name || `#${v}`;
   if (col === 'received_date' || col === 'completed_date') return fmtDate(v);
   if (col === 'deleted_at') return fmtDateTime(v);
+  if (Array.isArray(v)) return v.length ? v.join('، ') : '—';
   return String(v);
 }
 

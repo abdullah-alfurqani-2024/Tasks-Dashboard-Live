@@ -8,6 +8,7 @@ export const state = {
   lookups: null,     // { taskTypes, correspondenceTypes, statuses }
   settings: null,    // { editLockDays, delayThresholdDays }
   users: null,       // قائمة المستخدمين (للمدير ورئيس القسم والمشاهد)
+  reviewCount: 0,    // مهام تحتاج مراجعة (بعد الاستيراد)
 };
 
 export const ROLE_LABELS = { admin: 'مدير النظام', head: 'رئيس القسم', engineer: 'مهندس', viewer: 'مشاهد' };
@@ -55,7 +56,16 @@ export async function loadReference({ force = false } = {}) {
   if (force || !state.lookups) jobs.push(db.lookups.load().then((l) => (state.lookups = l)));
   if (force || !state.settings) jobs.push(db.settings.load().then((s) => (state.settings = s)));
   if ((force || !state.users) && can('tasks.viewAll')) jobs.push(db.users.list().then((u) => (state.users = u)));
+  jobs.push(refreshReviewCount({ quiet: true }));
   await Promise.all(jobs);
+}
+
+let onReviewCount = () => {};
+export const setReviewCountListener = (fn) => { onReviewCount = fn; };
+/** يحدّث عدد المهام التي تحتاج مراجعة (للرابط في القائمة العلوية) */
+export async function refreshReviewCount({ quiet = false } = {}) {
+  try { state.reviewCount = (await db.tasks.reviewCount?.()) || 0; } catch { state.reviewCount = 0; }
+  if (!quiet) onReviewCount();
 }
 
 export function engineers({ includeInactive = false } = {}) {
@@ -72,5 +82,5 @@ export function activeItems(kind, keepId) {
 }
 
 export function resetState() {
-  state.user = null; state.lookups = null; state.settings = null; state.users = null;
+  state.user = null; state.lookups = null; state.settings = null; state.users = null; state.reviewCount = 0;
 }

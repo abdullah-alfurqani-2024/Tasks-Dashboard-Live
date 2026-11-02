@@ -11,11 +11,11 @@ export function summarize(tasks, { delayDays = 7, today }) {
   for (const t of tasks) {
     if (t.statusKind === 'done') {
       s.done++;
-      if (t.durationDays != null) { s.durSum += t.durationDays; s.durN++; if (t.durationDays > delayDays) s.lateDone++; }
+      if (t.durationDays != null && t.durationDays >= 0) { s.durSum += t.durationDays; s.durN++; if (t.durationDays > delayDays) s.lateDone++; }
     } else if (t.statusKind === 'cancelled') s.cancelled++;
     else {
       s.open++;
-      if (today && daysBetween(t.receivedDate, today) > delayDays) s.delayed++;
+      if (today && t.receivedDate && daysBetween(t.receivedDate, today) > delayDays) s.delayed++;
     }
   }
   const base = s.total - s.cancelled;
@@ -24,7 +24,8 @@ export function summarize(tasks, { delayDays = 7, today }) {
   return s;
 }
 
-export const isDelayed = (t, delayDays, today) => t.statusKind === 'open' && daysBetween(t.receivedDate, today) > delayDays;
+// (المهمة المستوردة بلا تاريخ استقبال لا تُحسب متأخرة، والمدة السالبة لا تدخل المتوسط: كلتاهما في «تحتاج مراجعة»)
+export const isDelayed = (t, delayDays, today) => t.statusKind === 'open' && !!t.receivedDate && daysBetween(t.receivedDate, today) > delayDays;
 
 /** تجميع حسب مفتاح: [{ key, label, total, done, open, cancelled, rate, avgDuration }] مرتبة تنازلياً */
 export function groupCount(tasks, keyFn, labelFn) {
@@ -34,7 +35,7 @@ export function groupCount(tasks, keyFn, labelFn) {
     let g = m.get(k);
     if (!g) m.set(k, (g = { key: k, label: labelFn(t) || 'غير محدد', total: 0, done: 0, open: 0, cancelled: 0, durSum: 0, durN: 0 }));
     g.total++;
-    if (t.statusKind === 'done') { g.done++; if (t.durationDays != null) { g.durSum += t.durationDays; g.durN++; } } else if (t.statusKind === 'cancelled') g.cancelled++;
+    if (t.statusKind === 'done') { g.done++; if (t.durationDays != null && t.durationDays >= 0) { g.durSum += t.durationDays; g.durN++; } } else if (t.statusKind === 'cancelled') g.cancelled++;
     else g.open++;
   }
   return [...m.values()].map((g) => ({
@@ -45,7 +46,8 @@ export function groupCount(tasks, keyFn, labelFn) {
 /** توزيع شهري بين تاريخين (أو من البيانات نفسها)، آخر 24 شهراً بحد أقصى */
 export function monthly(tasks, from, to) {
   if (!tasks.length && !(from && to)) return [];
-  const dates = tasks.map((t) => t.receivedDate).sort();
+  const dates = tasks.map((t) => t.receivedDate).filter(Boolean).sort();
+  if (!dates.length && !(from && to)) return [];
   const a = (from || dates[0]).slice(0, 7), b = (to || dates[dates.length - 1]).slice(0, 7);
   let [y, m] = a.split('-').map(Number);
   const [y2, m2] = b.split('-').map(Number);
@@ -57,7 +59,7 @@ export function monthly(tasks, from, to) {
   months = months.slice(-24); // آخر 24 شهراً فقط
   const idx = new Map(months.map((x, i) => [x.key, i]));
   for (const t of tasks) {
-    const i = idx.get(t.receivedDate.slice(0, 7));
+    const i = t.receivedDate ? idx.get(t.receivedDate.slice(0, 7)) : null;
     if (i == null) continue;
     const g = months[i];
     g.total++;

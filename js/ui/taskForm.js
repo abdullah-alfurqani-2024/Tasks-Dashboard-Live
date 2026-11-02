@@ -4,7 +4,7 @@
  */
 import { db } from '../data/index.js';
 import { html, $, formData } from '../core/dom.js';
-import { state, can, canEditTask, isLocked, engineers, activeItems, userName } from '../core/store.js';
+import { state, can, canEditTask, isLocked, engineers, activeItems, userName, refreshReviewCount } from '../core/store.js';
 import { today, daysBetween, fmtDateTime, daysAr } from '../core/format.js';
 import { LABEL } from '../core/fields.js';
 import { navigate } from '../core/router.js';
@@ -36,6 +36,12 @@ export function openTaskForm({ task = null, requesters = [], onSaved }) {
   const body = html`
     ${locked ? html`<div class="alert warn" style="margin-bottom:14px">${icon('lock')} هذه المهمة مقفلة: مضى على إنجازها أكثر من ${daysAr(state.settings.editLockDays)}. اطلب من مدير النظام أو رئيس القسم تعديلها.</div>` : ''}
     ${t.deletedAt ? html`<div class="alert bad" style="margin-bottom:14px">هذه المهمة محذوفة (${fmtDateTime(t.deletedAt)}).</div>` : ''}
+    ${!isNew && t.reviewReasons?.length ? html`<div class="alert warn" style="margin-bottom:14px" id="t-review">
+      <b>تحتاج مراجعة</b> (من الاستيراد):
+      <ul style="margin:6px 0 0;padding-inline-start:20px">${t.reviewReasons.map((x) => html`<li>${x}</li>`)}</ul>
+      ${editable ? html`<label class="check" style="margin-top:8px"><input type="checkbox" id="t-reviewed"> <b>تمت المراجعة</b>: أصلحت ما يلزم، وتُزال العلامة عند الحفظ</label>
+        <div class="small muted">يمكنك الحفظ دون هذا الاختيار لإصلاح جزء، وتبقى المهمة في «تحتاج مراجعة».</div>` : ''}
+    </div>` : ''}
     <form class="form-grid" novalidate id="task-form">
       ${can('tasks.assign') ? html`
         <div class="field span-2"><label for="t-eng">${LABEL.engineerId} <span class="req">*</span></label>
@@ -87,11 +93,13 @@ export function openTaskForm({ task = null, requesters = [], onSaved }) {
   const errBox = $('#t-err', m.el);
   const f = (n) => form.elements[n];
 
+  // المهمة المستوردة تُعرض كما في الملف: لا نمسح تاريخ انتهائها عند الفتح حتى لو كانت حالتها مفتوحة
+  let keepAsIs = !isNew && !!t.reviewReasons?.length;
   function sync() {
     const kind = kindOf(f('statusId').value);
     const done = f('completedDate');
     $('[data-done-req]', m.el).hidden = kind !== 'done';
-    if (editable) {
+    if (editable && !keepAsIs) {
       done.disabled = kind === 'open';
       if (kind === 'open') done.value = '';
     }
@@ -101,6 +109,7 @@ export function openTaskForm({ task = null, requesters = [], onSaved }) {
     box.style.color = dur != null && (dur < 0 || dur > delayDays) ? 'var(--bad)' : '';
   }
   form.addEventListener('change', (e) => {
+    if (e.target.name === 'statusId') keepAsIs = false;
     if (e.target.name === 'statusId' && kindOf(e.target.value) === 'done' && !f('completedDate').value) f('completedDate').value = today();
     sync();
   });
@@ -123,7 +132,9 @@ export function openTaskForm({ task = null, requesters = [], onSaved }) {
     const v = formData(form);
     if (v.completedDate === undefined) v.completedDate = null;
     form.querySelectorAll('.field.invalid').forEach((x) => x.classList.remove('invalid'));
-    const bad = validate(v);
+    // مهمة مستوردة ما زالت تنتظر المراجعة: يمكن حفظ إصلاح جزئي، والقواعد كاملة عند «تمت المراجعة»
+    const stillFlagged = !isNew && t.reviewReasons?.length && !$('#t-reviewed', m.el)?.checked;
+    const bad = stillFlagged ? (can('tasks.assign') && !v.engineerId ? ['engineerId', 'اختر المهندس.'] : !v.statusId ? ['statusId', 'اختر الحالة.'] : null) : validate(v);
     if (bad) {
       errBox.textContent = bad[1]; errBox.hidden = false;
       f(bad[0])?.closest('.field')?.classList.add('invalid');
@@ -134,14 +145,16 @@ export function openTaskForm({ task = null, requesters = [], onSaved }) {
     const input = {
       engineerId: can('tasks.assign') ? v.engineerId : undefined,
       refNo: v.refNo, requester: v.requester, employeeName: v.employeeName, subject: v.subject,
-      receivedDate: v.receivedDate, completedDate: v.completedDate || null, notes: v.notes,
+      receivedDate: v.receivedDate || null, completedDate: v.completedDate || null, notes: v.notes,
       taskTypeId: v.taskTypeId ? Number(v.taskTypeId) : null, correspondenceTypeId: v.correspondenceTypeId ? Number(v.correspondenceTypeId) : null,
       statusId: Number(v.statusId), delayReason: v.delayReason,
     };
+    if ($('#t-reviewed', m.el)?.checked) input.reviewReasons = [];
     await busy(btn, async () => {
       try {
         const saved = isNew ? await db.tasks.create(input) : await db.tasks.update(t.id, input);
-        toast(isNew ? `أُضيفت المهمة #${saved.id}.` : 'تم حفظ التعديلات.', 'ok');
+        toast(isNew ? `أُضيفت المهمة #${saved.id}.` : input.reviewReasons ? 'تم الحفظ وأُزيلت علامة المراجعة.' : 'تم حفظ التعديلات.', 'ok');
+        if (input.reviewReasons) refreshReviewCount();
         m.close();
         onSaved?.(saved, isNew ? 'create' : 'update');
       } catch (e) {

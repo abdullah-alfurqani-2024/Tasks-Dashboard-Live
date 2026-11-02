@@ -65,7 +65,7 @@ function seed() {
       createdAt: rd + 'T09:00:00Z', createdBy: e.id, updatedAt: rd + 'T09:00:00Z', updatedBy: e.id, deletedAt: null, deletedBy: null,
     });
   }
-  return { users, lookups, tasks, audit: [], settings: normalizeSettings(), seq: { task: tasks.length, audit: 0, lookup: 100, user: users.length } };
+  return { users, lookups, tasks, audit: [], settings: normalizeSettings({ allowPurgeTasks: true }), seq: { task: tasks.length, audit: 0, lookup: 100, user: users.length } };
 }
 
 function load() {
@@ -90,15 +90,15 @@ export function createAdapter() {
     const lk = (k, id) => db.lookups[k].find((x) => x.id === id);
     const st = lk('statuses', t.statusId) || {};
     return {
-      ...t, engineerName: u.fullName, engineerShort: u.shortName,
+      ...t, reviewReasons: t.reviewReasons || [], engineerName: u.fullName, engineerShort: u.shortName,
       taskType: lk('taskTypes', t.taskTypeId)?.name || '', correspondenceType: lk('correspondenceTypes', t.correspondenceTypeId)?.name || '',
       status: st.name, statusKind: st.kind,
-      durationDays: t.completedDate ? Math.round((Date.parse(t.completedDate) - Date.parse(t.receivedDate)) / 864e5) : null,
+      durationDays: t.completedDate && t.receivedDate ? Math.round((Date.parse(t.completedDate) - Date.parse(t.receivedDate)) / 864e5) : null,
     };
   };
 
   const FIELDS = { engineerId: 'engineer_id', refNo: 'ref_no', requester: 'requester', employeeName: 'employee_name', subject: 'subject', receivedDate: 'received_date',
-    completedDate: 'completed_date', notes: 'notes', taskTypeId: 'task_type_id', correspondenceTypeId: 'correspondence_type_id', statusId: 'status_id', delayReason: 'delay_reason', deletedAt: 'deleted_at' };
+    completedDate: 'completed_date', notes: 'notes', taskTypeId: 'task_type_id', correspondenceTypeId: 'correspondence_type_id', statusId: 'status_id', delayReason: 'delay_reason', deletedAt: 'deleted_at', reviewReasons: 'review_reasons' };
   const snake = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => FIELDS[k]).map(([k, v]) => [FIELDS[k], v ?? null]));
   function audit(taskId, action, oldT, newT) {
     const a = oldT ? snake(oldT) : null, b = snake(newT);
@@ -108,7 +108,8 @@ export function createAdapter() {
     db.audit.unshift({ id: ++db.seq.audit, taskId, action, changedBy: me.id, changedAt: new Date().toISOString(), changedFields: fields, oldData: a ? pickF(a) : null, newData: pickF(b) });
   }
 
-  function validate(t) {
+  function validate(t, flagged = false) {
+    if (flagged) return; // مستوردة تنتظر المراجعة: تُحفظ كما في الملف
     const st = db.lookups.statuses.find((s) => s.id === Number(t.statusId));
     if (!t.subject?.trim()) throw err('الموضوع مطلوب.');
     if (!t.receivedDate) throw err('تاريخ الاستقبال مطلوب.');
@@ -188,10 +189,12 @@ export function createAdapter() {
           if (f.statusId && t.statusId !== Number(f.statusId)) return false;
           if (f.taskTypeId && t.taskTypeId !== Number(f.taskTypeId)) return false;
           if (f.correspondenceTypeId && t.correspondenceTypeId !== Number(f.correspondenceTypeId)) return false;
+          if ((f.from || f.to) && !t.receivedDate) return false;
           if (f.from && t.receivedDate < f.from) return false;
           if (f.to && t.receivedDate > f.to) return false;
+          if (f.review && !t.reviewReasons?.length) return false;
           return true;
-        }).map(view).sort((a, b) => b.receivedDate.localeCompare(a.receivedDate) || b.id - a.id);
+        }).map(view).sort((a, b) => (b.receivedDate || '9999').localeCompare(a.receivedDate || '9999') || b.id - a.id);
       },
       async create(input) {
         await wait();
@@ -214,13 +217,24 @@ export function createAdapter() {
         if (role() === 'viewer') throw err('لا تملك صلاحية لهذه العملية.');
         if (locked(row)) throw err(`المهمة مقفلة: مضى على إنجازها أكثر من ${db.settings.editLockDays} يوم. اطلب من مدير النظام أو رئيس القسم تعديلها.`);
         const t = clean(input);
-        validate(t);
+        validate(t, input.reviewReasons !== undefined ? !!input.reviewReasons?.length : !!row.reviewReasons?.length);
         const before = { ...row };
         Object.assign(row, t, { updatedAt: new Date().toISOString(), updatedBy: me.id });
         if (input.engineerId && role() !== 'engineer') row.engineerId = input.engineerId;
+        // أسباب المراجعة: يضعها الاستيراد فقط، والمسح = «تمت المراجعة»
+        if (input.reviewReasons !== undefined) {
+          const next = input.reviewReasons?.length ? input.reviewReasons : null;
+          if (next && role() !== 'admin' && JSON.stringify(next) !== JSON.stringify(before.reviewReasons || null)) throw err('أسباب المراجعة يضعها الاستيراد فقط.');
+          row.reviewReasons = next;
+        }
         audit(id, 'update', before, row);
         persist();
         return view(row);
+      },
+      async reviewCount() {
+        await wait(20);
+        if (!me) return 0;
+        return db.tasks.filter((t) => t.reviewReasons?.length && !t.deletedAt && (role() !== 'engineer' || t.engineerId === me.id)).length;
       },
       async remove(id) {
         need('admin');
@@ -241,9 +255,9 @@ export function createAdapter() {
         let n = 0;
         for (const input of list) {
           const t = clean(input);
-          validate(t);
+          validate(t, !!input.reviewReasons?.length);
           const now = new Date().toISOString();
-          db.tasks.push({ id: ++db.seq.task, engineerId: input.engineerId, ...t, createdAt: now, createdBy: me.id, updatedAt: now, updatedBy: me.id, deletedAt: null, deletedBy: null });
+          db.tasks.push({ id: ++db.seq.task, engineerId: input.engineerId, ...t, reviewReasons: input.reviewReasons?.length ? input.reviewReasons : null, createdAt: now, createdBy: me.id, updatedAt: now, updatedBy: me.id, deletedAt: null, deletedBy: null });
           if (++n % 100 === 0) { onProgress?.(n, list.length); await wait(10); }
         }
         onProgress?.(n, list.length);
@@ -352,6 +366,7 @@ export function createAdapter() {
       async purgeAllTasks() {
         await wait(200);
         need('admin');
+        if (!normalizeSettings(db.settings).allowPurgeTasks) throw err('حذف كل المهام موقوف. فعّل «السماح بحذف كل المهام» من الإعدادات أولاً.');
         const n = db.tasks.length;
         db.tasks = []; db.audit = []; db.seq.task = 0; db.seq.audit = 0; persist();
         return { tasks: n, at: new Date().toISOString() };

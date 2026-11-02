@@ -16,6 +16,7 @@ export const FIELDS = [
   { key: 'statusId',             col: 'status_id',              label: 'الحالة' },
   { key: 'delayReason',          col: 'delay_reason',           label: 'سبب تأخير إنجاز المهمة' },
   { key: 'deletedAt',            col: 'deleted_at',             label: 'الحذف' },
+  { key: 'reviewReasons',        col: 'review_reasons',         label: 'تحتاج مراجعة' },
 ];
 
 export const LABEL_BY_COL = Object.fromEntries(FIELDS.map((f) => [f.col, f.label]));

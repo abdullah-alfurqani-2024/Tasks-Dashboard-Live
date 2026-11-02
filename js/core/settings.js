@@ -8,6 +8,7 @@ export const SETTING_DEFAULTS = {
   delayThresholdDays: 7,       // المهمة المفتوحة أطول من هذا تُعد متأخرة
   minPasswordLength: PW_FLOOR, // أقل طول لكلمة المرور
   forcePasswordChange: true,   // إلزام تغيير كلمة المرور المؤقتة عند أول دخول
+  allowPurgeTasks: false,      // السماح بـ«حذف كل المهام» في الإنتاج (مرحلة التجهيز فقط)
 };
 
 const int = (v, d) => (Number.isFinite(Number(v)) && v !== '' && v != null ? Math.trunc(Number(v)) : d);
@@ -19,5 +20,6 @@ export function normalizeSettings(s = {}) {
     delayThresholdDays: Math.max(1, int(s.delayThresholdDays, D.delayThresholdDays)),
     minPasswordLength: Math.min(72, Math.max(PW_FLOOR, int(s.minPasswordLength, D.minPasswordLength))),
     forcePasswordChange: s.forcePasswordChange == null ? D.forcePasswordChange : s.forcePasswordChange === true || s.forcePasswordChange === 'true',
+    allowPurgeTasks: s.allowPurgeTasks == null ? D.allowPurgeTasks : s.allowPurgeTasks === true || s.allowPurgeTasks === 'true',
   };
 }
