@@ -86,6 +86,7 @@ create table if not exists support_tasks.tasks (
   updated_by             uuid references support_tasks.profiles (id),
   deleted_at             timestamptz,                            -- حذف ناعم
   deleted_by             uuid references support_tasks.profiles (id),
+  review_reasons         text[],                                 -- أسباب المراجعة من الاستيراد (10_review.sql)
   constraint tasks_dates_chk check (completed_date is null or completed_date >= received_date)
 );
 
@@ -134,7 +135,8 @@ select
   t.status_id, s.name as status, s.kind as status_kind,
   t.delay_reason, t.duration_days,
   t.created_at, t.created_by, t.updated_at, t.updated_by,
-  t.deleted_at, t.deleted_by
+  t.deleted_at, t.deleted_by,
+  t.review_reasons
 from support_tasks.tasks t
 join support_tasks.profiles p             on p.id = t.engineer_id
 left join support_tasks.task_types tt     on tt.id = t.task_type_id

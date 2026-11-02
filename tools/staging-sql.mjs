@@ -12,72 +12,22 @@ const header = `-- =============================================================
 --  نسخة التجربة: سكيما ${STG}
 --  ملف مولَّد تلقائياً من supabase/sql/01-04 (لا تعدّله يدوياً: node tools/staging-sql.mjs)
 --
---  يُنفَّذ في Supabase ← SQL Editor مرة واحدة، ثم:
+--  يُنفَّذ في Supabase ← SQL Editor (مشروع التجربة) مرة واحدة، ثم:
 --    Project Settings ← Data API ← Exposed schemas: أضف ${STG}
+--  البيانات تُنسخ من الإنتاج (مشروع مستقل) بزر «تحديث بيانات التجربة من الإنتاج» (دالة refresh-staging).
 --  ويمكن إعادة تنفيذه بلا ضرر.
 -- =====================================================================
 `;
 
-const copy = `
--- =====================================================================
---  نسخ البيانات من الإنتاج إلى التجربة (قراءة فقط من الإنتاج)
---  تستطيع إعادة تنفيذ هذا الجزء وحده متى أردت تحديث بيانات التجربة
--- =====================================================================
-begin;
-
--- المستخدمون: نفس الحسابات تدخل نسخة التجربة بنفس كلمات المرور
-update ${STG}.profiles set login_no = null where login_no is not null;
-insert into ${STG}.profiles (id, email, login_no, full_name, short_name, role, is_active, must_change_password, created_at, updated_at)
-select id, email, login_no, full_name, short_name, role::text::${STG}.user_role, is_active, false, created_at, updated_at
-from ${PROD}.profiles
-on conflict (id) do update set email = excluded.email, login_no = excluded.login_no, full_name = excluded.full_name, short_name = excluded.short_name,
-  role = excluded.role, is_active = excluded.is_active;
-
--- القوائم كما هي في الإنتاج
-insert into ${STG}.task_types (name, sort_order, is_active)
-select name, sort_order, is_active from ${PROD}.task_types
-on conflict (name) do update set sort_order = excluded.sort_order, is_active = excluded.is_active;
-insert into ${STG}.correspondence_types (name, sort_order, is_active)
-select name, sort_order, is_active from ${PROD}.correspondence_types
-on conflict (name) do update set sort_order = excluded.sort_order, is_active = excluded.is_active;
-insert into ${STG}.task_statuses (name, kind, sort_order, is_active)
-select name, kind::text::${STG}.status_kind, sort_order, is_active from ${PROD}.task_statuses
-on conflict (name) do update set kind = excluded.kind, sort_order = excluded.sort_order, is_active = excluded.is_active;
-
--- الإعدادات
-insert into ${STG}.app_settings (key, value)
-select key, value from ${PROD}.app_settings
-on conflict (key) do update set value = excluded.value;
-
--- المهام: نسخة كاملة بنفس الأرقام (تُستبدل مهام التجربة السابقة)
-alter table ${STG}.tasks disable trigger user;
-truncate ${STG}.task_audit, ${STG}.tasks;
-insert into ${STG}.tasks (id, engineer_id, ref_no, requester, employee_name, subject, received_date, completed_date, notes,
-  task_type_id, correspondence_type_id, status_id, delay_reason, created_at, created_by, updated_at, updated_by, deleted_at, deleted_by, review_reasons)
-overriding system value
-select t.id, t.engineer_id, t.ref_no, t.requester, t.employee_name, t.subject, t.received_date, t.completed_date, t.notes,
-  (select s.id from ${STG}.task_types s join ${PROD}.task_types p on p.name = s.name where p.id = t.task_type_id),
-  (select s.id from ${STG}.correspondence_types s join ${PROD}.correspondence_types p on p.name = s.name where p.id = t.correspondence_type_id),
-  (select s.id from ${STG}.task_statuses s join ${PROD}.task_statuses p on p.name = s.name where p.id = t.status_id),
-  t.delay_reason, t.created_at, t.created_by, t.updated_at, t.updated_by, t.deleted_at, t.deleted_by, t.review_reasons
-from ${PROD}.tasks t;
-select setval(pg_get_serial_sequence('${STG}.tasks', 'id'), coalesce((select max(id) from ${STG}.tasks), 0) + 1, false);
-alter table ${STG}.tasks enable trigger user;
-
-commit;
-
-select 'المستخدمون' as البيان, count(*) as العدد from ${STG}.profiles
-union all select 'المهام', count(*) from ${STG}.tasks;
-`;
 
 // ملفات التعديل اللاحقة (07 فما بعد) تعالج السكيمتين بنفسها، فتُضاف كما هي
 // (عدا الملفات المعلَّمة @production-only)
 const migrations = readdirSync(join(root, 'supabase/sql')).filter((f) => /^(0[7-9]|[1-9]\d)_.*\.sql$/.test(f)).sort()
   .map((f) => [f, readFileSync(join(root, 'supabase/sql', f), 'utf8')])
-  .filter(([, sql]) => !sql.includes('@production-only'))
+  .filter(([f, sql]) => !sql.includes('@production-only') && f !== '08_email_repair.sql') // 08 إصلاح لقاعدة قديمة
   .map(([f, sql]) => `-- ===================== ${f} =====================\n` + sql);
 parts.push(...migrations);
-const refresh = ['refresh_function.sql', 'purge_tasks.sql']
+const refresh = ['purge_tasks.sql', 'link_production.sql']
   .map((f) => '\n' + readFileSync(join(root, 'supabase/staging', f), 'utf8')).join('\n');
-writeFileSync(join(root, 'supabase/staging/setup_staging.sql'), header + '\n' + parts.join('\n\n') + '\n' + refresh + '\n' + copy);
+writeFileSync(join(root, 'supabase/staging/setup_staging.sql'), header + '\n' + parts.join('\n\n') + '\n' + refresh + '\n');
 console.log('written supabase/staging/setup_staging.sql');

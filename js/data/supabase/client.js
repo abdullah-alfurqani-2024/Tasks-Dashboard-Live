@@ -236,7 +236,7 @@ export function createClient({ url, anonKey, schema = 'public' }) {
         const { data } = await authed(`/functions/v1/${fn}`, { method: 'POST', body });
         return data;
       } catch (e) {
-        if (e.status === 404) throw new ApiError(`دالة إدارة المستخدمين غير منشورة على Supabase (${fn}). راجع دليل التركيب.`, 404);
+        if (e.status === 404) throw new ApiError(`الدالة ${fn} غير منشورة على Supabase في هذا المشروع. راجع دليل التركيب.`, 404);
         throw e;
       }
     },

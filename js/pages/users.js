@@ -104,7 +104,7 @@ export default async function users(ctx, main) {
           <span class="hint">إلزامي. يدخل به المستخدم. أرقام فقط.</span></div>
         <div class="field"><label for="u-email">البريد الإلكتروني (اختياري)</label>
           <input class="input ltr" style="display:block;text-align:left" id="u-email" name="email" type="email" value="${u?.email || ''}">
-          <span class="hint">${isNew ? 'يمكن الدخول به أيضاً.' : 'تغييره يغيّر بريد الدخول فوراً، وتبقى كلمة المرور كما هي.'}${CONFIG.env === 'staging' && !isNew ? ' ⚠️ حسابات الدخول مشتركة مع الإنتاج: تغيير البريد هنا يغيّره هناك أيضاً.' : ''}</span></div>
+          <span class="hint">${isNew ? 'يمكن الدخول به أيضاً.' : 'تغييره يغيّر بريد الدخول فوراً، وتبقى كلمة المرور كما هي.'}</span></div>
         <div class="field"><label for="u-role">الدور <span class="req">*</span></label>
           <select class="input" id="u-role" name="role" ${self ? 'disabled' : ''}>${options(Object.entries(ROLE_LABELS), u?.role || 'engineer')}</select>
           <span class="hint" id="u-role-help">${ROLE_HELP[u?.role || 'engineer']}</span></div>
@@ -185,7 +185,6 @@ export default async function users(ctx, main) {
       body: html`<form class="stack" novalidate>
         <div class="alert warn">
           تتغير كلمة مرور <b>${others.length}</b> مستخدماً، أي كل المستخدمين عدا حسابك أنت. ستتوقف كلماتهم الحالية عن العمل فوراً.
-          ${html`<br><b>حسابات الدخول مشتركة بين نسختي التجربة والإنتاج</b>، فالتغيير يسري على الإنتاج أيضاً أينما نُفّذ.`}
         </div>
         <div class="field"><span class="label">كلمة المرور الجديدة</span>
           <label class="check"><input type="radio" name="mode" value="same"> كلمة مرور موحدة للجميع</label>
