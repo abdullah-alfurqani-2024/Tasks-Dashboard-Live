@@ -354,7 +354,7 @@ table.table { width: 100%; border-collapse: separate; border-spacing: 0; font-si
 .list-row.no-kind { grid-template-columns: 70px 1fr 110px auto; }
 
 /* ---------------- الاستيراد ---------------- */
-.drop { border: 2px dashed var(--line-strong); border-radius: var(--radius); padding: 30px; text-align: center; color: var(--muted); cursor: pointer; transition: border-color .15s, background .15s; }
+.drop { display: block; border: 2px dashed var(--line-strong); border-radius: var(--radius); padding: 30px; text-align: center; color: var(--muted); cursor: pointer; transition: border-color .15s, background .15s; }
 .drop:hover, .drop.over { border-color: var(--brand); background: var(--brand-soft); }
 .drop svg { width: 40px; height: 40px; margin-bottom: 6px; }
 .steps-line { display: flex; gap: 6px; flex-wrap: wrap; }
