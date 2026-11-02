@@ -7,7 +7,7 @@ import { PW_FLOOR } from '../core/settings.js';
 import { fmtDateTime } from '../core/format.js';
 import { setTitle } from '../core/session.js';
 import { icon } from '../ui/icons.js';
-import { busy, toast, toastError, confirmBox } from '../ui/feedback.js';
+import { busy, toast, toastError, confirmBox, modal } from '../ui/feedback.js';
 import { pageHead, newPage } from '../ui/parts.js';
 
 import { VERSION } from '../version.js';
@@ -60,6 +60,16 @@ export default async function settings(ctx, main) {
           <div class="small muted" data-refresh-result></div>
         </div>
       </div>` : ''}
+      ${(CONFIG.env === 'staging' || isDemo) && db.maintenance?.purgeAllTasks ? html`
+      <div class="card span-2">
+        <div class="card-head"><h2>حذف كل المهام</h2></div>
+        <div class="card-pad stack">
+          <p style="margin:0">يحذف <b>نهائياً</b> كل مهام نسخة التجربة وسجل تعديلاتها، لتستورد الملف من جديد. لا يمكن التراجع.
+            المستخدمون والقوائم والإعدادات تبقى كما هي، و<b>الإنتاج لا يتأثر</b>.</p>
+          <div><button class="btn btn-danger" data-purge>${icon('trash')}حذف كل المهام</button></div>
+          <div class="small muted" data-purge-result></div>
+        </div>
+      </div>` : ''}
     </div>`);
 
   const form = $('#set-form', root);
@@ -90,6 +100,32 @@ export default async function settings(ctx, main) {
         toast(`تم نسخ ${r.tasks} مهمة و${r.users} مستخدماً من الإنتاج.`, 'ok');
       } catch (ex) { toastError(ex); }
     });
+  });
+  $('[data-purge]', root)?.addEventListener('click', () => {
+    const WORD = 'حذف الكل';
+    const m = modal({
+      title: 'حذف كل المهام', size: 'sm',
+      body: html`<form class="stack" novalidate>
+        <div class="alert bad">ستُحذف كل مهام نسخة التجربة وسجل تعديلاتها <b>نهائياً</b>، ولا يمكن استعادتها.</div>
+        <div class="field"><label for="purge-confirm">للتأكيد اكتب «${WORD}»</label>
+          <input class="input" id="purge-confirm" name="confirm" autocomplete="off"></div>
+        <div class="alert bad" data-err hidden></div></form>`,
+      footer: html`<button class="btn btn-danger" data-ok>${icon('trash')}حذف نهائي</button><button class="btn" data-x>إلغاء</button>`,
+    });
+    const f = $('form', m.el), errBox = $('[data-err]', m.el);
+    $('[data-x]', m.el).onclick = () => m.close();
+    const go = () => busy($('[data-ok]', m.el), async () => {
+      errBox.hidden = true;
+      if (f.elements.confirm.value.trim() !== WORD) { errBox.textContent = `اكتب «${WORD}» للتأكيد.`; errBox.hidden = false; return; }
+      try {
+        const r = await db.maintenance.purgeAllTasks();
+        m.close();
+        $('[data-purge-result]', root).textContent = `${fmtDateTime(r.at)}: حُذفت ${r.tasks} مهمة.`;
+        toast(`حُذفت ${r.tasks} مهمة. يمكنك الاستيراد الآن.`, 'ok');
+      } catch (ex) { errBox.textContent = ex.message; errBox.hidden = false; }
+    });
+    $('[data-ok]', m.el).onclick = go;
+    f.onsubmit = (ev) => { ev.preventDefault(); go(); };
   });
   $('[data-reset]', root)?.addEventListener('click', async () => {
     if (await confirmBox({ title: 'إعادة البيانات التجريبية', message: 'ستُحذف كل التعديلات التجريبية وتعود البيانات لحالتها الأولى.', okText: 'إعادة', danger: true })) db.resetDemo();

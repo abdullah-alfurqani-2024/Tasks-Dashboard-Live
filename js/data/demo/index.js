@@ -348,6 +348,16 @@ export function createAdapter() {
     },
 
     /** إعادة البيانات التجريبية لحالتها الأولى */
+    maintenance: {
+      async purgeAllTasks() {
+        await wait(200);
+        need('admin');
+        const n = db.tasks.length;
+        db.tasks = []; db.audit = []; db.seq.task = 0; db.seq.audit = 0; persist();
+        return { tasks: n, at: new Date().toISOString() };
+      },
+    },
+
     resetDemo() { try { localStorage.removeItem(KEY); sessionStorage.removeItem(KEY + '.me'); sessionStorage.removeItem(KEY + '.as'); } catch { /* */ } location.reload(); },
   };
 }

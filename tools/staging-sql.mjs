@@ -74,6 +74,7 @@ union all select 'المهام', count(*) from ${STG}.tasks;
 const migrations = readdirSync(join(root, 'supabase/sql')).filter((f) => /^(0[7-9]|[1-9]\d)_.*\.sql$/.test(f)).sort()
   .map((f) => `-- ===================== ${f} =====================\n` + readFileSync(join(root, 'supabase/sql', f), 'utf8'));
 parts.push(...migrations);
-const refresh = '\n' + readFileSync(join(root, 'supabase/staging/refresh_function.sql'), 'utf8');
+const refresh = ['refresh_function.sql', 'purge_tasks.sql']
+  .map((f) => '\n' + readFileSync(join(root, 'supabase/staging', f), 'utf8')).join('\n');
 writeFileSync(join(root, 'supabase/staging/setup_staging.sql'), header + '\n' + parts.join('\n\n') + '\n' + refresh + '\n' + copy);
 console.log('written supabase/staging/setup_staging.sql');
