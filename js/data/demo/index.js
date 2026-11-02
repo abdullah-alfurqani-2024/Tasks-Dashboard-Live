@@ -257,7 +257,7 @@ export function createAdapter() {
           const t = clean(input);
           validate(t, !!input.reviewReasons?.length);
           const now = new Date().toISOString();
-          db.tasks.push({ id: ++db.seq.task, engineerId: input.engineerId, ...t, reviewReasons: input.reviewReasons?.length ? input.reviewReasons : null, createdAt: now, createdBy: me.id, updatedAt: now, updatedBy: me.id, deletedAt: null, deletedBy: null });
+          db.tasks.push({ id: ++db.seq.task, engineerId: input.engineerId, ...t, reviewReasons: input.reviewReasons?.length ? input.reviewReasons : null, createdAt: now, createdBy: input.createdBy || me.id, updatedAt: now, updatedBy: input.createdBy || me.id, deletedAt: null, deletedBy: null });
           if (++n % 100 === 0) { onProgress?.(n, list.length); await wait(10); }
         }
         onProgress?.(n, list.length);
