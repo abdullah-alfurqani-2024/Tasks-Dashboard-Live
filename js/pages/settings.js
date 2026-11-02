@@ -2,7 +2,7 @@
 import { CONFIG } from '../config.js';
 import { db, backendName, isDemo } from '../data/index.js';
 import { html, mount, $, formData } from '../core/dom.js';
-import { state, loadReference } from '../core/store.js';
+import { state, loadReference, refreshReviewCount } from '../core/store.js';
 import { PW_FLOOR } from '../core/settings.js';
 import { fmtDateTime } from '../core/format.js';
 import { setTitle } from '../core/session.js';
@@ -146,6 +146,7 @@ export default async function settings(ctx, main) {
           if (all.length) { exportTasks(all, { format: 'xlsx', name: 'backup_before_delete' }); saved = all.length; }
         }
         const r = await db.maintenance.purgeAllTasks();
+        await refreshReviewCount();
         m.close();
         $('[data-purge-result]', root).textContent = `${fmtDateTime(r.at)}: حُذفت ${r.tasks} مهمة.${saved ? ` النسخة الاحتياطية (${saved} مهمة) نُزّلت إلى جهازك.` : ''}`;
         toast(`حُذفت ${r.tasks} مهمة. يمكنك الاستيراد الآن.`, 'ok');

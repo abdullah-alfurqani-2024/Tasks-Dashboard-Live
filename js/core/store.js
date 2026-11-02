@@ -56,7 +56,7 @@ export async function loadReference({ force = false } = {}) {
   if (force || !state.lookups) jobs.push(db.lookups.load().then((l) => (state.lookups = l)));
   if (force || !state.settings) jobs.push(db.settings.load().then((s) => (state.settings = s)));
   if ((force || !state.users) && can('tasks.viewAll')) jobs.push(db.users.list().then((u) => (state.users = u)));
-  jobs.push(refreshReviewCount({ quiet: true }));
+  jobs.push(refreshReviewCount());
   await Promise.all(jobs);
 }
 
