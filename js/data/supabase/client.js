@@ -6,6 +6,9 @@
  */
 
 const STORE_KEY = 'tsk.session';
+// جلسة «الدخول بحساب مستخدم» (التجربة فقط): في sessionStorage فتخص هذا التبويب وتزول بإغلاقه،
+// وجلسة المدير تبقى محفوظة كما هي في localStorage للعودة إليها
+const AS_KEY = 'tsk.session.as';
 
 export class ApiError extends Error {
   constructor(message, status = 0, code = '') { super(message); this.status = status; this.code = code; }
@@ -16,6 +19,12 @@ function readStore() {
 }
 function writeStore(s) {
   try { s ? localStorage.setItem(STORE_KEY, JSON.stringify(s)) : localStorage.removeItem(STORE_KEY); } catch { /* المتصفح يمنع التخزين */ }
+}
+function readAs() {
+  try { return JSON.parse(sessionStorage.getItem(AS_KEY) || 'null'); } catch { return null; }
+}
+function writeAs(s) {
+  try { s ? sessionStorage.setItem(AS_KEY, JSON.stringify(s)) : sessionStorage.removeItem(AS_KEY); } catch { /* */ }
 }
 
 /** رسالة عربية مفهومة من خطأ Supabase */
@@ -43,7 +52,8 @@ export function createClient({ url, anonKey, schema = 'public' }) {
   const base = url.replace(/\/+$/, '');
   // سكيما غير public: PostgREST يحددها بهذين الرأسين (قراءة / كتابة)
   const profile = (method) => (schema === 'public' ? {} : method === 'GET' || method === 'HEAD' ? { 'Accept-Profile': schema } : { 'Content-Profile': schema });
-  let session = readStore();
+  let acting = readAs();          // جلسة المستخدم الذي يتصفح المدير بحسابه (أو null)
+  let session = acting || readStore();
   let refreshing = null;
   let onExpired = () => {};
 
@@ -71,6 +81,17 @@ export function createClient({ url, anonKey, schema = 'public' }) {
     return { data, res };
   }
 
+  /** إنهاء جلسة «الدخول بحساب» والعودة لجلسة المدير المحفوظة */
+  function endActing() {
+    const old = acting;
+    acting = null; writeAs(null);
+    session = readStore();
+    // إلغاء هذه الجلسة وحدها على الخادم (scope=local) حتى لا تُمس جلسات المستخدم الأخرى
+    if (old?.access_token && old.expires_at > Date.now() / 1000) {
+      raw('/auth/v1/logout?scope=local', { method: 'POST', token: old.access_token }).catch(() => {});
+    }
+  }
+
   function saveSession(d) {
     session = {
       access_token: d.access_token,
@@ -85,6 +106,12 @@ export function createClient({ url, anonKey, schema = 'public' }) {
   function clearSession() { session = null; writeStore(null); }
 
   async function refresh() {
+    if (acting) {
+      // جلسة «الدخول بحساب» لا تُجدَّد: انتهت مدتها فنعود لحساب المدير
+      endActing();
+      onExpired('acting');
+      throw new ApiError('انتهت مدة الدخول بحساب المستخدم، وعدت إلى حسابك.', 401, 'acting_expired');
+    }
     if (!session?.refresh_token) throw new ApiError('انتهت الجلسة.', 401);
     if (!refreshing) {
       refreshing = raw('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: session.refresh_token } })
@@ -106,7 +133,7 @@ export function createClient({ url, anonKey, schema = 'public' }) {
     try {
       return await raw(path, { ...opts, token: await token() });
     } catch (e) {
-      if (e.status === 401 && session) {
+      if (e.status === 401 && session && e.code !== 'acting_expired') {
         await refresh();
         return raw(path, { ...opts, token: session.access_token });
       }
@@ -116,21 +143,51 @@ export function createClient({ url, anonKey, schema = 'public' }) {
 
   return {
     get session() { return session; },
+    get acting() { return !!acting; },
     setOnExpired(fn) { onExpired = fn; },
+
+    /** بدء التصفح بحساب مستخدم آخر بجلسة أنشأتها دالة المدير (بلا رمز تجديد) */
+    startActing(d) {
+      if (!session || acting) throw new ApiError('سجّل الدخول بحسابك أولاً.', 401);
+      acting = {
+        access_token: d.access_token,
+        expires_at: d.expires_at || Math.floor(Date.now() / 1000) + (d.expires_in || 3600),
+        user: d.user,
+      };
+      writeAs(acting);
+      session = acting;
+    },
+    stopActing() { if (acting) endActing(); },
 
     async signIn(email, password) {
       const { data } = await raw('/auth/v1/token?grant_type=password', { method: 'POST', body: { email, password } });
       return saveSession(data);
     },
+    /** الدخول بالرقم عبر Edge Function تبحث عن البريد على الخادم */
+    async signInVia(fn, login, password) {
+      try {
+        const { data } = await raw(`/functions/v1/${fn}`, { method: 'POST', body: { login, password } });
+        return saveSession(data);
+      } catch (e) {
+        if (e.status === 404) throw new ApiError(`دالة الدخول بالرقم غير منشورة على Supabase (${fn}). استخدم البريد أو راجع دليل التركيب.`, 404);
+        throw e;
+      }
+    },
     async signOut() {
+      if (acting) endActing();
       try { if (session) await raw('/auth/v1/logout', { method: 'POST', token: session.access_token }); } catch { /* الخروج محلياً على أي حال */ }
       clearSession();
     },
     async ensureSession() {
       if (!session) return null;
-      try { await token(); return session; } catch { return null; }
+      try { await token(); return session; } catch (e) {
+        // انتهت جلسة «الدخول بحساب»: نكمل بجلسة المدير
+        if (e.code === 'acting_expired' && session) { try { await token(); return session; } catch { /* */ } }
+        return null;
+      }
     },
     async updatePassword(password) {
+      if (acting) throw new ApiError('لا يمكن تغيير كلمة المرور أثناء الدخول بحساب مستخدم آخر.', 403);
       await authed('/auth/v1/user', { method: 'PUT', body: { password } });
     },
 
@@ -179,7 +236,7 @@ export function createClient({ url, anonKey, schema = 'public' }) {
         const { data } = await authed(`/functions/v1/${fn}`, { method: 'POST', body });
         return data;
       } catch (e) {
-        if (e.status === 404) throw new ApiError('دالة إدارة المستخدمين غير منشورة على Supabase (admin-users). راجع دليل التركيب.', 404);
+        if (e.status === 404) throw new ApiError(`دالة إدارة المستخدمين غير منشورة على Supabase (${fn}). راجع دليل التركيب.`, 404);
         throw e;
       }
     },

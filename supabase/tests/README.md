@@ -31,3 +31,11 @@ for f in supabase/sql/0[1-4]*.sql; do $P -d t -f "$f"; done
 
 python3 supabase/tests/run_tests.py
 ```
+
+## اختبار دوال Edge
+
+`sh supabase/tests/functions/run.sh` يشغّل دالتي `admin-users` و`auth-login` على محاكاة لخدمة الدخول وقاعدة البيانات، ويتحقق من:
+- الدخول بالرقم المدني أو الوظيفي، وبالبريد؛
+- إضافة الرقم وتغييره؛
+- البريد الداخلي؛
+- رفض التكرار.

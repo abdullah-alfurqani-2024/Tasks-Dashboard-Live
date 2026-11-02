@@ -2,15 +2,15 @@
 import { CONFIG } from '../config.js';
 import { db, backendName, isDemo } from '../data/index.js';
 import { html, mount, $, formData } from '../core/dom.js';
-import { state } from '../core/store.js';
+import { state, loadReference } from '../core/store.js';
 import { PW_FLOOR } from '../core/settings.js';
 import { fmtDateTime } from '../core/format.js';
 import { setTitle } from '../core/session.js';
 import { icon } from '../ui/icons.js';
-import { busy, toast, confirmBox } from '../ui/feedback.js';
+import { busy, toast, toastError, confirmBox } from '../ui/feedback.js';
 import { pageHead, newPage } from '../ui/parts.js';
 
-export const VERSION = '1.0.0';
+import { VERSION } from '../version.js';
 
 export default async function settings(ctx, main) {
   setTitle('الإعدادات');
@@ -42,13 +42,24 @@ export default async function settings(ctx, main) {
         <div class="card-head"><h2>معلومات النظام</h2></div>
         <div class="card-pad stack small">
           <div>الإصدار: <b class="ltr">${VERSION}</b></div>
-          <div>قاعدة البيانات: <b class="ltr">${backendName}</b>${isDemo ? ' (تجريبي — داخل المتصفح)' : ''}</div>
+          <div>النسخة: <b>${CONFIG.env === 'production' ? 'الإنتاج' : 'التجربة'}</b></div>
+          <div>قاعدة البيانات: <b class="ltr">${backendName}</b>${isDemo ? ' (تجريبي — داخل المتصفح)' : html` · السكيما <span class="ltr">${CONFIG.supabase.schema}</span>`}</div>
           ${!isDemo ? html`<div>الخادم: <span class="ltr">${CONFIG.supabase.url}</span></div>` : ''}
           <div>المنطقة الزمنية: <span class="ltr">${CONFIG.timeZone}</span></div>
           <div>وقت الجهاز: ${fmtDateTime(new Date().toISOString())}</div>
           ${isDemo ? html`<div><button class="btn btn-danger" data-reset>${icon('restore')}إعادة البيانات التجريبية</button></div>` : ''}
         </div>
       </div>
+      ${CONFIG.env === 'staging' && db.maintenance?.refreshFromProduction ? html`
+      <div class="card span-2">
+        <div class="card-head"><h2>بيانات نسخة التجربة</h2></div>
+        <div class="card-pad stack">
+          <p style="margin:0">يستبدل كل بيانات التجربة بنسخة حديثة من الإنتاج: المستخدمون، والقوائم، والإعدادات، وكل المهام.
+            ما أضفته أو عدّلته هنا للتجربة سيُحذف. <b>بيانات الإنتاج لا تتغير</b> (تُقرأ فقط).</p>
+          <div><button class="btn btn-primary" data-refresh>${icon('download')}تحديث بيانات التجربة من الإنتاج</button></div>
+          <div class="small muted" data-refresh-result></div>
+        </div>
+      </div>` : ''}
     </div>`);
 
   const form = $('#set-form', root);
@@ -68,6 +79,18 @@ export default async function settings(ctx, main) {
       } catch (ex) { err.textContent = ex.message; err.hidden = false; }
     });
   };
+  $('[data-refresh]', root)?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    if (!(await confirmBox({ title: 'تحديث بيانات التجربة', message: 'ستُستبدل كل مهام التجربة وسجل تعديلاتها بنسخة من الإنتاج. هل تريد المتابعة؟', okText: 'تحديث', danger: true }))) return;
+    await busy(btn, async () => {
+      try {
+        const r = await db.maintenance.refreshFromProduction();
+        await loadReference({ force: true });
+        $('[data-refresh-result]', root).textContent = `آخر تحديث: ${fmtDateTime(r.at)} — ${r.users} مستخدم، ${r.tasks} مهمة.`;
+        toast(`تم نسخ ${r.tasks} مهمة و${r.users} مستخدماً من الإنتاج.`, 'ok');
+      } catch (ex) { toastError(ex); }
+    });
+  });
   $('[data-reset]', root)?.addEventListener('click', async () => {
     if (await confirmBox({ title: 'إعادة البيانات التجريبية', message: 'ستُحذف كل التعديلات التجريبية وتعود البيانات لحالتها الأولى.', okText: 'إعادة', danger: true })) db.resetDemo();
   });

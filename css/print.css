@@ -4,7 +4,7 @@
   --bg: #fff; --surface: #fff; --surface-2: #f3f5f8; --ink: #111; --muted: #555; --line: #ccc; --line-strong: #bbb;
 }
 body { background: #fff; font-size: 10.5pt; }
-.skip, .topbar, .demo-banner, .toasts, #modal-root, .no-print, .filters, .page-head .actions, .table-foot .pager, .row-actions { display: none !important; }
+.skip, .topbar, .demo-banner, .as-banner, .toasts, #modal-root, .no-print, .filters, .page-head .actions, .table-foot .pager, .row-actions { display: none !important; }
 .main { max-width: none; padding: 0; }
 .card { box-shadow: none; border: 0; }
 .print-only { display: block !important; }

@@ -3,12 +3,14 @@
  */
 import { createClient, ApiError } from './client.js';
 import { normalizeSettings } from '../../core/settings.js';
+import { latinDigits as latin } from '../../core/format.js';
 
 const TASK_COLS = 'id,engineer_id,engineer_name,engineer_short,ref_no,requester,employee_name,subject,received_date,completed_date,notes,task_type_id,task_type,correspondence_type_id,correspondence_type,status_id,status,status_kind,delay_reason,duration_days,created_at,created_by,updated_at,updated_by,deleted_at,deleted_by';
 const LOOKUP_TABLES = { taskTypes: 'task_types', correspondenceTypes: 'correspondence_types', statuses: 'task_statuses' };
 
+const INTERNAL = '@tasks.internal';
 const toUser = (r) => r && ({
-  id: r.id, email: r.email, fullName: r.full_name, shortName: r.short_name || '',
+  id: r.id, email: r.email?.endsWith(INTERNAL) ? '' : r.email, loginNo: r.login_no || '', fullName: r.full_name, shortName: r.short_name || '',
   role: r.role, isActive: r.is_active, mustChangePassword: r.must_change_password,
 });
 
@@ -49,6 +51,7 @@ function utcOffset(timeZone) {
 export function createAdapter(config) {
   const c = createClient(config.supabase);
   const tz = utcOffset(config.timeZone);
+  const fn = config.supabase.adminFunction || 'admin-users';
   let me = null;
 
   async function loadMe() {
@@ -56,11 +59,18 @@ export function createAdapter(config) {
     if (!uid) return null;
     const rows = await c.select('profiles', { id: `eq.${uid}`, select: '*' });
     if (!rows.length) {
+      if (c.acting) { c.stopActing(); throw new ApiError('المستخدم غير موجود في نسخة التجربة.'); }
       await c.signOut();
       throw new ApiError('حسابك غير مسجّل في النظام. تواصل مع مدير النظام.');
     }
     me = toUser(rows[0]);
+    if (c.acting) {
+      // التصفح بحساب مستخدم آخر: لا نطلب تغيير كلمة المرور (حسابات الدخول مشتركة مع الإنتاج)
+      me.actingAs = true;
+      me.mustChangePassword = false;
+    }
     if (!me.isActive) {
+      if (c.acting) { c.stopActing(); throw new ApiError('هذا الحساب معطّل في نسخة التجربة.'); }
       await c.signOut();
       throw new ApiError('هذا الحساب معطّل. تواصل مع مدير النظام.');
     }
@@ -80,11 +90,24 @@ export function createAdapter(config) {
         if (!(await c.ensureSession())) return null;
         try { return await loadMe(); } catch { return null; }
       },
-      async signIn(email, password) {
-        await c.signIn(email.trim().toLowerCase(), password);
+      async signIn(login, password) {
+        const id = latin(login).trim().toLowerCase();
+        if (id.includes('@')) await c.signIn(id, password);
+        else await c.signInVia(config.supabase.loginFunction || 'auth-login', id, password);
         return loadMe();
       },
       async signOut() { me = null; await c.signOut(); },
+      /** التجربة فقط: التصفح بحساب مستخدم آخر دون كلمة مروره */
+      async actAs(id) {
+        const r = await c.invoke(fn, { action: 'impersonate', id });
+        c.startActing(r.session);
+        try { return await loadMe(); } catch (e) { c.stopActing(); throw e; }
+      },
+      /** العودة لحساب المدير */
+      async stopActing() {
+        c.stopActing();
+        return loadMe();
+      },
       async changePassword(password) {
         await c.updatePassword(password);
         await c.rpc('mark_password_changed');
@@ -155,8 +178,8 @@ export function createAdapter(config) {
         return (await c.select('profiles', { select: '*', order: 'full_name.asc' })).map(toUser);
       },
       async create(u) {
-        const r = await c.invoke('admin-users', {
-          action: 'create', email: u.email, password: u.password, full_name: u.fullName, short_name: u.shortName, role: u.role,
+        const r = await c.invoke(fn, {
+          action: 'create', login_no: u.loginNo || null, email: u.email || '', password: u.password, full_name: u.fullName, short_name: u.shortName, role: u.role,
         });
         return toUser(r.user);
       },
@@ -164,14 +187,19 @@ export function createAdapter(config) {
         const body = { action: 'update', id };
         if (u.fullName !== undefined) body.full_name = u.fullName;
         if (u.email !== undefined) body.email = u.email;
+        if (u.loginNo !== undefined) body.login_no = u.loginNo || null;
         if (u.shortName !== undefined) body.short_name = u.shortName;
         if (u.role !== undefined) body.role = u.role;
         if (u.isActive !== undefined) body.is_active = u.isActive;
-        const r = await c.invoke('admin-users', body);
+        const r = await c.invoke(fn, body);
         return toUser(r.user);
       },
       async resetPassword(id, password) {
-        await c.invoke('admin-users', { action: 'reset_password', id, password });
+        await c.invoke(fn, { action: 'reset_password', id, password });
+      },
+      /** opts: { mode: 'same'|'loginNo', password?, force, includeInactive } ← { reset, skipped: [{name, reason}] } */
+      async resetAll(o) {
+        return c.invoke(fn, { action: 'reset_all', mode: o.mode === 'loginNo' ? 'login_no' : 'same', password: o.password, force: o.force, include_inactive: o.includeInactive });
       },
     },
 
@@ -193,6 +221,14 @@ export function createAdapter(config) {
           { key: 'force_password_change', value: n.forcePasswordChange },
         ], 'key');
         return this.load();
+      },
+    },
+
+    maintenance: {
+      /** نسخة التجربة فقط: نسخ بيانات الإنتاج إلى التجربة */
+      async refreshFromProduction() {
+        const r = await c.rpc('refresh_from_production');
+        return { users: r.users, tasks: r.tasks, at: r.at };
       },
     },
 

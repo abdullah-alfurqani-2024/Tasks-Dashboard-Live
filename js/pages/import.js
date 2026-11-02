@@ -189,7 +189,7 @@ export default async function importPage(ctx, main) {
     const L = state.lookups;
     const engs = engineers({ includeInactive: true });
     const engIndex = new Map();
-    for (const e of engs) for (const n of [e.fullName, e.shortName, e.email]) if (n) engIndex.set(normalizeAr(n), e);
+    for (const e of engs) for (const n of [e.fullName, e.shortName, e.email, e.loginNo]) if (n) engIndex.set(normalizeAr(n), e);
     // كلمات الاسم بدون «بن/بنت» لمطابقة «أنس الغيلاني» مع «أنس بن سالم بن علي الغيلاني»
     const words = (s) => normalizeAr(s).split(' ').filter((w) => w && !['بن', 'بنت', 'ابن'].includes(w));
     const inOrder = (part, whole) => { let i = 0; for (const w of whole) if (w === part[i]) i++; return i === part.length; };

@@ -24,6 +24,25 @@ export async function endSession({ silent = false } = {}) {
   navigate('/login', { replace: true });
 }
 
+/** التجربة: التصفح بحساب مستخدم آخر */
+export async function actAs(id) {
+  const u = await db.auth.actAs(id);
+  resetState();
+  await startSession(u);
+  navigate(homePath(), { replace: true });
+}
+
+/** العودة لحساب المدير بعد التصفح بحساب مستخدم آخر */
+export async function stopActing() {
+  let u = null;
+  try { u = await db.auth.stopActing(); } catch { /* */ }
+  resetState();
+  if (!u) return endSession({ silent: true });
+  await startSession(u);
+  navigate('/users', { replace: true });
+}
+
 export function setTitle(t) {
-  document.title = t ? `${t} — ${CONFIG.appName}` : CONFIG.appName;
+  const base = CONFIG.env === 'staging' ? `[تجربة] ${CONFIG.appName}` : CONFIG.appName;
+  document.title = t ? `${t} — ${base}` : base;
 }
