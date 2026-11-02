@@ -4,7 +4,7 @@
  */
 import { db } from '../data/index.js';
 import { html, $, formData } from '../core/dom.js';
-import { state, can, canEditTask, isLocked, engineers, activeItems, userName } from '../core/store.js';
+import { state, can, canEditTask, isLocked, engineers, activeItems, userName, refreshReviewCount } from '../core/store.js';
 import { today, daysBetween, fmtDateTime, daysAr } from '../core/format.js';
 import { LABEL } from '../core/fields.js';
 import { navigate } from '../core/router.js';
@@ -36,6 +36,11 @@ export function openTaskForm({ task = null, requesters = [], onSaved }) {
   const body = html`
     ${locked ? html`<div class="alert warn" style="margin-bottom:14px">${icon('lock')} هذه المهمة مقفلة: مضى على إنجازها أكثر من ${daysAr(state.settings.editLockDays)}. اطلب من مدير النظام أو رئيس القسم تعديلها.</div>` : ''}
     ${t.deletedAt ? html`<div class="alert bad" style="margin-bottom:14px">هذه المهمة محذوفة (${fmtDateTime(t.deletedAt)}).</div>` : ''}
+    ${!isNew && t.reviewReasons?.length ? html`<div class="alert warn" style="margin-bottom:14px" id="t-review">
+      <b>تحتاج مراجعة</b> (من الاستيراد):
+      <ul style="margin:6px 0 0;padding-inline-start:20px">${t.reviewReasons.map((x) => html`<li>${x}</li>`)}</ul>
+      ${editable ? html`<label class="check" style="margin-top:8px"><input type="checkbox" id="t-reviewed"> <b>تمت المراجعة</b>: أصلحت ما يلزم، وتُزال العلامة عند الحفظ</label>` : ''}
+    </div>` : ''}
     <form class="form-grid" novalidate id="task-form">
       ${can('tasks.assign') ? html`
         <div class="field span-2"><label for="t-eng">${LABEL.engineerId} <span class="req">*</span></label>
@@ -138,10 +143,12 @@ export function openTaskForm({ task = null, requesters = [], onSaved }) {
       taskTypeId: v.taskTypeId ? Number(v.taskTypeId) : null, correspondenceTypeId: v.correspondenceTypeId ? Number(v.correspondenceTypeId) : null,
       statusId: Number(v.statusId), delayReason: v.delayReason,
     };
+    if ($('#t-reviewed', m.el)?.checked) input.reviewReasons = [];
     await busy(btn, async () => {
       try {
         const saved = isNew ? await db.tasks.create(input) : await db.tasks.update(t.id, input);
-        toast(isNew ? `أُضيفت المهمة #${saved.id}.` : 'تم حفظ التعديلات.', 'ok');
+        toast(isNew ? `أُضيفت المهمة #${saved.id}.` : input.reviewReasons ? 'تم الحفظ وأُزيلت علامة المراجعة.' : 'تم حفظ التعديلات.', 'ok');
+        if (input.reviewReasons) refreshReviewCount();
         m.close();
         onSaved?.(saved, isNew ? 'create' : 'update');
       } catch (e) {

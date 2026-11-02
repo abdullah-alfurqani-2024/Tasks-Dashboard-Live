@@ -142,6 +142,20 @@ check('بعد الحذف: إضافة مهمة في الإنتاج تبدأ من 
 check('بعد الحذف: السجل يعمل', True, 'select count(*) from support_tasks.task_audit', None, '1')
 sql(f"insert into tasks (engineer_id, subject, received_date, status_id) values ('{U['eng2']}', 'ثانية', '2026-11-02', {OPEN})")
 
+# ---------- مهام تحتاج مراجعة (10_review.sql) ----------
+rid = check('المدير (الاستيراد) يضيف مهمة مع أسباب المراجعة', True,
+      f"insert into tasks (engineer_id, subject, received_date, status_id, review_reasons) values ('{U['eng1']}', 'مراجعة', '2026-11-01', {OPEN}, array['تاريخ الاستقبال غير مفهوم «x»']) returning id", 'admin')
+check('العرض يحتوي أسباب المراجعة', True, f"select review_reasons[1] from v_tasks where id = {rid}", 'eng1', 'غير مفهوم')
+check('المهندس لا يضيف أسباب مراجعة', False,
+      f"insert into tasks (subject, received_date, status_id, review_reasons) values ('x', '2026-11-01', {OPEN}, array['y'])", 'eng1', 'الاستيراد')
+check('المهندس لا يغيّر الأسباب', False, f"update tasks set review_reasons = array['أخرى'] where id = {rid}", 'eng1', 'الاستيراد')
+check('المهندس يعدّل مهمته والأسباب باقية', True, f"update tasks set notes = 'أصلحتها' where id = {rid} returning array_length(review_reasons, 1)", 'eng1', '1')
+check('المهندس يضغط «تمت المراجعة»', True, f"update tasks set review_reasons = null where id = {rid} returning coalesce(array_length(review_reasons, 1), 0)", 'eng1', '0')
+check('المصفوفة الفارغة تُحفظ null', True,
+      f"insert into tasks (engineer_id, subject, received_date, status_id, review_reasons) values ('{U['eng1']}', 'فارغة', '2026-11-01', {OPEN}, '{{}}') returning review_reasons is null", 'admin', 't')
+check('سجل التعديلات يسجّل المراجعة', True,
+      f"select count(*) > 0 from task_audit where task_id = {rid} and 'review_reasons' = any(changed_fields)", None, 't')
+
 # ---------- نسخة التجربة: الإعداد والنسخ وحذف كل المهام ----------
 setup_stg = open(os.path.join(os.path.dirname(__file__), '..', 'staging', 'setup_staging.sql'), encoding='utf-8').read()
 ok, out = sql(setup_stg)

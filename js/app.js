@@ -4,7 +4,7 @@
 import { CONFIG } from './config.js';
 import { db, isDemo } from './data/index.js';
 import { html, mount, $, on } from './core/dom.js';
-import { state, can, loadReference, ROLE_LABELS } from './core/store.js';
+import { state, can, loadReference, ROLE_LABELS, setReviewCountListener } from './core/store.js';
 import { route, fallback, setGuard, start, navigate, currentPath, resolve } from './core/router.js';
 import { setChrome, homePath, endSession, stopActing } from './core/session.js';
 import { icon } from './ui/icons.js';
@@ -89,6 +89,7 @@ function renderChrome() {
     <a class="brand" href="#${homePath()}"><span class="brand-mark">${icon('check')}</span><span class="name">${CONFIG.appName}</span></a>
     <nav class="nav" id="nav" aria-label="القائمة الرئيسية">
       ${links.filter((n) => !n.perm).map((n) => html`<a href="#${n.path}" data-path="${n.path}">${icon(n.icon)}<span>${n.label}</span></a>`)}
+      ${state.reviewCount ? html`<a href="#/tasks?period=all&review=1" data-path="/review" title="مهام من الاستيراد تحتاج مراجعة">${icon('eye')}<span>تحتاج مراجعة</span><span class="badge warn">${state.reviewCount}</span></a>` : ''}
       ${links.some((n) => n.perm) ? html`<div class="dropdown nav-more">
         <button data-act="more" aria-haspopup="true" aria-expanded="false">${icon('settings')}<span>الإدارة</span><span aria-hidden="true">▾</span></button>
         <div class="dropdown-menu" id="more-menu" hidden>
@@ -175,6 +176,7 @@ topbar.addEventListener('click', (e) => { if (e.target.closest('.nav a, .dropdow
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenus(); });
 
 setChrome(renderChrome);
+setReviewCountListener(() => { if (state.user) renderChrome(); });
 
 /* ───────────── الإقلاع ───────────── */
 async function boot() {

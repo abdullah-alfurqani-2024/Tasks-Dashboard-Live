@@ -1,10 +1,14 @@
 /**
  * استيراد المهام من Excel أو CSV (مدير النظام)
- * 1) اختيار الملف  2) مطابقة الأعمدة والخيارات  3) معاينة الأخطاء  4) الاستيراد
+ * 1) اختيار الملف  2) مطابقة الأعمدة والخيارات  3) المعاينة  4) الاستيراد
+ *
+ * لا يُفقد أي صف فيه بيانات: الصف الذي فيه مشكلة (تاريخ غير مفهوم، موضوع فارغ، مكرر محتمل…)
+ * يُصلَح تلقائياً ويُستورد مع «أسباب المراجعة»، فيظهر في «تحتاج مراجعة» ليصلحه المهندس لاحقاً.
+ * لا يمنع الاستيراد إلا اسم مهندس لا يطابق أي حساب، وعلى المدير اختيار الحساب المقابل له.
  */
 import { db } from '../data/index.js';
 import { html, mount, $, on } from '../core/dom.js';
-import { state, engineers, loadReference } from '../core/store.js';
+import { state, engineers, loadReference, refreshReviewCount } from '../core/store.js';
 import { parseDate, normalizeAr, fmtDate, num, today } from '../core/format.js';
 import { setTitle } from '../core/session.js';
 import { readXlsx } from '../lib/xlsx.js';
@@ -62,7 +66,7 @@ const cellText = (v) => (v == null ? '' : typeof v === 'number' ? String(v) : St
 
 export default async function importPage(ctx, main) {
   setTitle('الاستيراد');
-  const S = { step: 1, fileName: '', sheets: [], sheetIdx: 0, headerRow: -1, map: {}, engineerMode: 'column', fixedEngineer: '', createMissing: true, skipDup: true, autoFix: true, parsed: null, alias: {}, existing: null };
+  const S = { step: 1, fileName: '', sheets: [], sheetIdx: 0, headerRow: -1, map: {}, engineerMode: 'column', fixedEngineer: '', createMissing: true, skipDup: true, blankEngineer: '', parsed: null, alias: {}, existing: null };
   const root = newPage(main);
   mount(root, html`
     ${pageHead({ title: 'استيراد المهام', sub: 'من ملف Excel (xlsx) أو CSV — مثل ملفات المهندسين أو الملف الرئيسي في Google Sheets بعد تنزيله.',
@@ -153,10 +157,13 @@ export default async function importPage(ctx, main) {
           </div>
           <h3>خيارات</h3>
           <label class="check"><input type="checkbox" data-k="createMissing" ${S.createMissing ? 'checked' : ''}> إضافة قيم القوائم غير الموجودة (نوع المهمة، نوع المراسلة، الحالة) تلقائياً</label>
-          <label class="check"><input type="checkbox" data-k="skipDup" ${S.skipDup ? 'checked' : ''}> تجاهل المهام المكررة (نفس المهندس + تاريخ الاستقبال + الموضوع موجودة مسبقاً)</label>
-          <label class="check"><input type="checkbox" data-k="autoFix" ${S.autoFix ? 'checked' : ''}> إصلاح تلقائي للأخطاء البسيطة بدلاً من رفض الصف:
-            الموضوع الفارغ يصبح «(بدون موضوع)»، والمكتملة بلا تاريخ انتهاء أو بتاريخ انتهاء قبل الاستقبال تأخذ تاريخ الاستقبال.
-            يُكتب ما أُصلح في «الملاحظات» بعلامة <b>[استيراد]</b> لتراجعه لاحقاً بالبحث عنها.</label>
+          <label class="check"><input type="checkbox" data-k="skipDup" ${S.skipDup ? 'checked' : ''}> عدم تكرار المهام الموجودة في النظام مسبقاً (نفس المهندس + تاريخ الاستقبال + الموضوع).
+            إذا كانت المهمة موجودة مرة واحدة وتكررت في الملف مرتين، يُستورد الصف الثاني.</label>
+          ${S.engineerMode === 'column' ? html`<div class="field" style="max-width:420px"><label for="i-blank">المهمة التي لا يوجد فيها اسم مهندس تُسند إلى</label>
+            <select class="input" id="i-blank" data-k="blankEngineer">${options(engs.map((e) => ({ id: e.id, name: e.fullName, isActive: e.isActive })), S.blankEngineer, '— اختر (عند الحاجة) —')}</select>
+            <span class="hint">وتظهر في «تحتاج مراجعة» ليُسندها رئيس القسم أو المدير للمهندس الصحيح.</span></div>` : ''}
+          <div class="alert small">لا يُترك أي صف فيه بيانات: ما فيه مشكلة (تاريخ غير مفهوم، موضوع فارغ، مهمة مكررة محتملة…) يُصلَح تلقائياً
+            ويُستورد مع علامة <b>«تحتاج مراجعة»</b> وسببها، ليصلحه المهندس لاحقاً.</div>
           <div><button class="btn btn-primary" data-act="preview">${icon('eye')}معاينة</button></div>
         </div>
       </div>`);
@@ -179,6 +186,7 @@ export default async function importPage(ctx, main) {
       S.map = autoMap(rows[S.headerRow] || []);
       step2();
     } else if (k === 'fixedEngineer') S.fixedEngineer = el.value;
+    else if (k === 'blankEngineer') S.blankEngineer = el.value;
     else S[k] = el.checked;
   });
 
@@ -225,46 +233,58 @@ export default async function importPage(ctx, main) {
     const defOpen = L.statuses.find((s) => s.isActive && s.kind === 'open');
     const defDone = L.statuses.find((s) => s.isActive && s.kind === 'done');
 
-    let existing = new Set();
+    // المهام الموجودة في النظام: كم مرة توجد كل مهمة (لا نكرر الموجود، ونستورد الزائد عليه)
+    let existing = new Map();
     if (S.skipDup) {
       if (!S.existing) {
         const all = await db.tasks.list({ deleted: 'include' });
-        S.existing = new Set(all.map((t) => `${t.engineerId}|${t.receivedDate}|${normalizeAr(t.subject)}`));
+        S.existing = new Map();
+        for (const t of all) { const k = `${t.engineerId}|${t.receivedDate}|${normalizeAr(t.subject)}`; S.existing.set(k, (S.existing.get(k) || 0) + 1); }
       }
-      existing = S.existing;
+      existing = new Map(S.existing);
     }
-    const seen = new Set();
     const missing = { taskTypes: new Set(), correspondenceTypes: new Set(), statuses: new Set() };
     const out = [];
+    const blank = [];      // صفوف فيها خلايا لكن بلا أي بيانات مهمة (مثل اسم مهندس وحده)
+    let empty = 0;         // صفوف فارغة تماماً
     const g = (r, k) => (S.map[k] == null ? '' : r[S.map[k]]);
+    const blankEng = S.blankEngineer ? engs.find((e) => e.id === S.blankEngineer) : null;
+    const t0 = today();
 
     rows.forEach((r, i) => {
-      if (!r || r.every((c) => c == null || String(c).trim() === '')) return;
+      if (!r || r.every((c) => c == null || String(c).trim() === '')) { empty++; return; }
       const line = S.headerRow + 2 + i;
-      const errors = [];
+      const reasons = [];   // أسباب المراجعة (تُحفظ مع المهمة)
+      const errors = [];    // ما يمنع الاستيراد: المهندس فقط
       const subject = cellText(g(r, 'subject'));
       const recRaw = g(r, 'receivedDate'), doneRaw = g(r, 'completedDate');
-      const receivedDate = parseDate(recRaw);
+      const receivedParsed = parseDate(recRaw);
       const completedDate = parseDate(doneRaw);
-      if (!subject && !receivedDate && !cellText(g(r, 'refNo'))) return; // صف فارغ عملياً (مثلاً صف معادلات)
-      const fixes = [];
+      const content = ['subject', 'receivedDate', 'completedDate', 'refNo', 'requester', 'employeeName', 'notes', 'delayReason'].some((k) => cellText(g(r, k)));
+      if (!content) { blank.push({ line, text: r.map(cellText).filter(Boolean).join(' · ') }); return; }
+
       let subjectV = subject;
-      if (!subject) { if (S.autoFix) { subjectV = '(بدون موضوع)'; fixes.push('الموضوع فارغ'); } else errors.push('الموضوع فارغ'); }
-      if (!receivedDate) errors.push(cellText(recRaw) ? `تاريخ الاستقبال غير مفهوم «${cellText(recRaw)}»` : 'تاريخ الاستقبال فارغ');
-      if (cellText(doneRaw) && !completedDate) errors.push(`تاريخ الانتهاء غير مفهوم «${cellText(doneRaw)}»`);
+      if (!subject) { subjectV = '(بدون موضوع)'; reasons.push('الموضوع فارغ'); }
       let completedV = completedDate;
-      if (receivedDate && completedDate && completedDate < receivedDate) {
-        if (S.autoFix) { completedV = receivedDate; fixes.push(`تاريخ الانتهاء ${fmtDate(completedDate)} قبل الاستقبال`); } else errors.push('تاريخ الانتهاء قبل الاستقبال');
+      if (cellText(doneRaw) && !completedDate) reasons.push(`تاريخ الانتهاء غير مفهوم «${cellText(doneRaw)}»`);
+      let receivedDate = receivedParsed;
+      if (!receivedParsed) {
+        receivedDate = completedV || t0;
+        reasons.push(`${cellText(recRaw) ? `تاريخ الاستقبال غير مفهوم «${cellText(recRaw)}»` : 'تاريخ الاستقبال فارغ'}، ووُضع ${completedV ? 'تاريخ الانتهاء' : 'تاريخ الاستيراد'} مكانه`);
+      }
+      if (completedV && completedV < receivedDate) {
+        reasons.push(`تاريخ الانتهاء ${fmtDate(completedV)} قبل تاريخ الاستقبال، ووُضع تاريخ الاستقبال مكانه`);
+        completedV = receivedDate;
       }
 
       let eng = null;
+      const engName = cellText(g(r, 'engineer'));
       if (S.engineerMode === 'fixed') eng = engs.find((e) => e.id === S.fixedEngineer) || null;
-      else {
-        const name = cellText(g(r, 'engineer'));
-        eng = findEng(name);
-        if (!eng && name) unknown.set(name, (unknown.get(name) || 0) + 1);
-        if (!eng) errors.push(name ? `مهندس غير معروف «${name}»` : 'اسم المهندس فارغ');
-      }
+      else if (engName) {
+        eng = findEng(engName);
+        if (!eng) { unknown.set(engName, (unknown.get(engName) || 0) + 1); errors.push(`مهندس غير معروف «${engName}»`); }
+      } else if (blankEng) { eng = blankEng; reasons.push('اسم المهندس فارغ في الملف'); }
+      else errors.push('اسم المهندس فارغ: اختر في «مطابقة الأعمدة» لمن تُسند هذه المهام');
 
       const ref = {};
       for (const [k, kind] of Object.entries(LOOKUP_KEYS)) {
@@ -273,31 +293,35 @@ export default async function importPage(ctx, main) {
         const item = lk(kind, name);
         if (item) ref[k] = item;
         else if (S.createMissing) { missing[kind].add(name); ref[k] = { pending: name }; }
-        else errors.push(`${TARGETS.find((t) => t.key === k).label} غير موجود «${name}»`);
+        else reasons.push(`${TARGETS.find((t) => t.key === k).label} «${name}» غير موجود في القوائم`);
       }
       let status = ref.status;
       if (!status) status = completedV ? defDone : defOpen;
       const kind = status?.kind || (status?.pending ? pendingKind[normalizeAr(status.pending)] : null);
-      if (kind === 'done' && !completedV) {
-        if (S.autoFix && receivedDate) { completedV = receivedDate; fixes.push('مكتملة بدون تاريخ انتهاء'); } else errors.push('الحالة مكتملة بدون تاريخ انتهاء');
-      }
-      const notesRaw = cellText(g(r, 'notes'));
-      const notesV = fixes.length ? [notesRaw, `[استيراد] ${fixes.join('، ')}`].filter(Boolean).join(' — ') : notesRaw;
+      if (kind === 'done' && !completedV) { completedV = receivedDate; reasons.push('مكتملة بدون تاريخ انتهاء، ووُضع تاريخ الاستقبال'); }
 
       const task = {
         engineerId: eng?.id, refNo: cellText(g(r, 'refNo')), requester: cellText(g(r, 'requester')), employeeName: cellText(g(r, 'employeeName')),
-        subject: subjectV, receivedDate, completedDate: kind === 'open' ? null : completedV, notes: notesV, delayReason: cellText(g(r, 'delayReason')),
+        subject: subjectV, receivedDate, completedDate: kind === 'open' ? null : completedV, notes: cellText(g(r, 'notes')), delayReason: cellText(g(r, 'delayReason')),
         _ref: { ...ref, status },
       };
-      let dup = false;
-      if (!errors.length && S.skipDup) {
-        const key = `${eng.id}|${receivedDate}|${normalizeAr(subjectV)}`;
-        dup = existing.has(key) || seen.has(key);
-        seen.add(key);
-      }
-      out.push({ line, task, errors, fixes, dup, engName: eng?.fullName || cellText(g(r, 'engineer')), statusName: status?.name || status?.pending || '' });
+      let exists = false;
+      const key = eng ? `${eng.id}|${receivedDate}|${normalizeAr(subjectV)}` : '';
+      if (key && existing.get(key) > 0) { existing.set(key, existing.get(key) - 1); exists = true; }
+      out.push({ line, key, task, errors, reasons, exists, dup: false, engName: eng?.fullName || engName, statusName: status?.name || status?.pending || '' });
     });
-    return { rows: out, missing, unknown };
+
+    // المكرر المحتمل داخل الملف: يُستورد كله، مع علامة مراجعة على كل صفوف المجموعة
+    const groups = new Map();
+    for (const r of out) if (r.key && !r.exists && !r.errors.length) groups.set(r.key, [...(groups.get(r.key) || []), r]);
+    for (const list of groups.values()) {
+      if (list.length < 2) continue;
+      for (const r of list) {
+        r.dup = true;
+        r.reasons.push(`مكررة محتملة: نفس المهندس والتاريخ والموضوع في صفوف الملف ${list.map((x) => x.line).join('، ')}`);
+      }
+    }
+    return { rows: out, missing, unknown, blank, empty };
   }
 
   /* ───── الخطوة 3 ───── */
@@ -306,21 +330,32 @@ export default async function importPage(ctx, main) {
     if (S.engineerMode === 'column' && S.map.engineer == null) return toastError({ message: 'طابق عمود «اسم المهندس» أو اختر مهندساً واحداً.' });
     try { S.parsed = await busy(btn, parseRows); } catch (e) { return toastError(e); }
     S.step = 3; drawSteps();
-    const { rows, missing, unknown } = S.parsed;
+    const { rows, missing, unknown, blank, empty } = S.parsed;
     const engOpts = engineers({ includeInactive: true }).map((e) => ({ id: e.id, name: e.fullName, isActive: e.isActive }));
-    const ok = rows.filter((r) => !r.errors.length && !r.dup), bad = rows.filter((r) => r.errors.length), dup = rows.filter((r) => r.dup);
+    const go = rows.filter((r) => !r.errors.length && !r.exists);
+    const review = go.filter((r) => r.reasons.length), dup = go.filter((r) => r.dup);
+    const exists = rows.filter((r) => r.exists), stop = rows.filter((r) => r.errors.length);
+    const total = rows.length + blank.length;
     const miss = Object.entries(missing).filter(([, v]) => v.size);
-    const show = [...bad, ...ok.filter((r) => r.fixes.length), ...ok.filter((r) => !r.fixes.length), ...dup].slice(0, 300);
+    const show = [...stop, ...review, ...go.filter((r) => !r.reasons.length), ...exists].slice(0, 300);
     mount(stepBox, html`
       <div class="card">
         <div class="card-head"><h2>المعاينة</h2><div class="actions"><button class="btn btn-sm" data-act="back">رجوع</button></div></div>
         <div class="card-pad stack">
           <div class="chips">
-            <span class="chip"><span class="dot" style="color:var(--ok)"></span>جاهزة للاستيراد <b>${num(ok.length)}</b></span>
-            <span class="chip"><span class="dot" style="color:var(--bad)"></span>فيها أخطاء (لن تُستورد) <b>${num(bad.length)}</b></span>
-            ${S.skipDup ? html`<span class="chip"><span class="dot" style="color:var(--muted)"></span>مكررة (تُتجاهل) <b>${num(dup.length)}</b></span>` : ''}
-            ${S.autoFix ? html`<span class="chip"><span class="dot" style="color:var(--warn)"></span>أُصلحت تلقائياً (ضمن الجاهزة) <b>${num(ok.filter((r) => r.fixes.length).length)}</b></span>` : ''}
+            <span class="chip">صفوف فيها بيانات <b>${num(total)}</b></span>
+            <span class="chip"><span class="dot" style="color:var(--ok)"></span>ستُستورد <b>${num(go.length)}</b></span>
+            <span class="chip"><span class="dot" style="color:var(--warn)"></span>منها تحتاج مراجعة <b>${num(review.length)}</b></span>
+            ${dup.length ? html`<span class="chip"><span class="dot" style="color:var(--warn)"></span>منها مكررة محتملة <b>${num(dup.length)}</b></span>` : ''}
+            ${exists.length ? html`<span class="chip"><span class="dot" style="color:var(--muted)"></span>موجودة في النظام مسبقاً <b>${num(exists.length)}</b></span>` : ''}
+            ${blank.length ? html`<span class="chip"><span class="dot" style="color:var(--muted)"></span>بلا بيانات مهمة <b>${num(blank.length)}</b></span>` : ''}
+            ${stop.length ? html`<span class="chip"><span class="dot" style="color:var(--bad)"></span>تنتظر اختيار المهندس <b>${num(stop.length)}</b></span>` : ''}
           </div>
+          <div class="small ${go.length + exists.length + blank.length + stop.length === total ? 'muted' : 'bad'}">
+            المطابقة: ${num(go.length)} ستُستورد + ${num(exists.length)} موجودة مسبقاً + ${num(blank.length)} بلا بيانات مهمة + ${num(stop.length)} تنتظر المهندس = <b>${num(total)}</b> صفاً.
+            ${empty ? html` (وتجاهلنا ${num(empty)} صفاً فارغاً تماماً)` : ''}</div>
+          ${blank.length ? html`<div class="alert small"><b>صفوف بلا بيانات مهمة</b> (لا موضوع ولا تواريخ ولا رقم قيد ولا جهة ولا ملاحظات)، لا تُستورد:
+            ${blank.slice(0, 15).map((b) => html`<div>الصف ${b.line}: ${b.text || '—'}</div>`)}${blank.length > 15 ? html`<div>… والبقية في «تقرير الصفوف»</div>` : ''}</div>` : ''}
           ${miss.length ? html`<div class="alert warn">ستُضاف هذه القيم إلى القوائم: ${miss.map(([k, v]) => html`<div><b>${{ taskTypes: 'أنواع المهام', correspondenceTypes: 'أنواع المراسلات', statuses: 'الحالات' }[k]}:</b> ${[...v].join('، ')}</div>`)}
             ${missing.statuses.size ? html`<div class="small">نوع كل حالة جديدة: ${[...missing.statuses].map((n) => `«${n}» ← ${{ done: 'مكتملة', open: 'مفتوحة', cancelled: 'مغلقة بدون إنجاز' }[S.pendingKind[normalizeAr(n)]] || 'مفتوحة'}`).join('، ')}. يمكنك تغييره لاحقاً من صفحة القوائم.</div>` : ''}</div>` : ''}
           ${unknown.size ? html`<div class="alert bad">
@@ -331,17 +366,24 @@ export default async function importPage(ctx, main) {
             </div>
             <div class="row" style="margin-top:8px"><button class="btn btn-sm" data-act="recheck">${icon('restore')}إعادة الفحص</button></div>
           </div>` : ''}
-          ${bad.length ? html`<div class="row"><button class="btn btn-sm" data-act="errors">${icon('download')}تنزيل الأخطاء (CSV)</button></div>` : ''}
-          <div class="row"><button class="btn btn-primary" data-act="run" ${ok.length ? '' : 'disabled'}>${icon('upload')}استيراد ${num(ok.length)} مهمة</button></div>
+          ${stop.length && !unknown.size ? html`<div class="alert bad">${num(stop.length)} صفاً بلا اسم مهندس. اختر في «مطابقة الأعمدة» (زر رجوع) لمن تُسند.</div>` : ''}
+          <div class="row">
+            <button class="btn btn-primary" data-act="run" ${go.length && !stop.length ? '' : 'disabled'}>${icon('upload')}استيراد ${num(go.length)} مهمة</button>
+            <button class="btn" data-act="report">${icon('download')}تقرير الصفوف (CSV)</button>
+          </div>
+          ${stop.length ? html`<div class="small muted">الاستيراد ينتظر اختيار المهندس للصفوف أعلاه حتى لا يُترك أي صف.</div>` : ''}
         </div>
         <div class="table-wrap" style="max-height:60vh"><table class="table">
           <thead><tr><th>الصف</th><th>المهندس</th><th>الموضوع</th><th>الاستقبال</th><th>الانتهاء</th><th>الحالة</th><th>النتيجة</th></tr></thead>
           <tbody>${show.map((r) => html`<tr>
             <td class="num muted">${r.line}</td><td class="nowrap">${r.engName}</td><td class="subject"><div class="clip">${r.task.subject}</div></td>
             <td class="num nowrap">${fmtDate(r.task.receivedDate)}</td><td class="num nowrap">${fmtDate(r.task.completedDate)}</td><td>${r.statusName}</td>
-            <td>${r.errors.length ? html`<span class="badge bad">خطأ</span> <span class="small">${r.errors.join('، ')}</span>` : r.dup ? html`<span class="badge">مكررة</span>` : r.fixes.length ? html`<span class="badge warn">أُصلحت</span> <span class="small">${r.fixes.join('، ')}</span>` : html`<span class="badge ok">جاهزة</span>`}</td></tr>`)}</tbody>
+            <td>${r.errors.length ? html`<span class="badge bad">تنتظر</span> <span class="small">${r.errors.join('، ')}</span>`
+              : r.exists ? html`<span class="badge">موجودة مسبقاً</span>`
+              : r.reasons.length ? html`<span class="badge warn">تحتاج مراجعة</span> <span class="small">${r.reasons.join('، ')}</span>`
+              : html`<span class="badge ok">جاهزة</span>`}</td></tr>`)}</tbody>
         </table></div>
-        ${rows.length > show.length ? html`<div class="table-foot">تُعرض أول ${num(show.length)} من ${num(rows.length)} صف.</div>` : ''}
+        ${rows.length > show.length ? html`<div class="table-foot">تُعرض أول ${num(show.length)} من ${num(rows.length)} صف. التفاصيل كاملة في «تقرير الصفوف».</div>` : ''}
       </div>`);
   }
   const completedHint = () => 'مكتملة إذا كان لها تاريخ انتهاء، وإلا مفتوحة';
@@ -350,7 +392,7 @@ export default async function importPage(ctx, main) {
   async function step4() {
     const { rows, missing, unknown } = S.parsed;
     const engOpts = engineers({ includeInactive: true }).map((e) => ({ id: e.id, name: e.fullName, isActive: e.isActive }));
-    const ok = rows.filter((r) => !r.errors.length && !r.dup);
+    const ok = rows.filter((r) => !r.errors.length && !r.exists);
     S.step = 4; drawSteps();
     S.existing = null; // بعد الإدخال تتغير قائمة المكرر
     mount(stepBox, html`<div class="card card-pad stack"><h2>جارٍ الاستيراد…</h2><div class="progress"><div id="bar"></div></div><div class="small muted" id="msg">تجهيز القوائم…</div></div>`);
@@ -365,8 +407,9 @@ export default async function importPage(ctx, main) {
       }
       if (Object.values(missing).some((s) => s.size)) await loadReference({ force: true });
       const idOf = (kind, item) => (item?.pending ? state.lookups[kind].find((x) => normalizeAr(x.name) === normalizeAr(item.pending))?.id : item?.id) || null;
-      const list = ok.map(({ task }) => {
+      const list = ok.map(({ task, reasons }) => {
         const { _ref, ...t } = task;
+        const why = [...reasons];
         const statusId = idOf('statuses', _ref.status);
         // حماية أخيرة: نفس قاعدة قاعدة البيانات (المكتملة تحتاج تاريخ انتهاء، والمفتوحة بدونه)
         const k = state.lookups.statuses.find((x) => x.id === statusId)?.kind;
@@ -374,18 +417,22 @@ export default async function importPage(ctx, main) {
         if (k === 'open') completedDate = null;
         if (k === 'done' && !completedDate) {
           completedDate = t.receivedDate;
-          t.notes = [t.notes, '[استيراد] مكتملة بدون تاريخ انتهاء'].filter(Boolean).join(' — ');
+          why.push('مكتملة بدون تاريخ انتهاء، ووُضع تاريخ الاستقبال');
         }
-        return { ...t, completedDate, taskTypeId: idOf('taskTypes', _ref.taskType), correspondenceTypeId: idOf('correspondenceTypes', _ref.correspondenceType), statusId };
+        return { ...t, completedDate, reviewReasons: why, taskTypeId: idOf('taskTypes', _ref.taskType), correspondenceTypeId: idOf('correspondenceTypes', _ref.correspondenceType), statusId };
       });
       // 2) إدخال المهام على دفعات
       const n = await db.tasks.bulkCreate(list, (d, total) => { bar.style.width = `${Math.round((d / total) * 100)}%`; msg.textContent = `${num(d)} من ${num(total)}`; });
       toast(`تم استيراد ${num(n)} مهمة.`, 'ok');
-      mount(stepBox, html`<div class="card card-pad stack"><div class="alert ok">تم استيراد <b>${num(n)}</b> مهمة من «${S.fileName}».</div>
-        <div class="row"><a class="btn btn-primary" href="#/tasks?period=all">عرض المهام</a><button class="btn" data-act="restart">استيراد ملف آخر</button></div></div>`);
+      const nReview = list.filter((t) => t.reviewReasons.length).length;
+      await refreshReviewCount();
+      mount(stepBox, html`<div class="card card-pad stack"><div class="alert ok">تم استيراد <b>${num(n)}</b> مهمة من «${S.fileName}»${nReview ? html`، منها <b>${num(nReview)}</b> تحتاج مراجعة` : ''}.</div>
+        <div class="row"><a class="btn btn-primary" href="#/tasks?period=all">عرض المهام</a>
+          ${nReview ? html`<a class="btn" href="#/tasks?period=all&review=1">${icon('eye')}المهام التي تحتاج مراجعة</a>` : ''}
+          <button class="btn" data-act="restart">استيراد ملف آخر</button></div></div>`);
     } catch (e) {
       mount(stepBox, html`<div class="card card-pad stack"><div class="alert bad">توقف الاستيراد: ${e.message}</div>
-        <div class="small muted">الدفعات التي اكتملت قبل الخطأ حُفظت. أعد المعاينة مع خيار «تجاهل المكررة» لإكمال الباقي دون تكرار.</div>
+        <div class="small muted">الدفعات التي اكتملت قبل الخطأ حُفظت. أعد المعاينة مع خيار «عدم تكرار المهام الموجودة» لإكمال الباقي دون تكرار.</div>
         <div class="row"><button class="btn" data-act="back">رجوع للمطابقة</button></div></div>`);
     }
   }
@@ -397,9 +444,15 @@ export default async function importPage(ctx, main) {
     else if (a === 'recheck') { await loadReference({ force: true }); step3(b); }
     else if (a === 'back') step2();
     else if (a === 'run') step4();
-    else if (a === 'errors') {
-      const bad = S.parsed.rows.filter((r) => r.errors.length);
-      downloadBlob(toCsv([['الصف', 'المهندس', 'الموضوع', 'الأخطاء'], ...bad.map((r) => [r.line, r.engName, r.task.subject, r.errors.join(' | ')])]), `import-errors_${today()}.csv`);
+    else if (a === 'report') {
+      // كل صف في الملف ونتيجته: للتأكد أن لا شيء ضاع
+      const { rows, blank } = S.parsed;
+      const res = (r) => (r.errors.length ? 'تنتظر اختيار المهندس' : r.exists ? 'موجودة في النظام مسبقاً (لا تُستورد)' : r.reasons.length ? 'تُستورد وتحتاج مراجعة' : 'تُستورد');
+      const all = [
+        ...rows.map((r) => [r.line, res(r), r.engName, r.task.subject, fmtDate(r.task.receivedDate), fmtDate(r.task.completedDate), [...r.errors, ...r.reasons].join(' | ')]),
+        ...blank.map((b) => [b.line, 'بلا بيانات مهمة (لا تُستورد)', '', '', '', '', b.text]),
+      ].sort((x, y) => x[0] - y[0]);
+      downloadBlob(toCsv([['الصف', 'النتيجة', 'المهندس', 'الموضوع', 'الاستقبال', 'الانتهاء', 'التفاصيل'], ...all]), `import-report_${today()}.csv`);
     } else if (a === 'template') {
       const { writeXlsx } = await import('../lib/xlsx.js');
       const cols = TARGETS.map((t) => ({ label: t.label, width: t.key === 'subject' ? 40 : 18, type: /Date$/.test(t.key) ? 'date' : 'text' }));

@@ -90,7 +90,7 @@ export function createAdapter() {
     const lk = (k, id) => db.lookups[k].find((x) => x.id === id);
     const st = lk('statuses', t.statusId) || {};
     return {
-      ...t, engineerName: u.fullName, engineerShort: u.shortName,
+      ...t, reviewReasons: t.reviewReasons || [], engineerName: u.fullName, engineerShort: u.shortName,
       taskType: lk('taskTypes', t.taskTypeId)?.name || '', correspondenceType: lk('correspondenceTypes', t.correspondenceTypeId)?.name || '',
       status: st.name, statusKind: st.kind,
       durationDays: t.completedDate ? Math.round((Date.parse(t.completedDate) - Date.parse(t.receivedDate)) / 864e5) : null,
@@ -98,7 +98,7 @@ export function createAdapter() {
   };
 
   const FIELDS = { engineerId: 'engineer_id', refNo: 'ref_no', requester: 'requester', employeeName: 'employee_name', subject: 'subject', receivedDate: 'received_date',
-    completedDate: 'completed_date', notes: 'notes', taskTypeId: 'task_type_id', correspondenceTypeId: 'correspondence_type_id', statusId: 'status_id', delayReason: 'delay_reason', deletedAt: 'deleted_at' };
+    completedDate: 'completed_date', notes: 'notes', taskTypeId: 'task_type_id', correspondenceTypeId: 'correspondence_type_id', statusId: 'status_id', delayReason: 'delay_reason', deletedAt: 'deleted_at', reviewReasons: 'review_reasons' };
   const snake = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => FIELDS[k]).map(([k, v]) => [FIELDS[k], v ?? null]));
   function audit(taskId, action, oldT, newT) {
     const a = oldT ? snake(oldT) : null, b = snake(newT);
@@ -190,6 +190,7 @@ export function createAdapter() {
           if (f.correspondenceTypeId && t.correspondenceTypeId !== Number(f.correspondenceTypeId)) return false;
           if (f.from && t.receivedDate < f.from) return false;
           if (f.to && t.receivedDate > f.to) return false;
+          if (f.review && !t.reviewReasons?.length) return false;
           return true;
         }).map(view).sort((a, b) => b.receivedDate.localeCompare(a.receivedDate) || b.id - a.id);
       },
@@ -218,9 +219,20 @@ export function createAdapter() {
         const before = { ...row };
         Object.assign(row, t, { updatedAt: new Date().toISOString(), updatedBy: me.id });
         if (input.engineerId && role() !== 'engineer') row.engineerId = input.engineerId;
+        // أسباب المراجعة: يضعها الاستيراد فقط، والمسح = «تمت المراجعة»
+        if (input.reviewReasons !== undefined) {
+          const next = input.reviewReasons?.length ? input.reviewReasons : null;
+          if (next && role() !== 'admin' && JSON.stringify(next) !== JSON.stringify(before.reviewReasons || null)) throw err('أسباب المراجعة يضعها الاستيراد فقط.');
+          row.reviewReasons = next;
+        }
         audit(id, 'update', before, row);
         persist();
         return view(row);
+      },
+      async reviewCount() {
+        await wait(20);
+        if (!me) return 0;
+        return db.tasks.filter((t) => t.reviewReasons?.length && !t.deletedAt && (role() !== 'engineer' || t.engineerId === me.id)).length;
       },
       async remove(id) {
         need('admin');
@@ -243,7 +255,7 @@ export function createAdapter() {
           const t = clean(input);
           validate(t);
           const now = new Date().toISOString();
-          db.tasks.push({ id: ++db.seq.task, engineerId: input.engineerId, ...t, createdAt: now, createdBy: me.id, updatedAt: now, updatedBy: me.id, deletedAt: null, deletedBy: null });
+          db.tasks.push({ id: ++db.seq.task, engineerId: input.engineerId, ...t, reviewReasons: input.reviewReasons?.length ? input.reviewReasons : null, createdAt: now, createdBy: me.id, updatedAt: now, updatedBy: me.id, deletedAt: null, deletedBy: null });
           if (++n % 100 === 0) { onProgress?.(n, list.length); await wait(10); }
         }
         onProgress?.(n, list.length);

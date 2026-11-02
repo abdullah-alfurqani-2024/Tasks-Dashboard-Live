@@ -5,7 +5,7 @@ import { createClient, ApiError } from './client.js';
 import { normalizeSettings } from '../../core/settings.js';
 import { latinDigits as latin } from '../../core/format.js';
 
-const TASK_COLS = 'id,engineer_id,engineer_name,engineer_short,ref_no,requester,employee_name,subject,received_date,completed_date,notes,task_type_id,task_type,correspondence_type_id,correspondence_type,status_id,status,status_kind,delay_reason,duration_days,created_at,created_by,updated_at,updated_by,deleted_at,deleted_by';
+const TASK_COLS = 'id,engineer_id,engineer_name,engineer_short,ref_no,requester,employee_name,subject,received_date,completed_date,notes,task_type_id,task_type,correspondence_type_id,correspondence_type,status_id,status,status_kind,delay_reason,duration_days,created_at,created_by,updated_at,updated_by,deleted_at,deleted_by,review_reasons';
 const LOOKUP_TABLES = { taskTypes: 'task_types', correspondenceTypes: 'correspondence_types', statuses: 'task_statuses' };
 
 const INTERNAL = '@tasks.internal';
@@ -23,7 +23,7 @@ const toTask = (r) => ({
   statusId: r.status_id, status: r.status, statusKind: r.status_kind,
   delayReason: r.delay_reason || '', durationDays: r.duration_days,
   createdAt: r.created_at, createdBy: r.created_by, updatedAt: r.updated_at, updatedBy: r.updated_by,
-  deletedAt: r.deleted_at, deletedBy: r.deleted_by,
+  deletedAt: r.deleted_at, deletedBy: r.deleted_by, reviewReasons: r.review_reasons || [],
 });
 
 const toLookup = (r) => ({ id: r.id, name: r.name, sortOrder: r.sort_order, isActive: r.is_active, ...(r.kind ? { kind: r.kind } : {}) });
@@ -36,6 +36,8 @@ function taskRow(t) {
     status_id: t.statusId, delay_reason: t.delayReason || null,
   };
   if (t.engineerId) row.engineer_id = t.engineerId;
+  // أسباب المراجعة: يضعها الاستيراد، ومسحها = «تمت المراجعة»
+  if (t.reviewReasons !== undefined) row.review_reasons = t.reviewReasons?.length ? t.reviewReasons : null;
   return row;
 }
 
@@ -123,6 +125,7 @@ export function createAdapter(config) {
         if (f.engineerId) q.engineer_id = `eq.${f.engineerId}`;
         if (f.statusId) q.status_id = `eq.${f.statusId}`;
         if (f.taskTypeId) q.task_type_id = `eq.${f.taskTypeId}`;
+        if (f.review) q.review_reasons = 'not.is.null';
         if (f.correspondenceTypeId) q.correspondence_type_id = `eq.${f.correspondenceTypeId}`;
         if (f.from) and.push(`received_date.gte.${f.from}`);
         if (f.to) and.push(`received_date.lte.${f.to}`);
@@ -140,6 +143,11 @@ export function createAdapter(config) {
         const rows = await c.update('tasks', { id: `eq.${id}` }, taskRow(t));
         if (!rows.length) throw new ApiError('لا تملك صلاحية تعديل هذه المهمة، أو أنها حُذفت.');
         return getTask(id);
+      },
+      /** عدد المهام التي تحتاج مراجعة (المهندس: مهامه فقط حسب الصلاحيات) */
+      async reviewCount() {
+        const rows = await c.selectAll('tasks', { select: 'id', review_reasons: 'not.is.null', deleted_at: 'is.null' });
+        return rows.length;
       },
       async remove(id) { await c.rpc('soft_delete_task', { p_id: id }); },
       async restore(id) { await c.rpc('restore_task', { p_id: id }); },

@@ -53,13 +53,13 @@ begin
   -- truncate بدل delete: Supabase يرفض DELETE بدون WHERE في طلبات الواجهة (pg_safeupdate)
   truncate support_tasks_staging.task_audit, support_tasks_staging.tasks;
   insert into support_tasks_staging.tasks (id, engineer_id, ref_no, requester, employee_name, subject, received_date, completed_date, notes,
-    task_type_id, correspondence_type_id, status_id, delay_reason, created_at, created_by, updated_at, updated_by, deleted_at, deleted_by)
+    task_type_id, correspondence_type_id, status_id, delay_reason, created_at, created_by, updated_at, updated_by, deleted_at, deleted_by, review_reasons)
   overriding system value
   select t.id, t.engineer_id, t.ref_no, t.requester, t.employee_name, t.subject, t.received_date, t.completed_date, t.notes,
     (select s.id from support_tasks_staging.task_types s join support_tasks.task_types p on p.name = s.name where p.id = t.task_type_id),
     (select s.id from support_tasks_staging.correspondence_types s join support_tasks.correspondence_types p on p.name = s.name where p.id = t.correspondence_type_id),
     (select s.id from support_tasks_staging.task_statuses s join support_tasks.task_statuses p on p.name = s.name where p.id = t.status_id),
-    t.delay_reason, t.created_at, t.created_by, t.updated_at, t.updated_by, t.deleted_at, t.deleted_by
+    t.delay_reason, t.created_at, t.created_by, t.updated_at, t.updated_by, t.deleted_at, t.deleted_by, t.review_reasons
   from support_tasks.tasks t;
   perform setval(pg_get_serial_sequence('support_tasks_staging.tasks', 'id'),
                  coalesce((select max(id) from support_tasks_staging.tasks), 0) + 1, false);
