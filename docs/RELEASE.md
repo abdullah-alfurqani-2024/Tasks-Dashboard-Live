@@ -3,8 +3,8 @@
 | | التجربة | الإنتاج |
 |---|---|---|
 | مشروع Supabase | `pfarespmmaphtlscgmar` (الحساب الحالي) | `lklbdvepqvmvagjjedht` (الحساب الجديد) |
-| المستودع | `abdullah-alfurqani-2025/Tasks-Dashboard---25` (fork من `abdullah-alfurqani/Tasks-Dashboard-Live`) | `abdullah-alfurqani-2024/Tasks-Dashboard---24` (fork من مستودع التجربة) |
-| الرابط | `https://abdullah-alfurqani-2025.github.io/Tasks-Dashboard---25/` | `https://abdullah-alfurqani-2024.github.io/Tasks-Dashboard---24/` |
+| المستودع | `abdullah-alfurqani-2025/Tasks-Dashboard-Test` (fork من المرجع `abdullah-alfurqani/Tasks-Dashboard-Live`) | `abdullah-alfurqani-2024/Tasks-Dashboard-Live` (fork من مستودع التجربة) |
+| الرابط | `https://abdullah-alfurqani-2025.github.io/Tasks-Dashboard-Test/` | `https://abdullah-alfurqani-2024.github.io/Tasks-Dashboard-Live/` |
 | السكيما | `support_tasks_staging` | `support_tasks` (البيانات الحقيقية) |
 | دالة المستخدمين | `admin-users-staging` | `admin-users` |
 | دالة الدخول بالرقم | `auth-login-staging` | `auth-login` |
@@ -12,7 +12,8 @@
 | من يستخدمه | مدير النظام للتجربة | موظفو القسم |
 
 - النظام يعرف نسخته من اسم الموقع (`abdullah-alfurqani-2024.github.io` = الإنتاج) في `js/config.js`، فلا يُعدَّل أي ملف عند النقل، ولا عند تغيير اسم المستودع.
-- **النقل للإنتاج:** في مستودع الإنتاج (2024) ← **Sync fork** (يسحب من التجربة مباشرة). لا تضغط Sync fork في مستودع التجربة (يسحب من `Tasks-Dashboard-Live` القديم).
+- **النقل للإنتاج:** في مستودع الإنتاج (2024) ← **Sync fork** (يسحب من التجربة مباشرة).
+- **المرجع:** `abdullah-alfurqani/Tasks-Dashboard-Live` نسخة مطابقة للإنتاج: بعد كل إصدار، طلب دمج (compare across forks) من `Tasks-Dashboard-Test` إليه ثم Merge. لا يُعدَّل مباشرة.
 - نسخة التجربة يظهر أعلاها شريط بنفسجي، وفي عنوان الصفحة `[تجربة]`.
 - **لكل نسخة مشروع Supabase مستقل** (من الإصدار 1.12.0): حسابات الدخول وكلمات المرور مستقلة تماماً.
   أي تغيير في التجربة (كلمات مرور، بريد، حذف…) لا يمس الإنتاج.
