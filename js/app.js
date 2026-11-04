@@ -63,6 +63,9 @@ setGuard((r, path) => {
 /* ───────────── الشريط العلوي ───────────── */
 const initials = (name = '') => name.trim().split(/\s+/).filter(Boolean).slice(0, 1).map((w) => w[0]).join('') || '؟';
 
+/** إخفاء الإعلان خاص بكل مستخدم (لا بالمتصفح)، فإخفاؤه في حساب لا يخفيه عن حساب آخر على نفس الجهاز */
+const annKey = (u) => `${CONFIG.storagePrefix}announcement.hidden.${u.id}`;
+
 function renderChrome() {
   const u = state.user;
   const banner = document.getElementById('demo-banner');
@@ -78,7 +81,7 @@ function renderChrome() {
   const ann = document.getElementById('announce-banner');
   const text = u ? state.settings?.announcement || '' : '';
   let hidden = '';
-  try { hidden = localStorage.getItem(`${CONFIG.storagePrefix}announcement.hidden`) || ''; } catch { /* */ }
+  try { if (u) hidden = localStorage.getItem(annKey(u)) || ''; } catch { /* */ }
   if (text && hidden !== text) {
     ann.hidden = false;
     mount(ann, html`<span class="txt">📢 ${text}</span><button class="btn btn-ghost btn-icon btn-sm" data-act="hide-announcement" aria-label="إخفاء الإعلان" title="إخفاء">${icon('x')}</button>`);
@@ -182,7 +185,7 @@ async function backToAdmin(msg) {
   try { await stopActing(); if (msg) toast(msg, 'warn'); } catch (e) { toastError(e); }
 }
 on(document.getElementById('announce-banner'), 'click', '[data-act="hide-announcement"]', () => {
-  try { localStorage.setItem(`${CONFIG.storagePrefix}announcement.hidden`, state.settings?.announcement || ''); } catch { /* */ }
+  try { if (state.user) localStorage.setItem(annKey(state.user), state.settings?.announcement || ''); } catch { /* */ }
   renderChrome();
 });
 on(document.getElementById('as-banner'), 'click', '[data-act="stop-acting"]', (e, b) => { b.disabled = true; backToAdmin(); });
