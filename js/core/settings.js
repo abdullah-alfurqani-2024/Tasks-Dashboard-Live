@@ -9,7 +9,10 @@ export const SETTING_DEFAULTS = {
   minPasswordLength: PW_FLOOR, // أقل طول لكلمة المرور
   forcePasswordChange: true,   // إلزام تغيير كلمة المرور المؤقتة عند أول دخول
   allowPurgeTasks: false,      // السماح بـ«حذف كل المهام» في الإنتاج (مرحلة التجهيز فقط)
+  announcement: '',            // إعلان من مدير النظام يظهر لكل المستخدمين (فارغ = لا إعلان)
 };
+
+export const ANNOUNCEMENT_MAX = 500;
 
 const int = (v, d) => (Number.isFinite(Number(v)) && v !== '' && v != null ? Math.trunc(Number(v)) : d);
 
@@ -21,5 +24,6 @@ export function normalizeSettings(s = {}) {
     minPasswordLength: Math.min(72, Math.max(PW_FLOOR, int(s.minPasswordLength, D.minPasswordLength))),
     forcePasswordChange: s.forcePasswordChange == null ? D.forcePasswordChange : s.forcePasswordChange === true || s.forcePasswordChange === 'true',
     allowPurgeTasks: s.allowPurgeTasks == null ? D.allowPurgeTasks : s.allowPurgeTasks === true || s.allowPurgeTasks === 'true',
+    announcement: typeof s.announcement === 'string' ? s.announcement.trim().slice(0, ANNOUNCEMENT_MAX) : D.announcement,
   };
 }

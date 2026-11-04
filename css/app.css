@@ -149,6 +149,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .dropdown-menu svg { width: 17px; height: 17px; color: var(--muted); }
 .demo-banner { background: var(--warn-soft); color: var(--warn); text-align: center; padding: 6px 12px; font-size: .88rem; border-bottom: 1px solid var(--line); }
 .demo-banner.env-staging { background: #7a3cc1; color: #fff; font-weight: 600; }
+/* إعلان مدير النظام */
+.announce-banner { display: flex; gap: 8px; align-items: center; justify-content: center; padding: 8px 14px;
+  background: #fff4c2; color: #6b4e00; border-bottom: 1px solid #f0d77a; font-weight: 600; font-size: .95rem; }
+.announce-banner .txt { white-space: pre-line; text-align: center; }
+.announce-banner .btn { color: inherit; }
+:root[data-theme="dark"] .announce-banner { background: #3a3000; color: #ffe27a; border-color: #5c4d00; }
+@media print { .announce-banner { display: none !important; } }
 /* التصفح بحساب مستخدم آخر (التجربة) */
 .as-banner { display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap;
   padding: 8px 14px; background: #b45309; color: #fff; font-size: .92rem; box-shadow: var(--shadow); }

@@ -3,9 +3,9 @@ import { CONFIG } from '../config.js';
 import { db, backendName, isDemo } from '../data/index.js';
 import { html, mount, $, formData } from '../core/dom.js';
 import { state, loadReference, refreshReviewCount } from '../core/store.js';
-import { PW_FLOOR } from '../core/settings.js';
+import { PW_FLOOR, ANNOUNCEMENT_MAX } from '../core/settings.js';
 import { fmtDateTime } from '../core/format.js';
-import { setTitle } from '../core/session.js';
+import { setTitle, refreshChrome } from '../core/session.js';
 import { icon } from '../ui/icons.js';
 import { busy, toast, toastError, confirmBox, modal } from '../ui/feedback.js';
 import { pageHead, newPage } from '../ui/parts.js';
@@ -67,6 +67,18 @@ export default async function settings(ctx, main) {
           <div class="small muted" data-refresh-result></div>
         </div>
       </div>` : ''}
+      <div class="card span-2">
+        <div class="card-head"><h2>إعلان لكل المستخدمين</h2></div>
+        <form class="card-pad stack" id="ann-form" novalidate>
+          <div class="field"><label for="ann-text">نص الإعلان</label>
+            <textarea class="input" id="ann-text" name="announcement" rows="2" maxlength="${ANNOUNCEMENT_MAX}" placeholder="مثال: سيتوقف النظام للصيانة يوم الخميس من الساعة 2 إلى 3 عصراً.">${s.announcement}</textarea>
+            <span class="hint">يظهر شريطاً أصفر أعلى الصفحة لكل المستخدمين حتى تمسحه. ${ANNOUNCEMENT_MAX} حرف على الأكثر.</span></div>
+          <div class="row">
+            <button class="btn btn-primary" type="submit">${icon('check')}نشر الإعلان</button>
+            <button class="btn" type="button" data-ann-clear ${s.announcement ? '' : 'disabled'}>${icon('x')}مسح الإعلان</button>
+          </div>
+        </form>
+      </div>
       ${db.maintenance?.purgeAllTasks ? html`
       <div class="card span-2">
         <div class="card-head"><h2>حذف كل المهام</h2></div>
@@ -95,12 +107,24 @@ export default async function settings(ctx, main) {
     if (!Number.isInteger(pwMin) || pwMin < PW_FLOOR || pwMin > 72) { err.textContent = `أقل طول لكلمة المرور بين ${PW_FLOOR} و 72.`; err.hidden = false; return; }
     await busy($('button[type=submit]', form), async () => {
       try {
-        state.settings = await db.settings.save({ editLockDays: lock, delayThresholdDays: delay, minPasswordLength: pwMin, forcePasswordChange: v.forcePasswordChange, allowPurgeTasks: !!v.allowPurgeTasks });
+        state.settings = await db.settings.save({ ...state.settings, editLockDays: lock, delayThresholdDays: delay, minPasswordLength: pwMin, forcePasswordChange: v.forcePasswordChange, allowPurgeTasks: !!v.allowPurgeTasks });
         syncPurge();
         toast('تم حفظ الإعدادات.', 'ok');
       } catch (ex) { err.textContent = ex.message; err.hidden = false; }
     });
   };
+  const annForm = $('#ann-form', root);
+  const saveAnnouncement = (text, btn) => busy(btn, async () => {
+    try {
+      state.settings = await db.settings.save({ ...state.settings, announcement: text });
+      annForm.elements.announcement.value = state.settings.announcement;
+      $('[data-ann-clear]', root).disabled = !state.settings.announcement;
+      refreshChrome();
+      toast(state.settings.announcement ? 'نُشر الإعلان لكل المستخدمين.' : 'مُسح الإعلان.', 'ok');
+    } catch (ex) { toastError(ex); }
+  });
+  annForm.onsubmit = (e) => { e.preventDefault(); saveAnnouncement(annForm.elements.announcement.value, $('button[type=submit]', annForm)); };
+  $('[data-ann-clear]', root).onclick = (e) => saveAnnouncement('', e.currentTarget);
   $('[data-refresh]', root)?.addEventListener('click', () => {
     const min = state.settings?.minPasswordLength || 6;
     const m = modal({
