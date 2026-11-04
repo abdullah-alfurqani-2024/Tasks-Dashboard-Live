@@ -10,6 +10,8 @@ export const SETTING_DEFAULTS = {
   forcePasswordChange: true,   // إلزام تغيير كلمة المرور المؤقتة عند أول دخول
   allowPurgeTasks: false,      // السماح بـ«حذف كل المهام» في الإنتاج (مرحلة التجهيز فقط)
   announcement: '',            // إعلان من مدير النظام يظهر لكل المستخدمين (فارغ = لا إعلان)
+  announcementType: 'normal',  // normal: يستطيع المستخدم إخفاءه — important: لا يُخفى حتى يمسحه المدير
+  announcementExpiresAt: '',   // تاريخ ووقت (ISO) يختفي بعده الإعلان تلقائياً ('' = بلا انتهاء)
 };
 
 export const ANNOUNCEMENT_MAX = 500;
@@ -25,5 +27,14 @@ export function normalizeSettings(s = {}) {
     forcePasswordChange: s.forcePasswordChange == null ? D.forcePasswordChange : s.forcePasswordChange === true || s.forcePasswordChange === 'true',
     allowPurgeTasks: s.allowPurgeTasks == null ? D.allowPurgeTasks : s.allowPurgeTasks === true || s.allowPurgeTasks === 'true',
     announcement: typeof s.announcement === 'string' ? s.announcement.trim().slice(0, ANNOUNCEMENT_MAX) : D.announcement,
+    announcementType: s.announcementType === 'important' ? 'important' : 'normal',
+    announcementExpiresAt: typeof s.announcementExpiresAt === 'string' && !Number.isNaN(Date.parse(s.announcementExpiresAt)) ? new Date(s.announcementExpiresAt).toISOString() : '',
   };
+}
+
+/** الإعلان الظاهر الآن: نصه ونوعه، أو null إن لم يوجد أو انتهى وقته */
+export function activeAnnouncement(s, now = Date.now()) {
+  if (!s?.announcement) return null;
+  if (s.announcementExpiresAt && Date.parse(s.announcementExpiresAt) <= now) return null;
+  return { text: s.announcement, type: s.announcementType === 'important' ? 'important' : 'normal', expiresAt: s.announcementExpiresAt || '' };
 }

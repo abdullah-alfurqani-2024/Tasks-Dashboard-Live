@@ -155,6 +155,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .announce-banner .txt { white-space: pre-line; text-align: center; }
 .announce-banner .btn { color: inherit; }
 :root[data-theme="dark"] .announce-banner { background: #3a3000; color: #ffe27a; border-color: #5c4d00; }
+.announce-banner.important { background: #fde2e1; color: #8a1c14; border-color: #f2a7a1; }
+:root[data-theme="dark"] .announce-banner.important { background: #4a1512; color: #ffb4ab; border-color: #7a2a24; }
 @media print { .announce-banner { display: none !important; } }
 /* التصفح بحساب مستخدم آخر (التجربة) */
 .as-banner { display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap;

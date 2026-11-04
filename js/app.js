@@ -12,6 +12,7 @@ import { toast, toastError } from './ui/feedback.js';
 import { watchDateFields } from './ui/dateField.js';
 import { checkOnStart, watchUpdates } from './core/updates.js';
 import { VERSION } from './version.js';
+import { activeAnnouncement } from './core/settings.js';
 
 watchDateFields(document.body);
 
@@ -66,6 +67,15 @@ const initials = (name = '') => name.trim().split(/\s+/).filter(Boolean).slice(0
 /** إخفاء الإعلان خاص بكل مستخدم (لا بالمتصفح)، فإخفاؤه في حساب لا يخفيه عن حساب آخر على نفس الجهاز */
 const annKey = (u) => `${CONFIG.storagePrefix}announcement.hidden.${u.id}`;
 
+// يختفي الإعلان في لحظة انتهائه حتى لو بقيت الصفحة مفتوحة
+let expiryTimer = 0;
+function scheduleExpiry(live) {
+  clearTimeout(expiryTimer);
+  if (!live?.expiresAt) return;
+  const ms = Date.parse(live.expiresAt) - Date.now();
+  if (ms > 0 && ms < 864e5) expiryTimer = setTimeout(() => renderChrome(), ms + 500);
+}
+
 function renderChrome() {
   const u = state.user;
   const banner = document.getElementById('demo-banner');
@@ -78,14 +88,19 @@ function renderChrome() {
     mount(banner, html`${CONFIG.envLabel}`);
   }
   // إعلان مدير النظام: يُخفيه المستخدم لهذا الإعلان فقط، ويعود عند إعلان جديد
+  // «مهم»: لا يُخفى. وبعد وقت الانتهاء يختفي تلقائياً
   const ann = document.getElementById('announce-banner');
-  const text = u ? state.settings?.announcement || '' : '';
+  const live = u ? activeAnnouncement(state.settings) : null;
   let hidden = '';
   try { if (u) hidden = localStorage.getItem(annKey(u)) || ''; } catch { /* */ }
-  if (text && hidden !== text) {
+  const important = live?.type === 'important';
+  ann.classList.toggle('important', important);
+  if (live && (important || hidden !== live.text)) {
     ann.hidden = false;
-    mount(ann, html`<span class="txt">📢 ${text}</span><button class="btn btn-ghost btn-icon btn-sm" data-act="hide-announcement" aria-label="إخفاء الإعلان" title="إخفاء">${icon('x')}</button>`);
+    mount(ann, html`<span class="txt">${important ? '⚠️' : '📢'} ${live.text}</span>
+      ${important ? '' : html`<button class="btn btn-ghost btn-icon btn-sm" data-act="hide-announcement" aria-label="إخفاء الإعلان" title="إخفاء">${icon('x')}</button>`}`);
   } else { ann.hidden = true; ann.innerHTML = ''; }
+  scheduleExpiry(live);
   const asBar = document.getElementById('as-banner');
   if (u?.actingAs) {
     asBar.hidden = false;

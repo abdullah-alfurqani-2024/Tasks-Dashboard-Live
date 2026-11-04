@@ -43,6 +43,23 @@ export function fmtDateTime(ts) {
   return `${p.y}/${p.mo}/${p.d} - ${p.h}:${p.mi}:${p.s}`;
 }
 
+/** ISO (UTC) ← تاريخ 'YYYY-MM-DD' وساعة 'HH:MM' بتوقيت النظام (CONFIG.timeZone) */
+export function zonedToIso(date, time = '00:00') {
+  const [y, mo, d] = date.split('-').map(Number);
+  const [h, mi] = time.split(':').map(Number);
+  if (![y, mo, d, h, mi].every(Number.isFinite)) return '';
+  const want = Date.UTC(y, mo - 1, d, h, mi);
+  let t = want;
+  for (let i = 0; i < 2; i++) {               // مرتان تكفيان حتى مع التوقيت الصيفي
+    const p = localParts(t);
+    t += want - Date.UTC(+p.y, +p.mo - 1, +p.d, +p.h, +p.mi);
+  }
+  return new Date(t).toISOString();
+}
+
+/** 'YYYY/MM/DD - HH:MM' بلا ثوانٍ */
+export const fmtDateTimeShort = (ts) => (ts ? fmtDateTime(ts).slice(0, -3) : '');
+
 /** 'YYYY-MM-DD HH:MM:SS' بالوقت المحلي (للتصدير إلى Excel) ← timestamp */
 export function localIsoDateTime(ts) {
   if (!ts) return '';
