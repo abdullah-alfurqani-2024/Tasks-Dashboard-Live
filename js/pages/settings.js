@@ -3,8 +3,9 @@ import { CONFIG } from '../config.js';
 import { db, backendName, isDemo } from '../data/index.js';
 import { html, mount, $, formData } from '../core/dom.js';
 import { state, loadReference, refreshReviewCount } from '../core/store.js';
-import { PW_FLOOR, ANNOUNCEMENT_MAX } from '../core/settings.js';
-import { fmtDateTime } from '../core/format.js';
+import { PW_FLOOR, ANNOUNCEMENT_MAX, activeAnnouncement } from '../core/settings.js';
+import { dateInput } from '../ui/dateField.js';
+import { fmtDateTime, fmtDateTimeShort, localParts, zonedToIso } from '../core/format.js';
 import { setTitle, refreshChrome } from '../core/session.js';
 import { icon } from '../ui/icons.js';
 import { busy, toast, toastError, confirmBox, modal } from '../ui/feedback.js';
@@ -12,6 +13,15 @@ import { pageHead, newPage } from '../ui/parts.js';
 
 import { VERSION } from '../version.js';
 import { exportTasks } from '../core/exporter.js';
+
+// تاريخ ووقت داخل نص عربي: يُعزل باتجاه LTR حتى لا تنقلب أجزاؤه
+const ltr = (t) => `\u2066${t}\u2069`;
+
+/** تاريخ وساعة الانتهاء بتوقيت النظام لتعبئة الحقول */
+function annParts(iso) {
+  const p = localParts(iso);
+  return { date: `${p.y}-${p.mo}-${p.d}`, time: `${p.h}:${p.mi}` };
+}
 
 export default async function settings(ctx, main) {
   setTitle('الإعدادات');
@@ -72,7 +82,19 @@ export default async function settings(ctx, main) {
         <form class="card-pad stack" id="ann-form" novalidate>
           <div class="field"><label for="ann-text">نص الإعلان</label>
             <textarea class="input" id="ann-text" name="announcement" rows="2" maxlength="${ANNOUNCEMENT_MAX}" placeholder="مثال: سيتوقف النظام للصيانة يوم الخميس من الساعة 2 إلى 3 عصراً.">${s.announcement}</textarea>
-            <span class="hint">يظهر شريطاً أصفر أعلى الصفحة لكل المستخدمين حتى تمسحه. ${ANNOUNCEMENT_MAX} حرف على الأكثر.</span></div>
+            <span class="hint">يظهر شريطاً أعلى الصفحة لكل المستخدمين. ${ANNOUNCEMENT_MAX} حرف على الأكثر.</span></div>
+          <div class="field"><span class="label">نوع الإعلان</span>
+            <label class="check"><input type="radio" name="annType" value="normal" ${s.announcementType !== 'important' ? 'checked' : ''}> 📢 <b>عادي</b> (أصفر): يستطيع كل مستخدم إخفاءه لنفسه</label>
+            <label class="check"><input type="radio" name="annType" value="important" ${s.announcementType === 'important' ? 'checked' : ''}> ⚠️ <b>مهم</b> (أحمر): لا يمكن إخفاؤه، ويبقى حتى تمسحه أو ينتهي وقته</label></div>
+          <div class="form-grid">
+            <div class="field" style="align-content:start"><label for="ann-until">يختفي تلقائياً بعد (اختياري)</label>
+              ${dateInput({ name: 'annDate', id: 'ann-until', value: s.announcementExpiresAt ? annParts(s.announcementExpiresAt).date : '' })}</div>
+            <div class="field" style="align-content:start"><label for="ann-time">الساعة</label>
+              <input class="input ltr" style="display:block;text-align:left" id="ann-time" name="annTime" type="time" value="${s.announcementExpiresAt ? annParts(s.announcementExpiresAt).time : ''}">
+              <span class="hint">اتركهما فارغين لإعلان بلا انتهاء. بلا ساعة = نهاية اليوم.</span></div>
+          </div>
+          <div class="small" data-ann-status></div>
+          <div class="alert bad" data-ann-err hidden></div>
           <div class="row">
             <button class="btn btn-primary" type="submit">${icon('check')}نشر الإعلان</button>
             <button class="btn" type="button" data-ann-clear ${s.announcement ? '' : 'disabled'}>${icon('x')}مسح الإعلان</button>
@@ -114,17 +136,48 @@ export default async function settings(ctx, main) {
     });
   };
   const annForm = $('#ann-form', root);
-  const saveAnnouncement = (text, btn) => busy(btn, async () => {
+  const annStatus = () => {
+    const st = state.settings;
+    const box = $('[data-ann-status]', root);
+    if (!st.announcement) { box.textContent = 'لا يوجد إعلان حالياً.'; box.style.color = ''; return; }
+    const live = activeAnnouncement(st);
+    box.textContent = live
+      ? `ظاهر الآن (${live.type === 'important' ? 'مهم' : 'عادي'})${live.expiresAt ? ` حتى ${ltr(fmtDateTimeShort(live.expiresAt))}` : '، بلا انتهاء'}.`
+      : `انتهى وقته في ${ltr(fmtDateTimeShort(st.announcementExpiresAt))}، فلم يعد يظهر. امسحه أو غيّر التاريخ.`;
+    box.style.color = live ? 'var(--ok)' : 'var(--warn)';
+  };
+  annStatus();
+  const saveAnnouncement = (patch, btn) => busy(btn, async () => {
+    const errBox = $('[data-ann-err]', root);
+    errBox.hidden = true;
     try {
-      state.settings = await db.settings.save({ ...state.settings, announcement: text });
+      state.settings = await db.settings.save({ ...state.settings, ...patch });
       annForm.elements.announcement.value = state.settings.announcement;
       $('[data-ann-clear]', root).disabled = !state.settings.announcement;
+      if (!state.settings.announcement) { annForm.elements.annDate.value = ''; annForm.elements.annTime.value = ''; annForm.elements.annType.value = 'normal'; }
+      annStatus();
       refreshChrome();
       toast(state.settings.announcement ? 'نُشر الإعلان لكل المستخدمين.' : 'مُسح الإعلان.', 'ok');
-    } catch (ex) { toastError(ex); }
+    } catch (ex) { errBox.textContent = ex.message; errBox.hidden = false; }
   });
-  annForm.onsubmit = (e) => { e.preventDefault(); saveAnnouncement(annForm.elements.announcement.value, $('button[type=submit]', annForm)); };
-  $('[data-ann-clear]', root).onclick = (e) => saveAnnouncement('', e.currentTarget);
+  annForm.onsubmit = (e) => {
+    e.preventDefault();
+    const f = annForm.elements, errBox = $('[data-ann-err]', root);
+    const text = f.announcement.value.trim();
+    const date = f.annDate.value, time = f.annTime.value;
+    errBox.hidden = true;
+    if (!text) { errBox.textContent = 'اكتب نص الإعلان، أو استخدم «مسح الإعلان».'; errBox.hidden = false; return; }
+    if (time && !date) { errBox.textContent = 'اختر التاريخ مع الساعة.'; errBox.hidden = false; return; }
+    let expiresAt = '';
+    if (date) {
+      const t = new Date(zonedToIso(date, time || '23:59'));   // بتوقيت النظام (مسقط)
+      if (Number.isNaN(t.getTime())) { errBox.textContent = 'التاريخ أو الساعة غير صحيحة.'; errBox.hidden = false; return; }
+      if (t.getTime() <= Date.now()) { errBox.textContent = 'وقت الانتهاء مضى بالفعل. اختر وقتاً قادماً.'; errBox.hidden = false; return; }
+      expiresAt = t.toISOString();
+    }
+    saveAnnouncement({ announcement: text, announcementType: f.annType.value, announcementExpiresAt: expiresAt }, $('button[type=submit]', annForm));
+  };
+  $('[data-ann-clear]', root).onclick = (e) => saveAnnouncement({ announcement: '', announcementType: 'normal', announcementExpiresAt: '' }, e.currentTarget);
   $('[data-refresh]', root)?.addEventListener('click', () => {
     const min = state.settings?.minPasswordLength || 6;
     const m = modal({

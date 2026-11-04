@@ -222,6 +222,7 @@ export function createAdapter(config) {
           editLockDays: m.edit_lock_days, delayThresholdDays: m.delay_threshold_days,
           minPasswordLength: m.min_password_length, forcePasswordChange: m.force_password_change,
           allowPurgeTasks: m.allow_purge_tasks, announcement: m.announcement,
+          announcementType: m.announcement_type, announcementExpiresAt: m.announcement_expires_at,
         });
       },
       async save(s) {
@@ -233,6 +234,8 @@ export function createAdapter(config) {
           { key: 'force_password_change', value: n.forcePasswordChange },
           { key: 'allow_purge_tasks', value: n.allowPurgeTasks },
           { key: 'announcement', value: n.announcement },
+          { key: 'announcement_type', value: n.announcementType },
+          { key: 'announcement_expires_at', value: n.announcementExpiresAt },
         ], 'key');
         return this.load();
       },
