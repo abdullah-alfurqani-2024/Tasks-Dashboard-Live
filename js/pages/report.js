@@ -12,7 +12,7 @@ import { dateInput } from '../ui/dateField.js';
 import { toastError } from '../ui/feedback.js';
 import { pageHead, options, loading, newPage } from '../ui/parts.js';
 
-const KEY = 'tsk.filters.report';
+const KEY = `${CONFIG.storagePrefix || 'tsk.'}filters.report`;
 const year = Number(today().slice(0, 4));
 const DEFAULTS = { engineerId: '', taskTypeId: '', correspondenceTypeId: '', statusId: '', year: String(year), from: `${year}-01-01`, to: `${year}-12-31`, sort: 'receivedDate', dir: 'asc' };
 const SORTS = [['receivedDate', 'تاريخ الاستقبال'], ['completedDate', 'تاريخ الانتهاء'], ['engineerName', 'اسم المهندس'], ['taskType', 'نوع المهمة'],

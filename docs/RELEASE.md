@@ -3,17 +3,20 @@
 | | التجربة | الإنتاج |
 |---|---|---|
 | مشروع Supabase | `pfarespmmaphtlscgmar` (الحساب الحالي) | `lklbdvepqvmvagjjedht` (الحساب الجديد) |
-| المستودع | `abdullah-alfurqani-2025/Tasks-Dashboard-Test` (fork من المرجع `abdullah-alfurqani/Tasks-Dashboard-Live`) | `abdullah-alfurqani-2024/Tasks-Dashboard-Live` (fork من مستودع التجربة) |
-| الرابط | `https://abdullah-alfurqani-2025.github.io/Tasks-Dashboard-Test/` | `https://abdullah-alfurqani-2024.github.io/Tasks-Dashboard-Live/` |
+| المستودع والفرع | `abdullah-alfurqani-2024/Tasks-Dashboard-Live` ← الفرع **`staging`** | نفس المستودع ← الفرع **`main`** |
+| الرابط | `https://abdullah-alfurqani-2024.github.io/Tasks-Dashboard-Live/test/` | `https://abdullah-alfurqani-2024.github.io/Tasks-Dashboard-Live/` |
 | السكيما | `support_tasks_staging` | `support_tasks` (البيانات الحقيقية) |
 | دالة المستخدمين | `admin-users-staging` | `admin-users` |
 | دالة الدخول بالرقم | `auth-login-staging` | `auth-login` |
 | نسخ البيانات | `refresh-staging` (تقرأ من الإنتاج) | — |
 | من يستخدمه | مدير النظام للتجربة | موظفو القسم |
 
-- النظام يعرف نسخته من اسم الموقع (`abdullah-alfurqani-2024.github.io` = الإنتاج) في `js/config.js`، فلا يُعدَّل أي ملف عند النقل، ولا عند تغيير اسم المستودع.
-- **النقل للإنتاج:** في مستودع الإنتاج (2024) ← **Sync fork** (يسحب من التجربة مباشرة).
-- **المرجع:** `abdullah-alfurqani/Tasks-Dashboard-Live` نسخة مطابقة للإنتاج: بعد كل Sync fork، طلب دمج (compare across forks) **من مستودع الإنتاج** `abdullah-alfurqani-2024/Tasks-Dashboard-Live` إليه ثم Merge. لا يُعدَّل مباشرة.
+- النظام يعرف نسخته من الرابط (`js/config.js`): المجلد `/test/` = التجربة، والجذر = الإنتاج. فلا يُعدَّل أي ملف عند النقل.
+- النشر تلقائي (`.github/workflows/pages.yml`): أي تحديث في أحد الفرعين ينشر الموقعين معاً خلال دقيقة أو دقيقتين.
+- **النقل للإنتاج:** طلب دمج داخل المستودع: **Pull requests ← New pull request ← base: `main` ← compare: `staging`** ثم **Merge**.
+  وللرجوع عن إصدار: زر **Revert** في طلب الدمج نفسه.
+- **المرجع:** `abdullah-alfurqani/Tasks-Dashboard-Live` نسخة مطابقة للإنتاج: بعد كل دمج، طلب دمج إليه من الفرع `main` في مستودع الإنتاج.
+- لكل نسخة مفاتيح تخزين مستقلة في المتصفح (`tsk.` للإنتاج و`tsk.stg.` للتجربة)، فالدخول لإحداهما لا يُخرج من الأخرى.
 - نسخة التجربة يظهر أعلاها شريط بنفسجي، وفي عنوان الصفحة `[تجربة]`.
 - **لكل نسخة مشروع Supabase مستقل** (من الإصدار 1.12.0): حسابات الدخول وكلمات المرور مستقلة تماماً.
   أي تغيير في التجربة (كلمات مرور، بريد، حذف…) لا يمس الإنتاج.
@@ -136,3 +139,9 @@
 - عمود «الأولوية» في التصدير والاستيراد (عاجل/عاجلة/مستعجل ← عاجلة، والفارغ ← عادية، وغير المفهوم ← عادية مع سبب مراجعة).
 - **الترتيب إلزامي:** `supabase/sql/13_priority.sql` في مشروع التجربة (ومعه `supabase/staging/link_production.sql` لتنسخ الأولوية)،
   ثم في مشروع الإنتاج، **ثم** Sync fork. لو نُقل الإصدار قبل تنفيذ 13 في الإنتاج لتعطلت صفحة المهام فيه.
+
+## مستودع واحد بفرعين (الإصدار 1.14.0)
+- الإنتاج والتجربة في مستودع حساب 2024: الفرع `main` للإنتاج، والفرع `staging` للتجربة في `/test/`.
+- إعداد مرة واحدة: تفعيل Actions في المستودع، وإضافة `staging` في **Settings ← Environments ← github-pages ← Deployment branches**،
+  ثم **Settings ← Pages ← Source: GitHub Actions**.
+- مستودع حساب 2025 (`Tasks-Dashboard-Test`) لم يعد يُحدَّث، ويُؤرشف بعد التأكد.

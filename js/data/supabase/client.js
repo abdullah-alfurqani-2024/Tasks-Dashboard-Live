@@ -5,10 +5,13 @@
  *   /functions/v1 الدوال على الخادم (Edge Functions)
  */
 
-const STORE_KEY = 'tsk.session';
+import { CONFIG } from '../../config.js';
+
+const P = CONFIG.storagePrefix || 'tsk.';
+const STORE_KEY = `${P}session`;
 // جلسة «الدخول بحساب مستخدم» (التجربة فقط): في sessionStorage فتخص هذا التبويب وتزول بإغلاقه،
 // وجلسة المدير تبقى محفوظة كما هي في localStorage للعودة إليها
-const AS_KEY = 'tsk.session.as';
+const AS_KEY = `${P}session.as`;
 
 export class ApiError extends Error {
   constructor(message, status = 0, code = '') { super(message); this.status = status; this.code = code; }

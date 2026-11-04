@@ -1,5 +1,6 @@
 /** لوحة المؤشرات (بديل Looker Studio) */
 import { db } from '../data/index.js';
+import { CONFIG } from '../config.js';
 import { html, mount, $, formData, on } from '../core/dom.js';
 import { state, can, engineers } from '../core/store.js';
 import { num, pct, dec1, fmtDate, today, daysBetween } from '../core/format.js';
@@ -10,7 +11,7 @@ import { hbars, columns, donut } from '../lib/charts.js';
 import { icon } from '../ui/icons.js';
 import { pageHead, periodFields, options, rangeOf, loading, newPage } from '../ui/parts.js';
 
-const KEY = 'tsk.filters.dash';
+const KEY = `${CONFIG.storagePrefix || 'tsk.'}filters.dash`;
 const DEFAULTS = { period: 'year', from: '', to: '', engineerId: '' };
 const SERIES = [
   { name: 'مكتملة', color: 'var(--c2)', key: 'done' },

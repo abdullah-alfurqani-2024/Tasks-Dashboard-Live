@@ -5,9 +5,10 @@
  *   - أثناء العمل: نُظهر تنبيهاً بزر «تحديث» ولا نعيد التحميل دون علم المستخدم
  */
 import { VERSION } from '../version.js';
+import { CONFIG } from '../config.js';
 import { html, mount } from './dom.js';
 
-const KEY = 'tsk.updatedTo';
+const KEY = `${CONFIG.storagePrefix || 'tsk.'}updatedTo`;
 
 async function latest() {
   try {
