@@ -14,7 +14,7 @@ import { openTaskForm } from '../ui/taskForm.js';
 import { pageHead, periodFields, options, rangeOf, statusBadge, searchBox, loading, newPage } from '../ui/parts.js';
 
 const KEY = 'tsk.filters.tasks';
-const DEFAULTS = { period: 'year', from: '', to: '', engineerId: '', status: '', taskTypeId: '', q: '', deleted: 'exclude', review: '' };
+const DEFAULTS = { period: 'year', from: '', to: '', engineerId: '', status: '', taskTypeId: '', q: '', deleted: 'exclude', review: '', priority: '' };
 const loadF = () => { try { return { ...DEFAULTS, ...JSON.parse(sessionStorage.getItem(KEY) || '{}') }; } catch { return { ...DEFAULTS }; } };
 const saveF = (F) => { try { sessionStorage.setItem(KEY, JSON.stringify(F)); } catch { /* */ } };
 
@@ -25,6 +25,7 @@ export default async function tasksPage(ctx, main) {
   if (ctx.query.engineer) F.engineerId = ctx.query.engineer;
   if (ctx.query.period) F.period = ctx.query.period;
   if (ctx.query.q) F.q = ctx.query.q;
+  if (ctx.query.priority !== undefined) F.priority = ctx.query.priority === 'urgent' ? 'urgent' : '';
   if (ctx.query.review !== undefined) F.review = ctx.query.review === '1' ? '1' : '';
   const viewAll = can('tasks.viewAll');
   const delayDays = state.settings?.delayThresholdDays || 7;
@@ -52,6 +53,8 @@ export default async function tasksPage(ctx, main) {
         <select class="input" id="f-type" name="taskTypeId">${options(state.lookups.taskTypes, F.taskTypeId, 'الكل')}</select></div>
       ${can('tasks.delete') ? html`<div class="field"><label for="f-del">المحذوفة</label>
         <select class="input" id="f-del" name="deleted">${options([['exclude', 'إخفاء المحذوفة'], ['only', 'المحذوفة فقط']], F.deleted)}</select></div>` : ''}
+      <div class="field"><label for="f-prio">الأولوية</label>
+        <select class="input" id="f-prio" name="priority">${options([['urgent', 'العاجلة فقط']], F.priority, 'الكل')}</select></div>
       <div class="field"><label for="f-review">المراجعة</label>
         <select class="input" id="f-review" name="review">${options([['1', 'تحتاج مراجعة فقط']], F.review, 'الكل')}</select></div>
       <div class="field wide"><label for="f-q">بحث</label>${searchBox(F.q, 'الموضوع، الجهة، الموظف، رقم القيد…')}</div>
@@ -68,7 +71,7 @@ export default async function tasksPage(ctx, main) {
     { key: 'id', label: '#', cls: 'num muted', sort: (r) => r.id },
     { key: 'receivedDate', label: 'الاستقبال', cls: 'nowrap num', render: (r) => fmtDate(r.receivedDate) },
     ...(viewAll ? [{ key: 'engineerName', label: 'المهندس', cls: 'nowrap', render: (r) => r.engineerShort || r.engineerName }] : []),
-    { key: 'subject', label: 'الموضوع', cls: 'subject', render: (r) => html`<div class="clip">${r.reviewReasons?.length ? html`<span class="badge warn" title="${r.reviewReasons.join(' | ')}">تحتاج مراجعة</span> ` : ''}${r.subject}</div>${F.review && r.reviewReasons?.length ? html`<div class="small" style="color:var(--warn)">${r.reviewReasons.join(' · ')}</div>` : ''}${r.requester || r.employeeName ? html`<div class="small muted">${[r.requester, r.employeeName].filter(Boolean).join(' · ')}</div>` : ''}` },
+    { key: 'subject', label: 'الموضوع', cls: 'subject', render: (r) => html`<div class="clip">${r.priority === 'urgent' ? html`<span class="badge bad">عاجلة</span> ` : ''}${r.reviewReasons?.length ? html`<span class="badge warn" title="${r.reviewReasons.join(' | ')}">تحتاج مراجعة</span> ` : ''}${r.subject}</div>${F.review && r.reviewReasons?.length ? html`<div class="small" style="color:var(--warn)">${r.reviewReasons.join(' · ')}</div>` : ''}${r.requester || r.employeeName ? html`<div class="small muted">${[r.requester, r.employeeName].filter(Boolean).join(' · ')}</div>` : ''}` },
     { key: 'taskType', label: 'نوع المهمة', cls: 'nowrap' },
     { key: 'status', label: 'الحالة', render: (r) => statusBadge(r, isDelayed(r, delayDays, today())) },
     { key: 'completedDate', label: 'الانتهاء', cls: 'nowrap num', render: (r) => fmtDate(r.completedDate) },
@@ -92,6 +95,7 @@ export default async function tasksPage(ctx, main) {
       }
       if (F.taskTypeId && t.taskTypeId !== Number(F.taskTypeId)) return false;
       if (F.review && !t.reviewReasons?.length) return false;
+      if (F.priority === 'urgent' && t.priority !== 'urgent') return false;
       if (/^#\d+$/.test(q)) { if (t.id !== Number(q.slice(1))) return false; }
       else if (q) {
         const hay = normalizeAr([t.subject, t.requester, t.employeeName, t.refNo, t.notes, t.engineerName, `#${t.id}`].join(' '));
@@ -110,6 +114,7 @@ export default async function tasksPage(ctx, main) {
       <span class="chip"><span class="dot" style="color:var(--info)"></span>مفتوحة <b>${num(s.open)}</b></span>
       ${s.delayed ? html`<span class="chip"><span class="dot" style="color:var(--warn)"></span>متأخرة <b>${num(s.delayed)}</b></span>` : ''}
       ${s.cancelled ? html`<span class="chip"><span class="dot" style="color:var(--muted)"></span>مغلقة بدون إنجاز <b>${num(s.cancelled)}</b></span>` : ''}
+      ${s.urgentOpen ? html`<span class="chip"><span class="dot" style="color:var(--bad)"></span>عاجلة مفتوحة <b>${num(s.urgentOpen)}</b></span>` : ''}
       ${nReview(rows) ? html`<span class="chip"><span class="dot" style="color:var(--warn)"></span>تحتاج مراجعة <b>${num(nReview(rows))}</b></span>` : ''}`);
     if (!table) {
       table = dataTable($('#tbl', root), {

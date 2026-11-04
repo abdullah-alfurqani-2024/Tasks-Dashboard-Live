@@ -184,6 +184,15 @@ check('رئيس القسم لا يُدخل باسم غيره', True,
 check('الإدخال العادي من المدير باسمه', True,
       f"insert into tasks (engineer_id, subject, received_date, status_id) values ('{U['eng2']}', 'عادية', '2026-04-01', {OPEN}) returning created_by = '{U['admin']}'", 'admin', 't')
 
+# ---------- أولوية المهمة (13_priority.sql) ----------
+pri = check('المهمة الجديدة «عادية» افتراضياً', True,
+      f"insert into tasks (subject, received_date, status_id) values ('أولوية', '2026-05-01', {OPEN}) returning id", 'eng1')
+check('العرض يحتوي الأولوية', True, f"select priority from v_tasks where id = {pri}", 'eng1', 'normal')
+check('المهندس يجعل مهمته عاجلة', True, f"update tasks set priority = 'urgent' where id = {pri} returning priority", 'eng1', 'urgent')
+check('قيمة أولوية غير معروفة مرفوضة', False, f"update tasks set priority = 'high' where id = {pri}", 'eng1', None)
+check('تغيير الأولوية في سجل التعديلات', True,
+      f"select count(*) > 0 from task_audit where task_id = {pri} and 'priority' = any(changed_fields)", None, 't')
+
 # ---------- نسخة التجربة: الإعداد والنسخ وحذف كل المهام ----------
 setup_stg = open(os.path.join(os.path.dirname(__file__), '..', 'staging', 'setup_staging.sql'), encoding='utf-8').read()
 ok, out = sql(setup_stg)
@@ -209,6 +218,8 @@ check('النسخ: المتصفح (مدير) لا يستطيع استدعاء د
 check('النسخ: دالة refresh-staging (مفتاح الخادم) تنسخ المهام', True, f"set role service_role; select {snapshot()}->>'tasks'", None, prod_n)
 check('النسخ: المهام مربوطة بمهندسيها في التجربة', True,
       "select count(*) from support_tasks_staging.tasks t join support_tasks_staging.profiles p on p.id = t.engineer_id where p.source_id is not null", None, prod_n)
+check('النسخ: الأولوية تُنسخ', True,
+      "select (select count(*) from support_tasks_staging.tasks where priority = 'urgent') = (select count(*) from support_tasks.tasks where priority = 'urgent' and deleted_at is null)", None, 't')
 check('النسخ: أسباب المراجعة تُنسخ', True,
       "select (select count(*) from support_tasks_staging.tasks where review_reasons is not null) = (select count(*) from support_tasks.tasks where review_reasons is not null and deleted_at is null)", None, 't')
 check('النسخ: من ينفّذ يبقى مديراً حتى لو تغيّر دوره في الإنتاج', True,

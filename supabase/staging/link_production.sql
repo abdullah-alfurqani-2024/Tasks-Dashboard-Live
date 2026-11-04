@@ -94,10 +94,10 @@ begin
       id bigint, engineer_id uuid, ref_no text, requester text, employee_name text, subject text,
       received_date date, completed_date date, notes text, task_type_id int, correspondence_type_id int, status_id int,
       delay_reason text, created_at timestamptz, created_by uuid, updated_at timestamptz, updated_by uuid,
-      deleted_at timestamptz, deleted_by uuid, review_reasons text[])
+      deleted_at timestamptz, deleted_by uuid, review_reasons text[], priority text)
   )
   insert into support_tasks_staging.tasks (id, engineer_id, ref_no, requester, employee_name, subject, received_date, completed_date, notes,
-    task_type_id, correspondence_type_id, status_id, delay_reason, created_at, created_by, updated_at, updated_by, deleted_at, deleted_by, review_reasons)
+    task_type_id, correspondence_type_id, status_id, delay_reason, created_at, created_by, updated_at, updated_by, deleted_at, deleted_by, review_reasons, priority)
   overriding system value
   select t.id, e.id, t.ref_no, t.requester, t.employee_name, coalesce(t.subject, ''), t.received_date, t.completed_date, t.notes,
     (select sid from lk where k = 'tt' and pid = t.task_type_id),
@@ -109,7 +109,8 @@ begin
     (select id from support_tasks_staging.profiles where source_id = t.updated_by),
     t.deleted_at,
     (select id from support_tasks_staging.profiles where source_id = t.deleted_by),
-    nullif(t.review_reasons, '{}')
+    nullif(t.review_reasons, '{}'),
+    case when t.priority = 'urgent' then 'urgent' else 'normal' end
   from t
   join support_tasks_staging.profiles e on e.source_id = t.engineer_id
   where (select sid from lk where k = 'st' and pid = t.status_id) is not null;

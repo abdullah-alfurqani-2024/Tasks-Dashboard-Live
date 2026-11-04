@@ -90,7 +90,7 @@ export function createAdapter() {
     const lk = (k, id) => db.lookups[k].find((x) => x.id === id);
     const st = lk('statuses', t.statusId) || {};
     return {
-      ...t, reviewReasons: t.reviewReasons || [], engineerName: u.fullName, engineerShort: u.shortName,
+      ...t, reviewReasons: t.reviewReasons || [], priority: t.priority || 'normal', engineerName: u.fullName, engineerShort: u.shortName,
       taskType: lk('taskTypes', t.taskTypeId)?.name || '', correspondenceType: lk('correspondenceTypes', t.correspondenceTypeId)?.name || '',
       status: st.name, statusKind: st.kind,
       durationDays: t.completedDate && t.receivedDate ? Math.round((Date.parse(t.completedDate) - Date.parse(t.receivedDate)) / 864e5) : null,
@@ -98,7 +98,7 @@ export function createAdapter() {
   };
 
   const FIELDS = { engineerId: 'engineer_id', refNo: 'ref_no', requester: 'requester', employeeName: 'employee_name', subject: 'subject', receivedDate: 'received_date',
-    completedDate: 'completed_date', notes: 'notes', taskTypeId: 'task_type_id', correspondenceTypeId: 'correspondence_type_id', statusId: 'status_id', delayReason: 'delay_reason', deletedAt: 'deleted_at', reviewReasons: 'review_reasons' };
+    completedDate: 'completed_date', notes: 'notes', taskTypeId: 'task_type_id', correspondenceTypeId: 'correspondence_type_id', statusId: 'status_id', delayReason: 'delay_reason', deletedAt: 'deleted_at', reviewReasons: 'review_reasons', priority: 'priority' };
   const snake = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => FIELDS[k]).map(([k, v]) => [FIELDS[k], v ?? null]));
   function audit(taskId, action, oldT, newT) {
     const a = oldT ? snake(oldT) : null, b = snake(newT);
@@ -122,6 +122,7 @@ export function createAdapter() {
     refNo: t.refNo?.trim() || '', requester: t.requester?.trim() || '', employeeName: t.employeeName?.trim() || '', subject: t.subject?.trim(),
     receivedDate: t.receivedDate, completedDate: t.completedDate || null, notes: t.notes?.trim() || '',
     taskTypeId: Number(t.taskTypeId) || null, correspondenceTypeId: Number(t.correspondenceTypeId) || null, statusId: Number(t.statusId), delayReason: t.delayReason?.trim() || '',
+    ...(t.priority !== undefined ? { priority: t.priority === 'urgent' ? 'urgent' : 'normal' } : {}),
   });
   const locked = (t) => {
     const d = db.settings.editLockDays;

@@ -3,7 +3,7 @@ import { db } from '../data/index.js';
 import { html, mount, $, formData } from '../core/dom.js';
 import { state, userName } from '../core/store.js';
 import { fmtDate, fmtDateTime, today, addDays } from '../core/format.js';
-import { LABEL_BY_COL } from '../core/fields.js';
+import { LABEL_BY_COL, PRIORITY_LABELS } from '../core/fields.js';
 import { setTitle } from '../core/session.js';
 import { dateInput } from '../ui/dateField.js';
 import { dataTable } from '../ui/table.js';
@@ -18,6 +18,7 @@ function value(col, v) {
   if (LOOKUP_OF[col]) return state.lookups[LOOKUP_OF[col]].find((x) => x.id === Number(v))?.name || `#${v}`;
   if (col === 'received_date' || col === 'completed_date') return fmtDate(v);
   if (col === 'deleted_at') return fmtDateTime(v);
+  if (col === 'priority') return PRIORITY_LABELS[v] || v;
   if (Array.isArray(v)) return v.length ? v.join('، ') : '—';
   return String(v);
 }

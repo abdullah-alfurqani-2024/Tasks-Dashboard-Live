@@ -6,7 +6,7 @@ import { db } from '../data/index.js';
 import { html, $, formData } from '../core/dom.js';
 import { state, can, canEditTask, isLocked, engineers, activeItems, userName, refreshReviewCount } from '../core/store.js';
 import { today, daysBetween, fmtDateTime, daysAr } from '../core/format.js';
-import { LABEL } from '../core/fields.js';
+import { LABEL, PRIORITY_LABELS } from '../core/fields.js';
 import { navigate } from '../core/router.js';
 import { modal, busy, toast, confirmBox, toastError } from './feedback.js';
 import { options } from './parts.js';
@@ -60,6 +60,8 @@ export function openTaskForm({ task = null, requesters = [], onSaved }) {
         <datalist id="dl-req">${requesters.slice(0, 300).map((r) => html`<option value="${r}">`)}</datalist></div>
       <div class="field"><label for="t-emp">${LABEL.employeeName}</label>
         <input class="input" id="t-emp" name="employeeName" value="${t.employeeName || ''}" maxlength="300" ${dis}></div>
+      <div class="field"><label for="t-prio">${LABEL.priority}</label>
+        <select class="input" id="t-prio" name="priority" ${dis}>${options(Object.entries(PRIORITY_LABELS), t.priority || 'normal')}</select></div>
       <div class="field"><label for="t-type">${LABEL.taskTypeId}</label>
         <select class="input" id="t-type" name="taskTypeId" ${dis}>${options(activeItems('taskTypes', t.taskTypeId), t.taskTypeId, '—')}</select></div>
       <div class="field"><label for="t-status">${LABEL.statusId} <span class="req">*</span></label>
@@ -147,7 +149,7 @@ export function openTaskForm({ task = null, requesters = [], onSaved }) {
       refNo: v.refNo, requester: v.requester, employeeName: v.employeeName, subject: v.subject,
       receivedDate: v.receivedDate || null, completedDate: v.completedDate || null, notes: v.notes,
       taskTypeId: v.taskTypeId ? Number(v.taskTypeId) : null, correspondenceTypeId: v.correspondenceTypeId ? Number(v.correspondenceTypeId) : null,
-      statusId: Number(v.statusId), delayReason: v.delayReason,
+      statusId: Number(v.statusId), delayReason: v.delayReason, priority: v.priority === 'urgent' ? 'urgent' : 'normal',
     };
     if ($('#t-reviewed', m.el)?.checked) input.reviewReasons = [];
     await busy(btn, async () => {

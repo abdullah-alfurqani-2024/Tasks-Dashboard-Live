@@ -2,7 +2,7 @@
 import { writeXlsx } from '../lib/xlsx.js';
 import { toCsv } from '../lib/csv.js';
 import { downloadBlob } from './dom.js';
-import { LABEL } from './fields.js';
+import { LABEL, PRIORITY_LABELS } from './fields.js';
 import { today, fmtDate, fmtDateTime, localIsoDateTime } from './format.js';
 
 const COLS = [
@@ -18,6 +18,7 @@ const COLS = [
   { label: LABEL.taskTypeId, width: 22, get: (t) => t.taskType },
   { label: LABEL.correspondenceTypeId, width: 16, get: (t) => t.correspondenceType },
   { label: LABEL.statusId, width: 14, get: (t) => t.status },
+  { label: LABEL.priority, width: 10, get: (t) => PRIORITY_LABELS[t.priority] || PRIORITY_LABELS.normal },
   { label: LABEL.delayReason, width: 28, get: (t) => t.delayReason },
   { label: LABEL.durationDays, type: 'number', width: 8, get: (t) => t.durationDays },
   { label: LABEL.createdAt, type: 'datetime', width: 22, get: (t) => localIsoDateTime(t.createdAt), raw: (t) => t.createdAt },

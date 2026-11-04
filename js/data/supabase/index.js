@@ -5,7 +5,7 @@ import { createClient, ApiError } from './client.js';
 import { normalizeSettings } from '../../core/settings.js';
 import { latinDigits as latin } from '../../core/format.js';
 
-const TASK_COLS = 'id,engineer_id,engineer_name,engineer_short,ref_no,requester,employee_name,subject,received_date,completed_date,notes,task_type_id,task_type,correspondence_type_id,correspondence_type,status_id,status,status_kind,delay_reason,duration_days,created_at,created_by,updated_at,updated_by,deleted_at,deleted_by,review_reasons';
+const TASK_COLS = 'id,engineer_id,engineer_name,engineer_short,ref_no,requester,employee_name,subject,received_date,completed_date,notes,task_type_id,task_type,correspondence_type_id,correspondence_type,status_id,status,status_kind,delay_reason,duration_days,created_at,created_by,updated_at,updated_by,deleted_at,deleted_by,review_reasons,priority';
 const LOOKUP_TABLES = { taskTypes: 'task_types', correspondenceTypes: 'correspondence_types', statuses: 'task_statuses' };
 
 const INTERNAL = '@tasks.internal';
@@ -23,7 +23,7 @@ const toTask = (r) => ({
   statusId: r.status_id, status: r.status, statusKind: r.status_kind,
   delayReason: r.delay_reason || '', durationDays: r.duration_days,
   createdAt: r.created_at, createdBy: r.created_by, updatedAt: r.updated_at, updatedBy: r.updated_by,
-  deletedAt: r.deleted_at, deletedBy: r.deleted_by, reviewReasons: r.review_reasons || [],
+  deletedAt: r.deleted_at, deletedBy: r.deleted_by, reviewReasons: r.review_reasons || [], priority: r.priority || 'normal',
 });
 
 const toLookup = (r) => ({ id: r.id, name: r.name, sortOrder: r.sort_order, isActive: r.is_active, ...(r.kind ? { kind: r.kind } : {}) });
@@ -38,6 +38,7 @@ function taskRow(t) {
   if (t.engineerId) row.engineer_id = t.engineerId;
   // الاستيراد يسجّل المهمة باسم مهندسها (تقبله قاعدة البيانات من مدير النظام فقط)
   if (t.createdBy) row.created_by = t.createdBy;
+  if (t.priority !== undefined) row.priority = t.priority === 'urgent' ? 'urgent' : 'normal';
   // أسباب المراجعة: يضعها الاستيراد، ومسحها = «تمت المراجعة»
   if (t.reviewReasons !== undefined) row.review_reasons = t.reviewReasons?.length ? t.reviewReasons : null;
   return row;

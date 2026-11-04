@@ -20,6 +20,8 @@ begin
     execute format('create index if not exists tasks_review_idx on %I.tasks (engineer_id) where review_reasons is not null and deleted_at is null', s);
 
     -- عرض المهام: نفس الأعمدة السابقة + review_reasons في آخره
+    -- (حذف ثم إنشاء: يُعاد بناؤه مع الأعمدة الأحدث في ملفات لاحقة مثل 13)
+    if not exists (select 1 from information_schema.columns where table_schema = s and table_name = 'v_tasks' and column_name = 'review_reasons') then
     execute format($v$
       create or replace view %1$I.v_tasks
       with (security_invoker = true) as
@@ -39,6 +41,7 @@ begin
       left join %1$I.task_types tt     on tt.id = t.task_type_id
       left join %1$I.correspondence_types ct on ct.id = t.correspondence_type_id
       join %1$I.task_statuses s        on s.id = t.status_id$v$, s);
+    end if;
 
     -- أسباب المراجعة يضعها الاستيراد (مدير النظام) فقط؛ غيره يستطيع مسحها («تمت المراجعة») لا إضافتها
     execute format($f$

@@ -7,7 +7,7 @@ import { daysBetween, MONTHS } from '../core/format.js';
  * المنجزة بعد المهلة = مكتملة ومدتها أكبر من delayDays.
  */
 export function summarize(tasks, { delayDays = 7, today }) {
-  const s = { total: tasks.length, done: 0, open: 0, cancelled: 0, delayed: 0, lateDone: 0, durSum: 0, durN: 0 };
+  const s = { total: tasks.length, done: 0, open: 0, cancelled: 0, delayed: 0, lateDone: 0, durSum: 0, durN: 0, urgentOpen: 0 };
   for (const t of tasks) {
     if (t.statusKind === 'done') {
       s.done++;
@@ -15,6 +15,7 @@ export function summarize(tasks, { delayDays = 7, today }) {
     } else if (t.statusKind === 'cancelled') s.cancelled++;
     else {
       s.open++;
+      if (t.priority === 'urgent') s.urgentOpen++;
       if (today && t.receivedDate && daysBetween(t.receivedDate, today) > delayDays) s.delayed++;
     }
   }

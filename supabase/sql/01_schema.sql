@@ -87,6 +87,8 @@ create table if not exists support_tasks.tasks (
   deleted_at             timestamptz,                            -- حذف ناعم
   deleted_by             uuid references support_tasks.profiles (id),
   review_reasons         text[],                                 -- أسباب المراجعة من الاستيراد (10_review.sql)
+  priority               text not null default 'normal'          -- الأولوية: normal عادية / urgent عاجلة (13_priority.sql)
+                         constraint tasks_priority_chk check (priority in ('normal', 'urgent')),
   constraint tasks_dates_chk check (completed_date is null or completed_date >= received_date)
 );
 
@@ -124,7 +126,11 @@ create index if not exists task_audit_time_idx on support_tasks.task_audit (chan
 -- ---------------------------------------------------------------------
 -- عرض المهام مع الأسماء (يخضع لصلاحيات الجداول نفسها)
 -- ---------------------------------------------------------------------
-create or replace view support_tasks.v_tasks
+-- يُنشأ مرة واحدة في القاعدة الجديدة؛ وفي القواعد القائمة تحدّثه ملفات التعديل (10، 13)
+do $vw$ begin
+  if to_regclass('support_tasks.v_tasks') is null then
+    execute $sql$
+create view support_tasks.v_tasks
 with (security_invoker = true) as
 select
   t.id, t.engineer_id, p.full_name as engineer_name, p.short_name as engineer_short,
@@ -136,12 +142,16 @@ select
   t.delay_reason, t.duration_days,
   t.created_at, t.created_by, t.updated_at, t.updated_by,
   t.deleted_at, t.deleted_by,
-  t.review_reasons
+  t.review_reasons,
+  t.priority
 from support_tasks.tasks t
 join support_tasks.profiles p             on p.id = t.engineer_id
 left join support_tasks.task_types tt     on tt.id = t.task_type_id
 left join support_tasks.correspondence_types ct on ct.id = t.correspondence_type_id
-join support_tasks.task_statuses s        on s.id = t.status_id;
+join support_tasks.task_statuses s        on s.id = t.status_id
+    $sql$;
+  end if;
+end $vw$;
 
 -- ---------------------------------------------------------------------
 -- تفعيل Row Level Security فوراً على كل جدول

@@ -72,6 +72,7 @@ export default async function dashboard(ctx, main) {
         <div class="card kpi" style="--accent:var(--c1)"><span class="label">إجمالي المهام</span><span class="value num">${num(s.total)}</span><span class="note">${from ? `${fmtDate(from)} – ${fmtDate(to)}` : 'كل الفترات'}</span></div>
         <div class="card kpi" style="--accent:var(--c2)"><span class="label">مكتملة</span><span class="value num">${num(s.done)}</span><span class="note">نسبة الإنجاز ${pct(s.rate)}</span></div>
         <div class="card kpi" style="--accent:var(--c3)"><span class="label">مفتوحة</span><span class="value num">${num(s.open)}</span><span class="note">منها متأخرة ${num(s.delayed)}</span></div>
+        <div class="card kpi" style="--accent:var(--bad)"><span class="label">عاجلة مفتوحة</span><span class="value num">${num(s.urgentOpen)}</span><span class="note">أولوية «عاجلة» ولم تكتمل</span></div>
         <div class="card kpi" style="--accent:var(--c5)"><span class="label">متأخرة</span><span class="value num">${num(s.delayed)}</span><span class="note">مفتوحة أكثر من ${daysAr(delayDays)}</span></div>
         <div class="card kpi" style="--accent:var(--c6)"><span class="label">متوسط مدة الإنجاز</span><span class="value num">${dec1(s.avgDuration)}</span><span class="note">يوم · تجاوزت المهلة ${num(s.lateDone)}</span></div>
         <div class="card kpi" style="--accent:var(--c7)"><span class="label">مغلقة بدون إنجاز</span><span class="value num">${num(s.cancelled)}</span><span class="note">لا تدخل في نسبة الإنجاز</span></div>

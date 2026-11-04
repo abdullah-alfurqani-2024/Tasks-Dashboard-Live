@@ -98,6 +98,8 @@ create table if not exists support_tasks_staging.tasks (
   deleted_at             timestamptz,                            -- حذف ناعم
   deleted_by             uuid references support_tasks_staging.profiles (id),
   review_reasons         text[],                                 -- أسباب المراجعة من الاستيراد (10_review.sql)
+  priority               text not null default 'normal'          -- الأولوية: normal عادية / urgent عاجلة (13_priority.sql)
+                         constraint tasks_priority_chk check (priority in ('normal', 'urgent')),
   constraint tasks_dates_chk check (completed_date is null or completed_date >= received_date)
 );
 
@@ -135,7 +137,11 @@ create index if not exists task_audit_time_idx on support_tasks_staging.task_aud
 -- ---------------------------------------------------------------------
 -- عرض المهام مع الأسماء (يخضع لصلاحيات الجداول نفسها)
 -- ---------------------------------------------------------------------
-create or replace view support_tasks_staging.v_tasks
+-- يُنشأ مرة واحدة في القاعدة الجديدة؛ وفي القواعد القائمة تحدّثه ملفات التعديل (10، 13)
+do $vw$ begin
+  if to_regclass('support_tasks_staging.v_tasks') is null then
+    execute $sql$
+create view support_tasks_staging.v_tasks
 with (security_invoker = true) as
 select
   t.id, t.engineer_id, p.full_name as engineer_name, p.short_name as engineer_short,
@@ -147,12 +153,16 @@ select
   t.delay_reason, t.duration_days,
   t.created_at, t.created_by, t.updated_at, t.updated_by,
   t.deleted_at, t.deleted_by,
-  t.review_reasons
+  t.review_reasons,
+  t.priority
 from support_tasks_staging.tasks t
 join support_tasks_staging.profiles p             on p.id = t.engineer_id
 left join support_tasks_staging.task_types tt     on tt.id = t.task_type_id
 left join support_tasks_staging.correspondence_types ct on ct.id = t.correspondence_type_id
-join support_tasks_staging.task_statuses s        on s.id = t.status_id;
+join support_tasks_staging.task_statuses s        on s.id = t.status_id
+    $sql$;
+  end if;
+end $vw$;
 
 -- ---------------------------------------------------------------------
 -- تفعيل Row Level Security فوراً على كل جدول
@@ -621,6 +631,8 @@ begin
     execute format('create index if not exists tasks_review_idx on %I.tasks (engineer_id) where review_reasons is not null and deleted_at is null', s);
 
     -- عرض المهام: نفس الأعمدة السابقة + review_reasons في آخره
+    -- (حذف ثم إنشاء: يُعاد بناؤه مع الأعمدة الأحدث في ملفات لاحقة مثل 13)
+    if not exists (select 1 from information_schema.columns where table_schema = s and table_name = 'v_tasks' and column_name = 'review_reasons') then
     execute format($v$
       create or replace view %1$I.v_tasks
       with (security_invoker = true) as
@@ -640,6 +652,7 @@ begin
       left join %1$I.task_types tt     on tt.id = t.task_type_id
       left join %1$I.correspondence_types ct on ct.id = t.correspondence_type_id
       join %1$I.task_statuses s        on s.id = t.status_id$v$, s);
+    end if;
 
     -- أسباب المراجعة يضعها الاستيراد (مدير النظام) فقط؛ غيره يستطيع مسحها («تمت المراجعة») لا إضافتها
     execute format($f$
@@ -986,6 +999,63 @@ where p.proname = 'tasks_audit' and n.nspname in ('support_tasks', 'support_task
 order by 1;
 
 
+-- ===================== 13_priority.sql =====================
+-- =====================================================================
+--  نظام مهام الدعم الفني — 13: أولوية المهمة (عادية / عاجلة)
+--
+--  يضيف عمود priority للمهام: 'normal' (عادية، الافتراضي) أو 'urgent' (عاجلة).
+--  المهام الحالية كلها تصبح «عادية».
+--  للسكيمتين معاً. إضافة فقط: لا يؤثر على النسخة الحالية من الواجهة، فيُنفَّذ قبل نقل الإصدار.
+--  يُنفَّذ في مشروع التجربة أولاً، ثم في مشروع الإنتاج. يمكن إعادة تنفيذه بلا ضرر.
+-- =====================================================================
+
+do $do$
+declare
+  s text;
+begin
+  foreach s in array array['support_tasks', 'support_tasks_staging'] loop
+    if to_regclass(s || '.tasks') is null then continue; end if;
+
+    execute format($q$alter table %I.tasks add column if not exists priority text not null default 'normal'$q$, s);
+    if not exists (select 1 from pg_constraint where conname = 'tasks_priority_chk' and conrelid = (s || '.tasks')::regclass) then
+      execute format($q$alter table %I.tasks add constraint tasks_priority_chk check (priority in ('normal', 'urgent'))$q$, s);
+    end if;
+    execute format($q$create index if not exists tasks_urgent_idx on %I.tasks (engineer_id) where priority = 'urgent' and deleted_at is null$q$, s);
+
+    -- عرض المهام: نفس الأعمدة + priority في آخره
+    execute format('drop view if exists %I.v_tasks', s);
+    execute format($v$
+      create view %1$I.v_tasks
+      with (security_invoker = true) as
+      select
+        t.id, t.engineer_id, p.full_name as engineer_name, p.short_name as engineer_short,
+        t.ref_no, t.requester, t.employee_name, t.subject,
+        t.received_date, t.completed_date, t.notes,
+        t.task_type_id, tt.name as task_type,
+        t.correspondence_type_id, ct.name as correspondence_type,
+        t.status_id, s.name as status, s.kind as status_kind,
+        t.delay_reason, t.duration_days,
+        t.created_at, t.created_by, t.updated_at, t.updated_by,
+        t.deleted_at, t.deleted_by,
+        t.review_reasons,
+        t.priority
+      from %1$I.tasks t
+      join %1$I.profiles p             on p.id = t.engineer_id
+      left join %1$I.task_types tt     on tt.id = t.task_type_id
+      left join %1$I.correspondence_types ct on ct.id = t.correspondence_type_id
+      join %1$I.task_statuses s        on s.id = t.status_id$v$, s);
+    execute format('grant select on %I.v_tasks to authenticated', s);
+    execute format('grant all on %I.v_tasks to service_role', s);
+  end loop;
+end $do$;
+
+-- التحقق: يجب أن يظهر سطر لكل سكيما في هذا المشروع (مشروع الإنتاج: support_tasks، مشروع التجربة: support_tasks_staging)
+select table_schema, column_name, column_default
+from information_schema.columns
+where table_name = 'v_tasks' and column_name = 'priority'
+order by table_schema;
+
+
 -- =====================================================================
 --  نسخة التجربة: دالة «حذف كل المهام» (زر في صفحة الإعدادات)
 --  تُنفَّذ مرة واحدة في SQL Editor (وهي ضمن setup_staging.sql أيضاً)
@@ -1113,10 +1183,10 @@ begin
       id bigint, engineer_id uuid, ref_no text, requester text, employee_name text, subject text,
       received_date date, completed_date date, notes text, task_type_id int, correspondence_type_id int, status_id int,
       delay_reason text, created_at timestamptz, created_by uuid, updated_at timestamptz, updated_by uuid,
-      deleted_at timestamptz, deleted_by uuid, review_reasons text[])
+      deleted_at timestamptz, deleted_by uuid, review_reasons text[], priority text)
   )
   insert into support_tasks_staging.tasks (id, engineer_id, ref_no, requester, employee_name, subject, received_date, completed_date, notes,
-    task_type_id, correspondence_type_id, status_id, delay_reason, created_at, created_by, updated_at, updated_by, deleted_at, deleted_by, review_reasons)
+    task_type_id, correspondence_type_id, status_id, delay_reason, created_at, created_by, updated_at, updated_by, deleted_at, deleted_by, review_reasons, priority)
   overriding system value
   select t.id, e.id, t.ref_no, t.requester, t.employee_name, coalesce(t.subject, ''), t.received_date, t.completed_date, t.notes,
     (select sid from lk where k = 'tt' and pid = t.task_type_id),
@@ -1128,7 +1198,8 @@ begin
     (select id from support_tasks_staging.profiles where source_id = t.updated_by),
     t.deleted_at,
     (select id from support_tasks_staging.profiles where source_id = t.deleted_by),
-    nullif(t.review_reasons, '{}')
+    nullif(t.review_reasons, '{}'),
+    case when t.priority = 'urgent' then 'urgent' else 'normal' end
   from t
   join support_tasks_staging.profiles e on e.source_id = t.engineer_id
   where (select sid from lk where k = 'st' and pid = t.status_id) is not null;

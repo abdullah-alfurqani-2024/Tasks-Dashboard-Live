@@ -10,6 +10,7 @@ import { db } from '../data/index.js';
 import { html, mount, $, on } from '../core/dom.js';
 import { state, engineers, loadReference, refreshReviewCount } from '../core/store.js';
 import { parseDate, normalizeAr, fmtDate, num, today } from '../core/format.js';
+import { parsePriority } from '../core/fields.js';
 import { setTitle } from '../core/session.js';
 import { readXlsx } from '../lib/xlsx.js';
 import { parseCsv, toCsv } from '../lib/csv.js';
@@ -31,6 +32,7 @@ const TARGETS = [
   { key: 'taskType', label: 'نوع المهمة', aliases: ['نوع المهمة', 'التصنيف'] },
   { key: 'correspondenceType', label: 'نوع المراسلة', aliases: ['نوع المراسلة'] },
   { key: 'status', label: 'الحالة', aliases: ['الحالة', 'حالة المهمة'] },
+  { key: 'priority', label: 'الأولوية', aliases: ['الأولوية', 'الاولوية', 'الأهمية', 'الاهمية', 'درجة الأهمية'] },
   { key: 'delayReason', label: 'سبب التأخير', aliases: ['سبب تأخير إنجاز المهمة', 'سبب التأخير'] },
 ];
 const LOOKUP_KEYS = { taskType: 'taskTypes', correspondenceType: 'correspondenceTypes', status: 'statuses' };
@@ -299,8 +301,12 @@ export default async function importPage(ctx, main) {
       if (kind === 'done' && !completedV && !(cellText(doneRaw))) reasons.push('مكتملة بدون تاريخ انتهاء');
       if (kind === 'open' && completedV) reasons.push('الحالة غير مكتملة ولها تاريخ انتهاء');
 
+      const prioRaw = cellText(g(r, 'priority'));
+      let priority = parsePriority(prioRaw);
+      if (!priority) { priority = 'normal'; reasons.push(`الأولوية «${prioRaw}» غير معروفة، ووُضعت «عادية»`); }
+
       const task = {
-        engineerId: eng?.id, refNo: cellText(g(r, 'refNo')), requester: cellText(g(r, 'requester')), employeeName: cellText(g(r, 'employeeName')),
+        engineerId: eng?.id, priority, refNo: cellText(g(r, 'refNo')), requester: cellText(g(r, 'requester')), employeeName: cellText(g(r, 'employeeName')),
         subject: subjectV, receivedDate, completedDate: completedV, notes: cellText(g(r, 'notes')), delayReason: cellText(g(r, 'delayReason')),
         _ref: { ...ref, status },
       };
@@ -453,7 +459,7 @@ export default async function importPage(ctx, main) {
       const { writeXlsx } = await import('../lib/xlsx.js');
       const cols = TARGETS.map((t) => ({ label: t.label, width: t.key === 'subject' ? 40 : 18, type: /Date$/.test(t.key) ? 'date' : 'text' }));
       const L = state.lookups;
-      const sample = [state.user.fullName, '1234', 'دائرة الموارد البشرية', 'محمد بن سعيد', 'إصلاح طابعة الشبكة', today(), today(), '', L.taskTypes[0]?.name || '', L.correspondenceTypes[0]?.name || '', L.statuses.find((s) => s.kind === 'done')?.name || '', ''];
+      const sample = [state.user.fullName, '1234', 'دائرة الموارد البشرية', 'محمد بن سعيد', 'إصلاح طابعة الشبكة', today(), today(), '', L.taskTypes[0]?.name || '', L.correspondenceTypes[0]?.name || '', L.statuses.find((s) => s.kind === 'done')?.name || '', 'عادية', ''];
       downloadBlob(writeXlsx([{ name: 'المهام', columns: cols, rows: [sample] }]), 'tasks-import-template.xlsx');
     }
   });
