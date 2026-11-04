@@ -74,6 +74,15 @@ function renderChrome() {
     banner.classList.add('env-staging');
     mount(banner, html`${CONFIG.envLabel}`);
   }
+  // إعلان مدير النظام: يُخفيه المستخدم لهذا الإعلان فقط، ويعود عند إعلان جديد
+  const ann = document.getElementById('announce-banner');
+  const text = u ? state.settings?.announcement || '' : '';
+  let hidden = '';
+  try { hidden = localStorage.getItem(`${CONFIG.storagePrefix}announcement.hidden`) || ''; } catch { /* */ }
+  if (text && hidden !== text) {
+    ann.hidden = false;
+    mount(ann, html`<span class="txt">📢 ${text}</span><button class="btn btn-ghost btn-icon btn-sm" data-act="hide-announcement" aria-label="إخفاء الإعلان" title="إخفاء">${icon('x')}</button>`);
+  } else { ann.hidden = true; ann.innerHTML = ''; }
   const asBar = document.getElementById('as-banner');
   if (u?.actingAs) {
     asBar.hidden = false;
@@ -172,6 +181,10 @@ on(topbar, 'click', '[data-act]', async (e, b) => {
 async function backToAdmin(msg) {
   try { await stopActing(); if (msg) toast(msg, 'warn'); } catch (e) { toastError(e); }
 }
+on(document.getElementById('announce-banner'), 'click', '[data-act="hide-announcement"]', () => {
+  try { localStorage.setItem(`${CONFIG.storagePrefix}announcement.hidden`, state.settings?.announcement || ''); } catch { /* */ }
+  renderChrome();
+});
 on(document.getElementById('as-banner'), 'click', '[data-act="stop-acting"]', (e, b) => { b.disabled = true; backToAdmin(); });
 document.addEventListener('click', (e) => { if (!e.target.closest('.dropdown, .nav, .menu-btn')) closeMenus(); });
 topbar.addEventListener('click', (e) => { if (e.target.closest('.nav a, .dropdown-menu a')) closeMenus(); });
