@@ -2,7 +2,8 @@
 
 | | التجربة | الإنتاج |
 |---|---|---|
-| مشروع Supabase | `pfarespmmaphtlscgmar` (الحساب الحالي) | `lklbdvepqvmvagjjedht` (الحساب الجديد) |
+| مشروع Supabase | `iwawaoweyldzqtuyzbyt` (Tasks-Test) | `lklbdvepqvmvagjjedht` |
+| حساب Supabase | نفس الحساب للمشروعين | |
 | المستودع والفرع | `abdullah-alfurqani-2024/Tasks-Dashboard-Live` ← الفرع **`staging`** | نفس المستودع ← الفرع **`main`** |
 | الرابط | `https://abdullah-alfurqani-2024.github.io/Tasks-Dashboard-Live/test/` | `https://abdullah-alfurqani-2024.github.io/Tasks-Dashboard-Live/` |
 | السكيما | `support_tasks_staging` | `support_tasks` (البيانات الحقيقية) |
@@ -145,3 +146,7 @@
 - إعداد مرة واحدة: تفعيل Actions في المستودع، وإضافة `staging` في **Settings ← Environments ← github-pages ← Deployment branches**،
   ثم **Settings ← Pages ← Source: GitHub Actions**.
 - مستودع حساب 2025 (`Tasks-Dashboard-Test`) لم يعد يُحدَّث، ويُؤرشف بعد التأكد.
+
+## التجربة في مشروع Tasks-Test (الإصدار 1.14.1)
+- مشروعا الإنتاج والتجربة في **حساب Supabase واحد**، وكل منهما مستقل بحسابات دخوله.
+- مشروع التجربة القديم (`pfarespmmaphtlscgmar`) في الحساب القديم لم يعد مستخدماً، ويُحذف بعد التأكد.

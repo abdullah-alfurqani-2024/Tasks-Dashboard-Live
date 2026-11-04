@@ -30,8 +30,8 @@ const ENVIRONMENTS = {
   staging: {
     hosts: [],                             // الافتراضي لكل رابط غير الإنتاج
     label: 'نسخة التجربة — البيانات هنا ليست بيانات القسم الحقيقية',
-    url: 'https://pfarespmmaphtlscgmar.supabase.co',                 // مشروع التجربة
-    anonKey: 'sb_publishable_1AEljmkY7c2yqSzwNCDuQQ_ggBQvJqI',
+    url: 'https://iwawaoweyldzqtuyzbyt.supabase.co',                 // مشروع التجربة (Tasks-Test)
+    anonKey: 'sb_publishable_il_y9CA-Zc18ioM2WDZ8mg_TaOieIyN',
     schema: 'support_tasks_staging',
     adminFunction: 'admin-users-staging',
     loginFunction: 'auth-login-staging',
