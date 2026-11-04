@@ -1,5 +1,6 @@
 /** صفحة المهام: الفلاتر، الجدول، والإضافة والتعديل */
 import { db } from '../data/index.js';
+import { CONFIG } from '../config.js';
 import { html, mount, $, formData, debounce, on } from '../core/dom.js';
 import { state, can, isLocked, canEditTask, engineers, activeItems } from '../core/store.js';
 import { fmtDate, normalizeAr, today, num } from '../core/format.js';
@@ -13,7 +14,7 @@ import { toastError } from '../ui/feedback.js';
 import { openTaskForm } from '../ui/taskForm.js';
 import { pageHead, periodFields, options, rangeOf, statusBadge, searchBox, loading, newPage } from '../ui/parts.js';
 
-const KEY = 'tsk.filters.tasks';
+const KEY = `${CONFIG.storagePrefix || 'tsk.'}filters.tasks`;
 const DEFAULTS = { period: 'year', from: '', to: '', engineerId: '', status: '', taskTypeId: '', q: '', deleted: 'exclude', review: '', priority: '' };
 const loadF = () => { try { return { ...DEFAULTS, ...JSON.parse(sessionStorage.getItem(KEY) || '{}') }; } catch { return { ...DEFAULTS }; } };
 const saveF = (F) => { try { sessionStorage.setItem(KEY, JSON.stringify(F)); } catch { /* */ } };

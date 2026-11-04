@@ -1,0 +1,64 @@
+# =====================================================================
+#  نشر الموقع: الإنتاج والتجربة معاً من مستودع واحد (GitHub Pages)
+#
+#    الفرع main     ← الإنتاج  https://abdullah-alfurqani-2024.github.io/Tasks-Dashboard-Live/
+#    الفرع staging  ← التجربة  https://abdullah-alfurqani-2024.github.io/Tasks-Dashboard-Live/test/
+#
+#  يعمل تلقائياً عند أي رفع أو دمج في أحد الفرعين، فينشر الفرعين معاً بآخر نسخة من كل منهما.
+#  ويمكن تشغيله يدوياً: Actions ← نشر الموقع ← Run workflow.
+#
+#  مرة واحدة في الإعدادات:
+#    Settings ← Pages ← Source: GitHub Actions
+#    Settings ← Environments ← github-pages ← Deployment branches: أضف staging بجانب main
+# =====================================================================
+name: نشر الموقع (الإنتاج والتجربة)
+
+on:
+  push:
+    branches: [main, staging]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# نشر واحد في كل مرة، ولا يُلغى نشر بدأ
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: الإنتاج (الفرع main)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: site
+
+      - name: التجربة (الفرع staging) في المجلد test
+        uses: actions/checkout@v4
+        with:
+          ref: staging
+          path: site/test
+
+      - name: تجهيز الموقع
+        run: |
+          rm -rf site/.git site/.github site/test/.git site/test/.github
+          echo "الإنتاج: $(grep -o '"version": *"[^"]*"' site/version.json)"
+          echo "التجربة: $(grep -o '"version": *"[^"]*"' site/test/version.json)"
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: النشر
+        id: deployment
+        uses: actions/deploy-pages@v4

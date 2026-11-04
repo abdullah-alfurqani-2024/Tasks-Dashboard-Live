@@ -1,9 +1,10 @@
 /**
  * إعدادات النظام
  *
- * نسختان من نفس الكود، ويعرف النظام نسخته من رابط الموقع تلقائياً:
- *   الإنتاج  ← abdullah-alfurqani-2024.github.io  (موظفو القسم، البيانات الحقيقية)
- *   التجربة  ← أي رابط آخر (abdullah-alfurqani-2025.github.io، أو جهاز المطوّر)
+ * نسختان من نفس الكود في مستودع واحد، ويعرف النظام نسخته من رابط الموقع تلقائياً:
+ *   الإنتاج  ← abdullah-alfurqani-2024.github.io/Tasks-Dashboard-Live/        (الفرع main)
+ *   التجربة  ← abdullah-alfurqani-2024.github.io/Tasks-Dashboard-Live/test/   (الفرع staging)
+ *             وأي رابط آخر (جهاز المطوّر…) يُعامل كتجربة
  * فلا يلزم تعديل هذا الملف عند نقل تحديث من التجربة إلى الإنتاج.
  *
  * لكل نسخة مشروع Supabase مستقل (حسابات دخول وكلمات مرور مستقلة تماماً).
@@ -39,7 +40,10 @@ const ENVIRONMENTS = {
 };
 
 const host = typeof location !== 'undefined' ? location.hostname : '';
-const envName = ENVIRONMENTS.production.hosts.includes(host) ? 'production' : 'staging';
+const path = typeof location !== 'undefined' ? location.pathname : '';
+// التجربة منشورة داخل موقع الإنتاج في المجلد /test/ فنفرّق بالمسار أيضاً
+const underTest = /\/test(\/|$)/.test(path);
+const envName = ENVIRONMENTS.production.hosts.includes(host) && !underTest ? 'production' : 'staging';
 const env = ENVIRONMENTS[envName];
 
 export const CONFIG = {
@@ -47,6 +51,8 @@ export const CONFIG = {
   orgName: 'قسم الدعم الفني والصيانة',
   env: envName,                 // 'production' | 'staging'
   envLabel: env.label,          // شريط يظهر أعلى الصفحة في نسخة التجربة
+  // النسختان على نفس الموقع: لكل نسخة مفاتيح تخزين مستقلة في المتصفح (جلسة الدخول والفلاتر)
+  storagePrefix: envName === 'production' ? 'tsk.' : 'tsk.stg.',
   backend: 'supabase',
   supabase: {
     url: env.url,
