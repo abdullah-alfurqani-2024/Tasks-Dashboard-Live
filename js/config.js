@@ -43,8 +43,8 @@ const envName = ENVIRONMENTS.production.hosts.includes(host) ? 'production' : 's
 const env = ENVIRONMENTS[envName];
 
 export const CONFIG = {
-  appName: 'نظام مهام الدعم الفني',
-  orgName: 'قسم الدعم الفني',
+  appName: 'نظام مهام الدعم الفني والصيانة',
+  orgName: 'قسم الدعم الفني والصيانة',
   env: envName,                 // 'production' | 'staging'
   envLabel: env.label,          // شريط يظهر أعلى الصفحة في نسخة التجربة
   backend: 'supabase',
