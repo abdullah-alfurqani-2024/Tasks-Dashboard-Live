@@ -53,6 +53,8 @@
 
 النظام يعمل بنسختين من نفس الكود: **التجربة** على حساب `abdullah-alfurqani-2025`، و**الإنتاج** على حساب `abdullah-alfurqani-2024`، ولكل منهما سكيما قاعدة بيانات خاصة. التفاصيل ودورة الإصدار في **[docs/RELEASE.md](docs/RELEASE.md)**.
 
+**سجل التطوير والإصدارات (PDF):** [docs/Tasks-System-Development-Report.pdf](docs/Tasks-System-Development-Report.pdf): كل الطلبات والإصدارات بالتفصيل للمستخدم والمهندس والإدارة، ويُحدَّث مع كل إصدار.
+
 ## هيكل المشروع
 
 ```

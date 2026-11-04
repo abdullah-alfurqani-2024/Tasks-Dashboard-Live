@@ -73,6 +73,7 @@
 
 ## للمطوّر
 - **رقم الإصدار:** `node tools/release.mjs 1.2.0` يحدّث `version.json` و`js/version.js`. التنبيه بالتحديث يعتمد على هذا الرقم، فيُرفع مع كل إصدار.
+- **سجل التطوير (PDF):** `docs/Tasks-System-Development-Report.pdf` يُحدَّث مع كل إصدار: أضف قسم الإصدار في `docs/report/report.html` ثم `node tools/build-report.mjs`. المجلد `docs/` لا يُنشر في الموقع.
 - **ملفا الإعداد:** بعد تعديل أي ملف في `supabase/sql` شغّل `node tools/staging-sql.mjs` و`node tools/production-sql.mjs` لتوليد `setup_staging.sql` و`setup_production.sql` من جديد.
 
 

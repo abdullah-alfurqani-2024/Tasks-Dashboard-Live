@@ -50,6 +50,8 @@ jobs:
       - name: تجهيز الموقع
         run: |
           rm -rf site/.git site/.github site/test/.git site/test/.github
+          # التوثيق (ومنه سجل التطوير PDF) يبقى في المستودع فقط ولا يُنشر في الموقع
+          rm -rf site/docs site/test/docs
           echo "الإنتاج: $(grep -o '"version": *"[^"]*"' site/version.json)"
           echo "التجربة: $(grep -o '"version": *"[^"]*"' site/test/version.json)"
 
