@@ -10,6 +10,7 @@ import { summarize, groupCount, monthly, isDelayed } from '../lib/stats.js';
 import { hbars, columns, donut } from '../lib/charts.js';
 import { icon } from '../ui/icons.js';
 import { pageHead, periodFields, options, rangeOf, loading, newPage } from '../ui/parts.js';
+import { openTaskForm } from '../ui/taskForm.js';
 
 const KEY = `${CONFIG.storagePrefix || 'tsk.'}filters.dash`;
 const DEFAULTS = { period: 'year', from: '', to: '', engineerId: '' };
@@ -68,15 +69,29 @@ export default async function dashboard(ctx, main) {
       return list[kindIdx[k]++ % list.length];
     };
 
+    // كل بطاقة وكل رقم في جدول المهندسين يفتح صفحة المهام مفلترة بنفس الفترة والمهندس
+    const link = (set = {}, eng = viewAll ? F.engineerId : '') => {
+      const q = new URLSearchParams({ reset: '1', period: F.period });
+      if (F.period === 'custom') { if (F.from) q.set('from', F.from); if (F.to) q.set('to', F.to); }
+      if (eng) q.set('engineer', eng);
+      for (const [k, v] of Object.entries(set)) q.set(k, v);
+      return `#/tasks?${q}`;
+    };
+    const DONE = { status: 'k:done' }, OPEN = { status: 'k:open' }, LATE = { status: 'k:delayed' }, CANC = { status: 'k:cancelled' };
+    const kpi = (accent, label, value, note, set) => set
+      ? html`<a class="card kpi kpi-link" style="--accent:${accent}" href="${link(set)}" title="عرض هذه المهام"><span class="label">${label}</span><span class="value num">${value}</span><span class="note">${note}</span></a>`
+      : html`<div class="card kpi" style="--accent:${accent}"><span class="label">${label}</span><span class="value num">${value}</span><span class="note">${note}</span></div>`;
+    const cell = (n, eng, set, style = '') => html`<td class="num" style="${style}">${n ? html`<a class="num-link" href="${link(set, eng)}" title="عرض هذه المهام">${num(n)}</a>` : num(n)}</td>`;
+
     mount(body, html`
       <div class="kpis">
-        <div class="card kpi" style="--accent:var(--c1)"><span class="label">إجمالي المهام</span><span class="value num">${num(s.total)}</span><span class="note">${from ? `${fmtDate(from)} – ${fmtDate(to)}` : 'كل الفترات'}</span></div>
-        <div class="card kpi" style="--accent:var(--c2)"><span class="label">مكتملة</span><span class="value num">${num(s.done)}</span><span class="note">نسبة الإنجاز ${pct(s.rate)}</span></div>
-        <div class="card kpi" style="--accent:var(--c3)"><span class="label">مفتوحة</span><span class="value num">${num(s.open)}</span><span class="note">منها متأخرة ${num(s.delayed)}</span></div>
-        <div class="card kpi" style="--accent:var(--bad)"><span class="label">عاجلة مفتوحة</span><span class="value num">${num(s.urgentOpen)}</span><span class="note">أولوية «عاجلة» ولم تكتمل</span></div>
-        <div class="card kpi" style="--accent:var(--c5)"><span class="label">متأخرة</span><span class="value num">${num(s.delayed)}</span><span class="note">مفتوحة أكثر من ${daysAr(delayDays)}</span></div>
-        <div class="card kpi" style="--accent:var(--c6)"><span class="label">متوسط مدة الإنجاز</span><span class="value num">${dec1(s.avgDuration)}</span><span class="note">يوم · تجاوزت المهلة ${num(s.lateDone)}</span></div>
-        <div class="card kpi" style="--accent:var(--c7)"><span class="label">مغلقة بدون إنجاز</span><span class="value num">${num(s.cancelled)}</span><span class="note">لا تدخل في نسبة الإنجاز</span></div>
+        ${kpi('var(--c1)', 'إجمالي المهام', num(s.total), from ? `${fmtDate(from)} – ${fmtDate(to)}` : 'كل الفترات', {})}
+        ${kpi('var(--c2)', 'مكتملة', num(s.done), `نسبة الإنجاز ${pct(s.rate)}`, DONE)}
+        ${kpi('var(--c3)', 'مفتوحة', num(s.open), `منها متأخرة ${num(s.delayed)}`, OPEN)}
+        ${kpi('var(--bad)', 'عاجلة مفتوحة', num(s.urgentOpen), 'أولوية «عاجلة» ولم تكتمل', { status: 'k:open', priority: 'urgent' })}
+        ${kpi('var(--c5)', 'متأخرة', num(s.delayed), `مفتوحة أكثر من ${daysAr(delayDays)}`, LATE)}
+        ${kpi('var(--c6)', 'متوسط مدة الإنجاز', dec1(s.avgDuration), `يوم · تجاوزت المهلة ${num(s.lateDone)}`)}
+        ${kpi('var(--c7)', 'مغلقة بدون إنجاز', num(s.cancelled), 'لا تدخل في نسبة الإنجاز', CANC)}
       </div>
 
       <div class="grid grid-2" style="margin-top:16px">
@@ -96,19 +111,19 @@ export default async function dashboard(ctx, main) {
         <div class="table-wrap"><table class="table">
           <thead><tr><th>المهندس</th><th>الإجمالي</th><th>مكتملة</th><th>مفتوحة</th><th>متأخرة</th><th>مغلقة</th><th>نسبة الإنجاز</th><th>متوسط المدة</th></tr></thead>
           <tbody>${byEng.map((g) => html`<tr class="clickable" data-eng="${g.key}">
-            <td>${fullName.get(g.key) || g.label}</td><td class="num">${num(g.total)}</td><td class="num">${num(g.done)}</td><td class="num">${num(g.open)}</td>
-            <td class="num" style="${delayedByEng.get(g.key) ? 'color:var(--warn);font-weight:600' : ''}">${num(delayedByEng.get(g.key) || 0)}</td>
-            <td class="num">${num(g.cancelled)}</td>
+            <td>${fullName.get(g.key) || g.label}</td>${cell(g.total, g.key, {})}${cell(g.done, g.key, DONE)}${cell(g.open, g.key, OPEN)}
+            ${cell(delayedByEng.get(g.key) || 0, g.key, LATE, delayedByEng.get(g.key) ? 'color:var(--warn);font-weight:600' : '')}
+            ${cell(g.cancelled, g.key, CANC)}
             <td><div class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:${Math.round((g.rate || 0) * 100)}%"></div></div><span class="num">${pct(g.rate)}</span></div></td>
             <td class="num">${dec1(g.avgDuration)}</td></tr>`)}
           ${byEng.length ? '' : html`<tr><td colspan="8"><div class="empty">لا توجد بيانات.</div></td></tr>`}</tbody>
         </table></div></div>` : ''}
 
       <div class="card" style="margin-top:16px"><div class="card-head"><h2>أقدم المهام المتأخرة</h2>
-        <div class="actions"><a class="btn btn-sm" href="#/tasks?status=k:delayed&period=all">عرض الكل</a></div></div>
+        <div class="actions"><a class="btn btn-sm" href="${link({ ...LATE, period: 'all' })}">عرض الكل</a></div></div>
         <div class="table-wrap"><table class="table">
           <thead><tr><th>#</th><th>الاستقبال</th>${viewAll ? html`<th>المهندس</th>` : ''}<th>الموضوع</th><th>الحالة</th><th>منذ</th></tr></thead>
-          <tbody>${delayedList.map((t) => html`<tr>
+          <tbody>${delayedList.map((t) => html`<tr class="clickable" data-task="${t.id}" title="فتح المهمة">
             <td class="num muted">${t.id}</td><td class="num nowrap">${fmtDate(t.receivedDate)}</td>
             ${viewAll ? html`<td class="nowrap">${t.engineerShort || t.engineerName}</td>` : ''}
             <td class="subject"><div class="clip">${t.subject}</div></td><td><span class="badge warn">${t.status}</span></td>
@@ -135,7 +150,13 @@ export default async function dashboard(ctx, main) {
     if (F.period !== 'custom' || (F.from && F.to)) load();
   });
   on(root, 'click', '[data-act="print"]', () => window.print());
+  on(root, 'click', 'tr[data-task]', (e, tr) => {
+    const t = tasks.find((x) => x.id === Number(tr.dataset.task));
+    const requesters = [...new Set(tasks.map((x) => x.requester).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar'));
+    if (t) openTaskForm({ task: t, requesters, onSaved: () => load() });
+  });
   on(root, 'click', 'tr[data-eng]', (e, tr) => {
+    if (e.target.closest('a')) return;          // الرقم رابط لصفحة المهام، وبقية الصف تفلتر اللوحة
     form.elements.engineerId.value = tr.dataset.eng;
     form.dispatchEvent(new Event('change'));
     window.scrollTo({ top: 0, behavior: 'smooth' });

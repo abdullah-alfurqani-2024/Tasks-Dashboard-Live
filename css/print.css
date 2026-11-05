@@ -26,3 +26,4 @@ body:has(.print-only) .page-head { display: none !important; }
 .chip { padding: 1px 8px; font-size: 8.5pt; }
 .print-only h2 { font-size: 13pt; }
 .table td.num, .table th { white-space: nowrap !important; word-break: normal; }
+.chip-btn svg { display: none; } .chip-btn.on { box-shadow: none; }
