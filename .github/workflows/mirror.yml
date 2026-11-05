@@ -1,0 +1,52 @@
+# =====================================================================
+#  مزامنة المستودع المرجعي في الحساب الأساسي
+#
+#    abdullah-alfurqani-2024/Tasks-Dashboard-Live  (الفرع main = الإنتاج)
+#          ↓  نسخة مطابقة
+#    abdullah-alfurqani/Tasks-Dashboard-Live       (الفرع main)
+#
+#  ينسخ دائماً الفرع main (الإنتاج) فقط، أياً كان الفرع الذي شغّله.
+#  مستقل عن نشر الموقع: لو فشل لا يتأثر الإنتاج ولا التجربة.
+#
+#  يحتاج سراً واحداً في هذا المستودع: Settings ← Secrets and variables ← Actions
+#    REFERENCE_TOKEN = مفتاح Fine-grained من الحساب الأساسي على مستودع Tasks-Dashboard-Live فقط
+#                      بصلاحيتين: Contents (Read and write) و Workflows (Read and write)
+#  عند انتهاء المفتاح: Regenerate token في الحساب الأساسي، ثم حدّث السر هنا.
+# =====================================================================
+name: مزامنة المرجع
+
+on:
+  push:
+    branches: [main, staging]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mirror
+  cancel-in-progress: true
+
+jobs:
+  mirror:
+    # في نسخة المرجع نفسها لا يعمل
+    if: github.repository == 'abdullah-alfurqani-2024/Tasks-Dashboard-Live'
+    runs-on: ubuntu-latest
+    steps:
+      - name: الفرع main كاملاً
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: النسخ إلى المرجع
+        env:
+          TOKEN: ${{ secrets.REFERENCE_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::السر REFERENCE_TOKEN غير موجود في هذا المستودع"; exit 1
+          fi
+          echo "ينسخ: $(git log -1 --format='%h %s')"
+          git push --force "https://mirror:${TOKEN}@github.com/abdullah-alfurqani/Tasks-Dashboard-Live.git" HEAD:refs/heads/main
+          echo "تمت المزامنة. الإصدار: $(grep -o '"version": *"[^"]*"' version.json)"

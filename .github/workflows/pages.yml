@@ -30,6 +30,8 @@ concurrency:
 
 jobs:
   deploy:
+    # نسخة المرجع في الحساب الأساسي لا تنشر شيئاً
+    if: github.repository == 'abdullah-alfurqani-2024/Tasks-Dashboard-Live'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
