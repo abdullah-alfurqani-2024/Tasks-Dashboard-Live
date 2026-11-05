@@ -1,0 +1,59 @@
+name: Daily Clone and 7-Day Retention Cleanup
+
+on:
+  schedule:
+    # الجدول الزمني: يعمل يومياً الساعة 00:00 بتوقيت UTC (يمكنك تعديل التوقيت)
+    - cron: '0 0 * * *'
+  workflow_dispatch: # يتيح لك تشغيله يدوياً للتجربة في أي وقت
+
+jobs:
+  clone-and-cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create New Dated Repository and Cleanup Old Ones
+        env:
+          GH_TOKEN: ${{ secrets.PAT_AUTO_SYNC }}
+          SOURCE_REPO_NAME: ${{ github.event.repository.name }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          # 1. تجهيز اسم المستودع الجديد بناءً على التاريخ والوقت الحاليين
+          TIMESTAMP=$(date +'%Y-%m-%d-%H%M')
+          NEW_REPO_NAME="${SOURCE_REPO_NAME}-${TIMESTAMP}"
+
+          echo " Creating new repository: $NEW_REPO_NAME"
+
+          # 2. إنشاء المستودع الجديد عبر GitHub API
+          gh repo create "$OWNER/$NEW_REPO_NAME" --private --confirm
+
+          # 3. دفع جميع الفروع والتاجات إلى المستودع الجديد
+          git remote add target "https://x-access-token:${GH_TOKEN}@github.com/$OWNER/$NEW_REPO_NAME.git"
+          git push target --mirror
+
+          echo " Push completed successfully."
+
+          # 4. حساب التاريخ المرجعي قبل 7 أيام من الآن
+          CUTOFF_DATE=$(date -d "7 days ago" +%s 2>/dev/null || date -v-7d +%s)
+
+          echo " Checking for repositories older than 7 days to cleanup..."
+
+          # 5. البحث عن المستودعات المشابهة وحذف القديمة منها
+          gh api "user/repos?per_page=100" --jq ".[] | select(.name | startswith(\"${SOURCE_REPO_NAME}-\")) | {name: .name, created_at: .created_at}" | while read -r repo; do
+            REPO_NAME=$(echo "$repo" | jq -r '.name')
+            CREATED_AT=$(echo "$repo" | jq -r '.created_at')
+            
+            # تحويل تاريخ الإنشاء إلى Timestamp مقارنة بالقطع المرجعي
+            REPO_TIMESTAMP=$(date -d "$CREATED_AT" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$CREATED_AT" +%s)
+
+            if [ "$REPO_TIMESTAMP" -lt "$CUTOFF_DATE" ]; then
+              echo " Deleting old repository: $REPO_NAME (Created at: $CREATED_AT)"
+              gh api -X DELETE "repos/$OWNER/$REPO_NAME" || echo "Failed to delete $REPO_NAME"
+            else
+              echo " Keeping repository: $REPO_NAME (Age is within 7 days)"
+            fi
+          done
+
