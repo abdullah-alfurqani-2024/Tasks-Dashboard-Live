@@ -22,8 +22,8 @@
   <div class="sub">سجل التطوير والإصدارات: الطلبات والتعديلات من البداية حتى اليوم</div>
   <div class="rule"></div>
   <div class="meta">
-    <div><span>آخر إصدار</span><b class="ltr" data-fill="latest">1.18.0</b></div>
-    <div><span>عدد الإصدارات</span><b data-fill="count">27</b></div>
+    <div><span>آخر إصدار</span><b class="ltr" data-fill="latest">1.19.0</b></div>
+    <div><span>عدد الإصدارات</span><b data-fill="count">28</b></div>
     <div><span>تاريخ المستند</span><b class="ltr" data-fill="date">2026/11/05</b></div>
   </div>
   <div class="aud">موجَّه إلى: <span class="chip">الإدارة العليا</span><span class="chip">مستخدمي النظام</span><span class="chip">المهندس المسؤول</span></div>
@@ -46,7 +46,7 @@
     <div class="card"><h5><span class="tag user">المستخدم</span></h5>
       <p class="small">الفصل 2 (الشاشات والأدوار)، ثم الصناديق الخضراء «للمستخدم» داخل كل إصدار في الفصل 5.</p></div>
     <div class="card"><h5><span class="tag eng">المهندس</span></h5>
-      <p class="small">الفصول 3 و4 و7 و8، والصناديق الزرقاء «للمهندس» في كل إصدار، والملحق (أ) للبنية التقنية كاملة.</p></div>
+      <p class="small">الفصول 3 و4 و7 و8، والصناديق الزرقاء «للمهندس» في كل إصدار، والملحق (أ) للبنية التقنية كاملة، والملحق (ب) لنقل النظام إلى حسابات جديدة.</p></div>
   </div>
   <h3>رموز الإصدارات</h3>
   <table>
@@ -73,7 +73,7 @@
   <div class="ch-head"><div class="ch-no">1</div><div><h2>الملخص التنفيذي</h2><p><span class="tag mgmt">للإدارة</span> الوضع العام في صفحتين</p></div></div>
   <p class="lead">نظام ويب لمتابعة مهام قسم الدعم الفني والصيانة: تسجيل المهام وتوزيعها على المهندسين، ومتابعة إنجازها وتأخرها، وتقارير ومؤشرات لحظية. يحل محل ملفات Google Sheets والسكربتات الملحقة بها ولوحة Looker Studio، ويعمل بالعربية من اليمين لليسار على الحاسوب والجوال.</p>
   <div class="grid4" style="margin:5mm 0">
-    <div class="kpi"><b data-fill="count">27</b><span>إصداراً خلال 6 أيام</span></div>
+    <div class="kpi"><b data-fill="count">28</b><span>إصداراً خلال 6 أيام</span></div>
     <div class="kpi t"><b>2</b><span>بيئتان مستقلتان: إنتاج للعمل، وتجربة للتطوير</span></div>
     <div class="kpi g"><b>177</b><span>اختباراً آلياً للصلاحيات والدوال</span></div>
     <div class="kpi o"><b>0</b><span>تكلفة اشتراك: خطط مجانية</span></div>
@@ -267,7 +267,7 @@
       <tr><td><b>الثانية</b></td><td class="ltr">1.1.0 – 1.6.0</td><td>بيئة التجربة، والدخول بالرقم، وإدارة كلمات المرور</td></tr>
       <tr><td><b>الثالثة</b></td><td class="ltr">1.7.0 – 1.11.2</td><td>تجهيز البيانات: الاستيراد بلا فقد، والمراجعة</td></tr>
       <tr><td><b>الرابعة</b></td><td class="ltr">1.12.0 – 1.14.2</td><td>فصل البيئات وتوحيد الحسابات، وأول تعديلات تدريبية</td></tr>
-      <tr><td><b>الخامسة</b></td><td class="ltr">1.15.0 – 1.18.0</td><td>التواصل داخل النظام، وتحسينات التشغيل</td></tr>
+      <tr><td><b>الخامسة</b></td><td class="ltr">1.15.0 – 1.19.0</td><td>التواصل داخل النظام، وتحسينات التشغيل</td></tr>
     </tbody>
   </table>
 
@@ -663,6 +663,20 @@
   </section>
 
   <section class="ver">
+    <div class="ver-head"><span class="ver-no">1.19.0</span><h3>نوع المراسلة لمهام «مراسلة» فقط</h3><span class="tag feat">ميزة</span><span class="ver-date">2026/11/05</span></div>
+    <div class="ver-body">
+      <div class="req"><b>الملاحظة:</b> <span class="q">«نوع المراسلة تظهر فقط في حالة أن نوع المهمة مراسلة»</span>. والخيارات المعتمدة: <b>يختفي ويظهر</b>، وتُ<b>مسح</b> القيمة عند تغيير النوع، و<b>إلزامي</b> مع «مراسلة».</div>
+      <ul>
+        <li>«نوع المراسلة» انتقل بجانب «نوع المهمة»، ويظهر فقط عند اختيار «مراسلة»، مع علامة الإلزام.</li>
+        <li>تغيير النوع إلى غير «مراسلة» يُخفي الحقل وتُمسح قيمته عند الحفظ، فلا تبقى قيمة بلا معنى.</li>
+        <li><b>مهمة مستوردة تنتظر المراجعة:</b> تبقى قيمتها كما في الملف مع تنبيه تحت الحقل، وتُطبَّق القاعدة عند «تمت المراجعة».</li>
+      </ul>
+      <figure class="narrow"><img src="img/22-corr.jpg"><figcaption>«نوع المراسلة» يظهر بجانب «نوع المهمة» عند اختيار «مراسلة»</figcaption></figure>
+      <div class="aud-box eng"><h5><span class="tag eng">للمهندس</span></h5>«مراسلة» تُعرف من اسمها في قائمة أنواع المهام (يبدأ بـ «مراسل»). القاعدة في نموذج الإدخال فقط، فالاستيراد يبقى كما في الملف. لا يوجد ملف SQL.</div>
+    </div>
+  </section>
+
+  <section class="ver">
     <div class="ver-head"><span class="ver-no">—</span><h3>المزامنة التلقائية للمستودع المرجعي</h3><span class="tag infra">بنية</span><span class="ver-date">2026/11/05</span></div>
     <div class="ver-body">
       <div class="req"><b>الطلب:</b> الحساب الأساسي في GitHub <span class="q">«يظل كما هو»</span> بدور المرجع: نسخة مطابقة للإنتاج دون العمل فيه.</div>
@@ -851,7 +865,75 @@
 
 <!-- ============================== ملحق ب ============================== -->
 <section class="chapter" data-no="ب">
-  <div class="ch-head"><div class="ch-no">ب</div><div><h2>ملحق (ب): مسرد المصطلحات</h2><p>للقارئ غير التقني</p></div></div>
+  <div class="ch-head"><div class="ch-no">ب</div><div><h2>ملحق (ب): نقل النظام إلى حسابات جديدة</h2><p><span class="tag eng">للمهندس</span> <span class="tag mgmt">للإدارة</span> تشغيل النظام كاملاً في حساب GitHub وحساب Supabase آخرين</p></div></div>
+  <p class="lead">أربع مراحل. في الكود ثلاثة ملفات فقط تحمل أسماء الحسابات الحالية. <code>NEW</code> = اسم حساب GitHub الجديد. والنظام القديم يبقى يعمل حتى يُوقف، فيُجرَّب الجديد بجانبه قبل التحويل.</p>
+  <div class="flow">
+    <div class="step"><span class="n">1</span><b>Supabase</b>مشروعا الإنتاج والتجربة</div>
+    <div class="arr">←</div>
+    <div class="step t"><span class="n">2</span><b>GitHub</b>استيراد المستودع وتعديل 3 ملفات</div>
+    <div class="arr">←</div>
+    <div class="step o"><span class="n">3</span><b>الربط</b>حساب المزامنة وأسرار التجربة</div>
+    <div class="arr">←</div>
+    <div class="step g"><span class="n">4</span><b>البيانات</b>المستخدمون والمهام</div>
+  </div>
+
+  <h3>المرحلة 1: مشروعا Supabase</h3>
+  <h4>مشروع الإنتاج</h4>
+  <ol>
+    <li>أنشئ الحساب ثم <b>New project</b>، واحفظ كلمة مرور قاعدة البيانات عندك فقط.</li>
+    <li><b>SQL Editor:</b> نفّذ <code>supabase/production/setup_production.sql</code>.</li>
+    <li><b>Project Settings ← Data API ← Exposed schemas:</b> أضف <code>support_tasks</code>.</li>
+    <li><b>Authentication:</b> «Minimum password length» = 6، وأوقف «Allow new users to sign up».</li>
+    <li><b>أول مدير:</b> Users ← Add user (مع Auto Confirm)، ثم <code>supabase/production/first_admin.sql</code> ببياناتك.</li>
+    <li><b>Edge Functions:</b> <code>admin-users</code> (Verify JWT مفعّل) و<code>auth-login</code> (Verify JWT متوقف)، والكود من <code>supabase/functions</code>.</li>
+    <li><b>API Keys:</b> انسخ Project URL وPublishable key.</li>
+  </ol>
+  <h4>مشروع التجربة</h4>
+  <ol>
+    <li><b>New project</b> في نفس الحساب، ثم <code>supabase/staging/setup_staging.sql</code>، ثم أول مدير بـ <code>supabase/staging/first_admin.sql</code>.</li>
+    <li><b>Exposed schemas:</b> <code>support_tasks_staging</code>، و<b>Authentication</b> كالإنتاج.</li>
+    <li><b>Edge Functions:</b> <code>admin-users-staging</code> (مفعّل)، و<code>auth-login-staging</code> (متوقف)، و<code>refresh-staging</code> (مفعّل).</li>
+    <li>انسخ Project URL وPublishable key.</li>
+  </ol>
+
+  <h3>المرحلة 2: مستودع GitHub</h3>
+  <ol>
+    <li>بالحساب الجديد: <b>github.com/new/import</b> برابط المستودع الحالي، و<b>Public</b>. ينسخ الفرعين مع التاريخ، ولا يربط الجديد بالقديم كما يفعل Fork.</li>
+    <li>تعديل ثلاثة ملفات في الفرعين:</li>
+  </ol>
+  <table>
+    <thead><tr><th style="width:34%">الملف</th><th>ما يتغير</th></tr></thead>
+    <tbody>
+      <tr><td><code>js/config.js</code></td><td><code>hosts</code> ← <code>NEW.github.io</code>، ورابط ومفتاح عام لكل مشروع</td></tr>
+      <tr><td><code>.github/workflows/pages.yml</code></td><td>الشرط <code>github.repository == 'NEW/Tasks-Dashboard-Live'</code>. <b>بدونه لا يُنشر الموقع</b></td></tr>
+      <tr><td><code>.github/workflows/mirror.yml</code></td><td>يُحذف، أو يُوجَّه إلى مستودع مرجعي جديد مع سر <code>REFERENCE_TOKEN</code> جديد</td></tr>
+    </tbody>
+  </table>
+  <ol start="3">
+    <li><b>Settings ← Actions:</b> مفعّلة. <b>Pages ← Source:</b> GitHub Actions. <b>Environments ← github-pages:</b> أضف <code>staging</code>.</li>
+    <li><b>Rules ← Rulesets:</b> قاعدة <code>protect-main</code>: منع الحذف والكتابة فوق التاريخ، وطلب دمج بلا موافقات (0)، بدون Linear history أو Signed commits أو Status checks.</li>
+    <li><b>Actions ← نشر الموقع ← Run workflow</b>، ثم افتح <span class="ltr small">NEW.github.io/Tasks-Dashboard-Live/</span> و<span class="ltr small">…/test/</span>.</li>
+  </ol>
+
+  <h3>المرحلة 3: ربط التجربة بالإنتاج</h3>
+  <ol>
+    <li>في الإنتاج ← المستخدمون: «مزامنة التجربة» بدور <b>مشاهد</b>، ثم «تعديل» ← <b>«حساب مزامنة التجربة»</b>.</li>
+    <li>في مشروع التجربة ← Edge Functions ← Secrets: <code>PROD_URL</code> و<code>PROD_KEY</code> و<code>PROD_SYNC_LOGIN</code> و<code>PROD_SYNC_PASSWORD</code>.</li>
+  </ol>
+
+  <h3>المرحلة 4: البيانات</h3>
+  <ol>
+    <li><b>المستخدمون</b> يُضافون من جديد بأرقامهم (كلمات المرور لا تُنقل بين المشاريع)، وكلمة المرور الأولى = الرقم.</li>
+    <li><b>المهام:</b> التقرير ← كل الفترات ← Excel في النظام القديم، ثم الاستيراد في الجديد.</li>
+    <li><b>الإعدادات والقوائم</b> تُضبط من الشاشات، ثم «تحديث بيانات التجربة من الإنتاج».</li>
+  </ol>
+  <div class="note warn"><b>سجل التعديلات</b>الاستيراد من Excel ينقل المهام فقط، والسجل القديم لا ينتقل. البديل نسخ قاعدة البيانات كاملة بأدوات PostgreSQL، وهذا يحتاج كلمة مرور قاعدة البيانات فيُنفَّذ على جهاز المالك.</div>
+  <p class="small muted">الخطوات نفسها في دليل التركيب <code>docs/SETUP.md</code>.</p>
+</section>
+
+<!-- ============================== ملحق ج ============================== -->
+<section class="chapter" data-no="ج">
+  <div class="ch-head"><div class="ch-no">ج</div><div><h2>ملحق (ج): مسرد المصطلحات</h2><p>للقارئ غير التقني</p></div></div>
   <table class="long">
     <thead><tr><th style="width:24%">المصطلح</th><th>المعنى</th></tr></thead>
     <tbody>
@@ -873,9 +955,9 @@
   </table>
 </section>
 
-<!-- ============================== ملحق ج ============================== -->
-<section class="chapter" data-no="ج">
-  <div class="ch-head"><div class="ch-no">ج</div><div><h2>ملحق (ج): سجل تحديثات المستند</h2><p>كل نسخة من هذا المستند وما أُضيف فيها</p></div></div>
+<!-- ============================== ملحق د ============================== -->
+<section class="chapter" data-no="د">
+  <div class="ch-head"><div class="ch-no">د</div><div><h2>ملحق (د): سجل تحديثات المستند</h2><p>كل نسخة من هذا المستند وما أُضيف فيها</p></div></div>
   <table>
     <thead><tr><th style="width:18%">التاريخ</th><th style="width:16%">حتى الإصدار</th><th>التغيير</th></tr></thead>
     <tbody>
@@ -884,6 +966,8 @@
       <tr><td class="ltr">2026/11/05</td><td class="ltr">1.16.1</td><td>إصلاح رسائل أخطاء الخادم.</td></tr>
       <tr><td class="ltr">2026/11/05</td><td class="ltr">1.17.0</td><td>حماية حساب مزامنة التجربة.</td></tr>
       <tr><td class="ltr">2026/11/05</td><td class="ltr">1.18.0</td><td>أزرار الإحصائيات تفلتر.</td></tr>
+      <tr><td class="ltr">2026/11/05</td><td class="ltr">1.18.0</td><td>ملحق (ب): نقل النظام إلى حسابات جديدة.</td></tr>
+      <tr><td class="ltr">2026/11/05</td><td class="ltr">1.19.0</td><td>نوع المراسلة لمهام «مراسلة» فقط.</td></tr>
     </tbody>
   </table>
 </section>

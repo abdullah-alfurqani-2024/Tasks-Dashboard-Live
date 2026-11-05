@@ -5,7 +5,7 @@
 import { db } from '../data/index.js';
 import { html, $, formData } from '../core/dom.js';
 import { state, can, canEditTask, isLocked, engineers, activeItems, userName, refreshReviewCount } from '../core/store.js';
-import { today, daysBetween, fmtDateTime, daysAr } from '../core/format.js';
+import { today, daysBetween, fmtDateTime, daysAr, normalizeAr } from '../core/format.js';
 import { LABEL, PRIORITY_LABELS } from '../core/fields.js';
 import { navigate } from '../core/router.js';
 import { modal, busy, toast, confirmBox, toastError } from './feedback.js';
@@ -14,6 +14,8 @@ import { icon } from './icons.js';
 import { dateInput } from './dateField.js';
 
 const kindOf = (statusId) => state.lookups.statuses.find((s) => s.id === Number(statusId))?.kind;
+// «نوع المراسلة» يخص نوع المهمة «مراسلة» فقط (يُعرف بالاسم في قائمة أنواع المهام)
+const isCorrType = (taskTypeId) => normalizeAr(state.lookups.taskTypes.find((x) => x.id === Number(taskTypeId))?.name || '').startsWith(normalizeAr('مراسل'));
 
 /**
  * task: مهمة موجودة أو null لمهمة جديدة
@@ -53,8 +55,6 @@ export function openTaskForm({ task = null, requesters = [], onSaved }) {
         <textarea class="input" id="t-subject" name="subject" rows="2" maxlength="2000" required ${dis}>${t.subject || ''}</textarea></div>
       <div class="field"><label for="t-ref">${LABEL.refNo}</label>
         <input class="input" id="t-ref" name="refNo" value="${t.refNo || ''}" maxlength="100" ${dis}></div>
-      <div class="field"><label for="t-corr">${LABEL.correspondenceTypeId}</label>
-        <select class="input" id="t-corr" name="correspondenceTypeId" ${dis}>${options(activeItems('correspondenceTypes', t.correspondenceTypeId), t.correspondenceTypeId, '—')}</select></div>
       <div class="field"><label for="t-req">${LABEL.requester}</label>
         <input class="input" id="t-req" name="requester" value="${t.requester || ''}" list="dl-req" maxlength="300" autocomplete="off" ${dis}>
         <datalist id="dl-req">${requesters.slice(0, 300).map((r) => html`<option value="${r}">`)}</datalist></div>
@@ -64,6 +64,9 @@ export function openTaskForm({ task = null, requesters = [], onSaved }) {
         <select class="input" id="t-prio" name="priority" ${dis}>${options(Object.entries(PRIORITY_LABELS), t.priority || 'normal')}</select></div>
       <div class="field"><label for="t-type">${LABEL.taskTypeId}</label>
         <select class="input" id="t-type" name="taskTypeId" ${dis}>${options(activeItems('taskTypes', t.taskTypeId), t.taskTypeId, '—')}</select></div>
+      <div class="field" data-corr><label for="t-corr">${LABEL.correspondenceTypeId} <span class="req">*</span></label>
+        <select class="input" id="t-corr" name="correspondenceTypeId" ${dis}>${options(activeItems('correspondenceTypes', t.correspondenceTypeId), t.correspondenceTypeId, '— اختر —')}</select>
+        <span class="hint" data-corr-hint hidden>نوع المهمة ليس «مراسلة»: هذه القيمة من الاستيراد وتبقى حتى «تمت المراجعة».</span></div>
       <div class="field"><label for="t-status">${LABEL.statusId} <span class="req">*</span></label>
         <select class="input" id="t-status" name="statusId" required ${dis}>${options(activeItems('statuses', t.statusId), t.statusId, '— اختر —')}</select></div>
       <div class="field"><label for="t-rec">${LABEL.receivedDate} <span class="req">*</span></label>
@@ -97,7 +100,17 @@ export function openTaskForm({ task = null, requesters = [], onSaved }) {
 
   // المهمة المستوردة تُعرض كما في الملف: لا نمسح تاريخ انتهائها عند الفتح حتى لو كانت حالتها مفتوحة
   let keepAsIs = !isNew && !!t.reviewReasons?.length;
+  // نوع المراسلة يظهر مع «مراسلة» فقط. المهمة المستوردة التي تنتظر المراجعة تُعرض قيمتها كما في الملف
+  const flagged = () => !isNew && !!t.reviewReasons?.length && !$('#t-reviewed', m.el)?.checked;
+  function syncCorr() {
+    const corr = isCorrType(f('taskTypeId').value);
+    const legacy = !corr && !!f('correspondenceTypeId').value && flagged();
+    $('[data-corr]', m.el).hidden = !corr && !legacy;
+    $('[data-corr] .req', m.el).hidden = !corr;
+    $('[data-corr-hint]', m.el).hidden = !legacy;
+  }
   function sync() {
+    syncCorr();
     const kind = kindOf(f('statusId').value);
     const done = f('completedDate');
     $('[data-done-req]', m.el).hidden = kind !== 'done';
@@ -116,6 +129,7 @@ export function openTaskForm({ task = null, requesters = [], onSaved }) {
     sync();
   });
   form.addEventListener('input', sync);
+  $('#t-reviewed', m.el)?.addEventListener('change', syncCorr);
   sync();
 
   function validate(v) {
@@ -123,6 +137,7 @@ export function openTaskForm({ task = null, requesters = [], onSaved }) {
     if (!v.subject.trim()) return ['subject', 'اكتب الموضوع.'];
     if (!v.statusId) return ['statusId', 'اختر الحالة.'];
     if (!v.receivedDate) return ['receivedDate', 'اكتب تاريخ الاستقبال.'];
+    if (isCorrType(v.taskTypeId) && !v.correspondenceTypeId) return ['correspondenceTypeId', 'اختر نوع المراسلة.'];
     const kind = kindOf(v.statusId);
     if (kind === 'done' && !v.completedDate) return ['completedDate', 'المهمة المكتملة تحتاج تاريخ الانتهاء.'];
     if (v.completedDate && v.completedDate < v.receivedDate) return ['completedDate', 'تاريخ الانتهاء قبل تاريخ الاستقبال.'];
@@ -148,7 +163,9 @@ export function openTaskForm({ task = null, requesters = [], onSaved }) {
       engineerId: can('tasks.assign') ? v.engineerId : undefined,
       refNo: v.refNo, requester: v.requester, employeeName: v.employeeName, subject: v.subject,
       receivedDate: v.receivedDate || null, completedDate: v.completedDate || null, notes: v.notes,
-      taskTypeId: v.taskTypeId ? Number(v.taskTypeId) : null, correspondenceTypeId: v.correspondenceTypeId ? Number(v.correspondenceTypeId) : null,
+      taskTypeId: v.taskTypeId ? Number(v.taskTypeId) : null,
+      // غير «مراسلة»: تُمسح عند الحفظ، إلا في مهمة مستوردة تنتظر المراجعة فتبقى كما في الملف
+      correspondenceTypeId: v.correspondenceTypeId && (isCorrType(v.taskTypeId) || stillFlagged) ? Number(v.correspondenceTypeId) : null,
       statusId: Number(v.statusId), delayReason: v.delayReason, priority: v.priority === 'urgent' ? 'urgent' : 'normal',
     };
     if ($('#t-reviewed', m.el)?.checked) input.reviewReasons = [];
