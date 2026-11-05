@@ -14,7 +14,10 @@ import { pageHead, options, loading, newPage } from '../ui/parts.js';
 
 const KEY = `${CONFIG.storagePrefix || 'tsk.'}filters.report`;
 const year = Number(today().slice(0, 4));
-const DEFAULTS = { engineerId: '', taskTypeId: '', correspondenceTypeId: '', statusId: '', year: String(year), from: `${year}-01-01`, to: `${year}-12-31`, sort: 'receivedDate', dir: 'asc' };
+const DEFAULTS = { engineerId: '', taskTypeId: '', correspondenceTypeId: '', statusId: '', year: String(year), from: `${year}-01-01`, to: `${year}-12-31`, sort: 'receivedDate', dir: 'asc', kind: '' };
+// أزرار الإحصائيات: تفلتر التقرير حسب نوع الحالة، والضغطة الثانية تلغي
+const KINDS = [['done', 'مكتملة', 'var(--ok)'], ['open', 'مفتوحة', 'var(--info)'], ['cancelled', 'مغلقة بدون إنجاز', 'var(--muted)']];
+const KIND_LABEL = { done: 'المكتملة', open: 'المفتوحة', cancelled: 'المغلقة بدون إنجاز' };
 const SORTS = [['receivedDate', 'تاريخ الاستقبال'], ['completedDate', 'تاريخ الانتهاء'], ['engineerName', 'اسم المهندس'], ['taskType', 'نوع المهمة'],
   ['correspondenceType', 'نوع المراسلة'], ['status', 'الحالة'], ['durationDays', 'المدة'], ['requester', 'الجهة الطالبة'], ['id', 'الرقم']];
 
@@ -22,6 +25,7 @@ export default async function report(ctx, main) {
   setTitle('التقرير');
   let F = { ...DEFAULTS };
   try { F = { ...DEFAULTS, ...JSON.parse(sessionStorage.getItem(KEY) || '{}') }; } catch { /* */ }
+  if (ctx.query.kind !== undefined) F.kind = KIND_LABEL[ctx.query.kind] ? ctx.query.kind : '';
   const viewAll = can('tasks.viewAll');
   const L = state.lookups;
   const years = [];
@@ -57,6 +61,8 @@ export default async function report(ctx, main) {
   const form = $('#filters', root);
   const out = $('#out', root);
   let rows = [];
+  const shown = () => (F.kind ? rows.filter((t) => t.statusKind === F.kind) : rows);
+  const syncUrl = () => history.replaceState(null, '', F.kind ? `#/report?kind=${F.kind}` : '#/report');
 
   const nameOf = (list, id) => list.find((x) => String(x.id) === String(id))?.name;
   function criteria() {
@@ -67,6 +73,7 @@ export default async function report(ctx, main) {
     if (F.taskTypeId) c.push(`نوع المهمة: ${nameOf(L.taskTypes, F.taskTypeId)}`);
     if (F.correspondenceTypeId) c.push(`نوع المراسلة: ${nameOf(L.correspondenceTypes, F.correspondenceTypeId)}`);
     if (F.statusId) c.push(`الحالة: ${nameOf(L.statuses, F.statusId)}`);
+    if (F.kind) c.push(`عرض: ${KIND_LABEL[F.kind]} فقط`);
     return c;
   }
 
@@ -84,6 +91,8 @@ export default async function report(ctx, main) {
   function draw() {
     sortRows();
     const s = summarize(rows, { delayDays: state.settings?.delayThresholdDays || 7, today: today() });
+    const list = shown();
+    const kindBtn = ([k, label, color]) => html`<button type="button" class="chip chip-btn ${F.kind === k ? 'on' : ''}" data-kind="${k}" aria-pressed="${F.kind === k}" title="${F.kind === k ? 'إلغاء الفلترة' : `عرض ${KIND_LABEL[k]} فقط`}"><span class="dot" style="color:${color}"></span>${label} <b>${num(s[k])}</b>${F.kind === k ? icon('x') : ''}</button>`;
     mount(out, html`
       <div class="card">
         <div class="print-only" style="padding:0 0 10px">
@@ -93,17 +102,15 @@ export default async function report(ctx, main) {
         </div>
         <div class="card-head no-print"><div class="small muted">${criteria().join(' · ')}</div></div>
         <div class="chips" style="padding:12px 16px">
-          <span class="chip">الإجمالي <b>${num(s.total)}</b></span>
-          <span class="chip">مكتملة <b>${num(s.done)}</b></span>
-          <span class="chip">مفتوحة <b>${num(s.open)}</b></span>
-          <span class="chip">مغلقة بدون إنجاز <b>${num(s.cancelled)}</b></span>
+          <button type="button" class="chip chip-btn ${F.kind ? '' : 'on'}" data-kind="" aria-pressed="${!F.kind}" title="كل المهام">الإجمالي <b>${num(s.total)}</b></button>
+          ${KINDS.map(kindBtn)}
           <span class="chip">نسبة الإنجاز <b>${pct(s.rate)}</b></span>
           <span class="chip">متوسط المدة <b>${dec1(s.avgDuration)}</b> يوم</span>
         </div>
         <div class="table-wrap"><table class="table">
           <thead><tr><th>م</th>${viewAll ? html`<th>اسم المهندس</th>` : ''}<th>رقم القيد</th><th>الجهة الطالبة</th><th>اسم الموظف</th><th>الموضوع</th>
             <th>الاستقبال</th><th>الانتهاء</th><th>نوع المهمة</th><th>نوع المراسلة</th><th>الحالة</th><th>المدة</th><th>سبب التأخير</th><th>الملاحظات</th></tr></thead>
-          <tbody>${rows.length ? rows.map((t, i) => html`<tr>
+          <tbody>${list.length ? list.map((t, i) => html`<tr>
             <td class="num muted">${i + 1}</td>${viewAll ? html`<td class="nowrap">${t.engineerName}</td>` : ''}<td class="num">${t.refNo}</td>
             <td>${t.requester}</td><td>${t.employeeName}</td><td class="subject">${t.subject}</td>
             <td class="num nowrap">${fmtDate(t.receivedDate)}</td><td class="num nowrap">${fmtDate(t.completedDate)}</td>
@@ -139,12 +146,17 @@ export default async function report(ctx, main) {
     if (n === 'sort' || n === 'dir') draw(); else load();
   });
 
+  on(root, 'click', '[data-kind]', (e, b) => {
+    const k = b.dataset.kind;
+    F.kind = !k || F.kind === k ? '' : k;
+    save(); syncUrl(); draw();
+  });
   on(root, 'click', '[data-act]', (e, b) => {
     const a = b.dataset.act;
     if (a === 'print') window.print();
     else if (a === 'xlsx' || a === 'csv') {
-      if (!rows.length) return toastError({ message: 'لا توجد بيانات للتصدير.' });
-      exportTasks(rows, { format: a, name: 'tasks-report', sheet: 'التقرير' });
+      if (!shown().length) return toastError({ message: 'لا توجد بيانات للتصدير.' });
+      exportTasks(shown(), { format: a, name: 'tasks-report', sheet: 'التقرير' });
     } else if (a === 'today') {
       const t = today();
       Object.assign(F, { from: t, to: t, year: '' });
@@ -152,9 +164,10 @@ export default async function report(ctx, main) {
       save(); load();
     } else if (a === 'reset') {
       sessionStorage.removeItem(KEY);
-      report(ctx, main);
+      report({ ...ctx, query: {} }, main);
     }
   });
 
+  syncUrl();
   await load();
 }

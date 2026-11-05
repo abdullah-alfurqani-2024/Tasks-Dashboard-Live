@@ -19,15 +19,30 @@ const DEFAULTS = { period: 'year', from: '', to: '', engineerId: '', status: '',
 const loadF = () => { try { return { ...DEFAULTS, ...JSON.parse(sessionStorage.getItem(KEY) || '{}') }; } catch { return { ...DEFAULTS }; } };
 const saveF = (F) => { try { sessionStorage.setItem(KEY, JSON.stringify(F)); } catch { /* */ } };
 
+// أزرار الإحصائيات: كل زر يضبط الحالة والأولوية والمراجعة معاً، وضغطه مرة ثانية يلغيه
+const QUICK = [
+  { key: 'done', label: 'مكتملة', color: 'var(--ok)', set: { status: 'k:done' }, count: (s) => s.done },
+  { key: 'open', label: 'مفتوحة', color: 'var(--info)', set: { status: 'k:open' }, count: (s) => s.open },
+  { key: 'delayed', label: 'متأخرة', color: 'var(--warn)', set: { status: 'k:delayed' }, count: (s) => s.delayed },
+  { key: 'cancelled', label: 'مغلقة بدون إنجاز', color: 'var(--muted)', set: { status: 'k:cancelled' }, count: (s) => s.cancelled },
+  { key: 'urgent', label: 'عاجلة مفتوحة', color: 'var(--bad)', set: { status: 'k:open', priority: 'urgent' }, count: (s) => s.urgentOpen },
+  { key: 'review', label: 'تحتاج مراجعة', color: 'var(--warn)', set: { review: '1' }, count: (s, rows) => rows.filter((t) => t.reviewReasons?.length).length },
+];
+const QUICK_KEYS = ['status', 'priority', 'review'];
+const quickOf = (F) => QUICK.find((c) => QUICK_KEYS.every((k) => (F[k] || '') === (c.set[k] || '')));
+
 export default async function tasksPage(ctx, main) {
   setTitle('المهام');
-  const F = loadF();
-  if (ctx.query.status) F.status = ctx.query.status;
-  if (ctx.query.engineer) F.engineerId = ctx.query.engineer;
+  // reset=1 (من لوحة المؤشرات): نبدأ من الفلاتر الافتراضية ثم نطبّق ما في الرابط
+  const F = ctx.query.reset === '1' ? { ...DEFAULTS } : loadF();
+  if (ctx.query.status !== undefined) F.status = ctx.query.status;
+  if (ctx.query.engineer !== undefined) F.engineerId = ctx.query.engineer;
   if (ctx.query.period) F.period = ctx.query.period;
+  if (F.period === 'custom') { if (ctx.query.from) F.from = ctx.query.from; if (ctx.query.to) F.to = ctx.query.to; }
   if (ctx.query.q) F.q = ctx.query.q;
   if (ctx.query.priority !== undefined) F.priority = ctx.query.priority === 'urgent' ? 'urgent' : '';
   if (ctx.query.review !== undefined) F.review = ctx.query.review === '1' ? '1' : '';
+  const FF = F;
   const viewAll = can('tasks.viewAll');
   const delayDays = state.settings?.delayThresholdDays || 7;
   let all = [];
@@ -82,10 +97,9 @@ export default async function tasksPage(ctx, main) {
       ${canEditTask(r) ? html`<button class="btn btn-ghost btn-icon btn-sm" data-edit="${r.id}" aria-label="تعديل">${icon('edit')}</button>` : ''}</div>` },
   ];
 
-  const nReview = (rows) => rows.filter((t) => t.reviewReasons?.length).length;
   const requesters = () => [...new Set(all.map((t) => t.requester).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar'));
 
-  function filtered() {
+  function filtered(F = FF) {
     const q = normalizeAr(F.q);
     const t0 = today();
     return all.filter((t) => {
@@ -106,17 +120,29 @@ export default async function tasksPage(ctx, main) {
     });
   }
 
+  // الرابط يحمل الفلاتر الأساسية: يبقى بعد التحديث وزر الرجوع، ويمكن إرساله
+  function syncUrl() {
+    const q = new URLSearchParams();
+    q.set('period', F.period);
+    if (F.period === 'custom') { if (F.from) q.set('from', F.from); if (F.to) q.set('to', F.to); }
+    if (viewAll && F.engineerId) q.set('engineer', F.engineerId);
+    for (const k of QUICK_KEYS) if (F[k]) q.set(k, F[k]);
+    history.replaceState(null, '', `#/tasks?${q}`);
+  }
+
   function draw() {
     const rows = filtered();
-    const s = summarize(rows, { delayDays, today: today() });
+    // الأعداد بدون فلتر الزر المفعّل، حتى تبقى بقية الأزرار بأعدادها
+    const active = quickOf(F);
+    const base = active ? filtered({ ...F, status: '', priority: '', review: '' }) : rows;
+    const s = summarize(base, { delayDays, today: today() });
+    const chip = (c) => {
+      const n = c.count(s, base), on = active === c;
+      return n || on ? html`<button type="button" class="chip chip-btn ${on ? 'on' : ''}" data-quick="${c.key}" aria-pressed="${on}" title="${on ? 'إلغاء الفلترة' : `عرض ${c.label} فقط`}"><span class="dot" style="color:${c.color}"></span>${c.label} <b>${num(n)}</b>${on ? icon('x') : ''}</button>` : '';
+    };
     mount(chips, html`
-      <span class="chip">الإجمالي <b>${num(s.total)}</b></span>
-      <span class="chip"><span class="dot" style="color:var(--ok)"></span>مكتملة <b>${num(s.done)}</b></span>
-      <span class="chip"><span class="dot" style="color:var(--info)"></span>مفتوحة <b>${num(s.open)}</b></span>
-      ${s.delayed ? html`<span class="chip"><span class="dot" style="color:var(--warn)"></span>متأخرة <b>${num(s.delayed)}</b></span>` : ''}
-      ${s.cancelled ? html`<span class="chip"><span class="dot" style="color:var(--muted)"></span>مغلقة بدون إنجاز <b>${num(s.cancelled)}</b></span>` : ''}
-      ${s.urgentOpen ? html`<span class="chip"><span class="dot" style="color:var(--bad)"></span>عاجلة مفتوحة <b>${num(s.urgentOpen)}</b></span>` : ''}
-      ${nReview(rows) ? html`<span class="chip"><span class="dot" style="color:var(--warn)"></span>تحتاج مراجعة <b>${num(nReview(rows))}</b></span>` : ''}`);
+      <button type="button" class="chip chip-btn ${QUICK_KEYS.some((k) => F[k]) ? '' : 'on'}" data-quick="" aria-pressed="${!QUICK_KEYS.some((k) => F[k])}" title="إلغاء فلاتر الحالة والأولوية والمراجعة">الإجمالي <b>${num(s.total)}</b></button>
+      ${QUICK.map(chip)}`);
     if (!table) {
       table = dataTable($('#tbl', root), {
         columns, rows, pageSize: 50, sortKey: 'receivedDate', sortDir: 'desc',
@@ -155,8 +181,15 @@ export default async function tasksPage(ctx, main) {
     Object.assign(F, formData(form));
     form.querySelectorAll('[data-custom]').forEach((el) => { el.hidden = F.period !== 'custom'; });
     saveF(F);
+    syncUrl();
     if (serverKeys.has(name)) load(); else draw();
   };
+  on(root, 'click', '[data-quick]', (e, b) => {
+    const c = QUICK.find((x) => x.key === b.dataset.quick);
+    const next = !c || quickOf(F) === c ? {} : c.set;      // الضغطة الثانية (أو «الإجمالي») تلغي
+    for (const k of QUICK_KEYS) { F[k] = next[k] || ''; if (form.elements[k]) form.elements[k].value = F[k]; }
+    saveF(F); syncUrl(); draw();
+  });
   form.addEventListener('change', (e) => { if (e.target.name !== 'q') apply(e.target.name); });
   form.addEventListener('input', debounce((e) => { if (e.target.name === 'q') apply('q'); }, 200));
   form.addEventListener('submit', (e) => e.preventDefault());
@@ -179,6 +212,7 @@ export default async function tasksPage(ctx, main) {
     if (t) openTaskForm({ task: t, requesters: requesters(), onSaved });
   });
 
+  syncUrl();
   if (ctx.query.new === '1' && can('tasks.create')) setTimeout(() => openTaskForm({ requesters: requesters(), onSaved }), 0);
   await load();
 }
