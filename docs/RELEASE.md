@@ -16,7 +16,8 @@
 - النشر تلقائي (`.github/workflows/pages.yml`): أي تحديث في أحد الفرعين ينشر الموقعين معاً خلال دقيقة أو دقيقتين.
 - **النقل للإنتاج:** طلب دمج داخل المستودع: **Pull requests ← New pull request ← base: `main` ← compare: `staging`** ثم **Merge**.
   وللرجوع عن إصدار: زر **Revert** في طلب الدمج نفسه.
-- **المرجع:** `abdullah-alfurqani/Tasks-Dashboard-Live` نسخة مطابقة للإنتاج: بعد كل دمج، طلب دمج إليه من الفرع `main` في مستودع الإنتاج.
+- **المرجع:** `abdullah-alfurqani/Tasks-Dashboard-Live` نسخة مطابقة للإنتاج، تُحدَّث تلقائياً (`.github/workflows/mirror.yml`) بعد كل دمج بالسر `REFERENCE_TOKEN`.
+  لو فشلت المزامنة لا يتأثر الموقع. عند انتهاء المفتاح: Regenerate token في الحساب الأساسي ثم تحديث السر.
 - لكل نسخة مفاتيح تخزين مستقلة في المتصفح (`tsk.` للإنتاج و`tsk.stg.` للتجربة)، فالدخول لإحداهما لا يُخرج من الأخرى.
 - نسخة التجربة يظهر أعلاها شريط بنفسجي، وفي عنوان الصفحة `[تجربة]`.
 - **لكل نسخة مشروع Supabase مستقل** (من الإصدار 1.12.0): حسابات الدخول وكلمات المرور مستقلة تماماً.
@@ -73,6 +74,7 @@
 
 ## للمطوّر
 - **رقم الإصدار:** `node tools/release.mjs 1.2.0` يحدّث `version.json` و`js/version.js`. التنبيه بالتحديث يعتمد على هذا الرقم، فيُرفع مع كل إصدار.
+- **سجل التطوير (PDF):** `docs/Tasks-System-Development-Report.pdf` يُحدَّث مع كل إصدار: أضف قسم الإصدار في `docs/report/report.html` ثم `node tools/build-report.mjs`. المجلد `docs/` لا يُنشر في الموقع.
 - **ملفا الإعداد:** بعد تعديل أي ملف في `supabase/sql` شغّل `node tools/staging-sql.mjs` و`node tools/production-sql.mjs` لتوليد `setup_staging.sql` و`setup_production.sql` من جديد.
 
 

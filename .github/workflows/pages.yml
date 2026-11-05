@@ -30,6 +30,8 @@ concurrency:
 
 jobs:
   deploy:
+    # نسخة المرجع في الحساب الأساسي لا تنشر شيئاً
+    if: github.repository == 'abdullah-alfurqani-2024/Tasks-Dashboard-Live'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -50,6 +52,8 @@ jobs:
       - name: تجهيز الموقع
         run: |
           rm -rf site/.git site/.github site/test/.git site/test/.github
+          # التوثيق (ومنه سجل التطوير PDF) يبقى في المستودع فقط ولا يُنشر في الموقع
+          rm -rf site/docs site/test/docs
           echo "الإنتاج: $(grep -o '"version": *"[^"]*"' site/version.json)"
           echo "التجربة: $(grep -o '"version": *"[^"]*"' site/test/version.json)"
 
