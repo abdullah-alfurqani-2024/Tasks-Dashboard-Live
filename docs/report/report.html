@@ -22,8 +22,8 @@
   <div class="sub">سجل التطوير والإصدارات: الطلبات والتعديلات من البداية حتى اليوم</div>
   <div class="rule"></div>
   <div class="meta">
-    <div><span>آخر إصدار</span><b class="ltr" data-fill="latest">1.18.0</b></div>
-    <div><span>عدد الإصدارات</span><b data-fill="count">27</b></div>
+    <div><span>آخر إصدار</span><b class="ltr" data-fill="latest">1.19.0</b></div>
+    <div><span>عدد الإصدارات</span><b data-fill="count">28</b></div>
     <div><span>تاريخ المستند</span><b class="ltr" data-fill="date">2026/11/05</b></div>
   </div>
   <div class="aud">موجَّه إلى: <span class="chip">الإدارة العليا</span><span class="chip">مستخدمي النظام</span><span class="chip">المهندس المسؤول</span></div>
@@ -73,7 +73,7 @@
   <div class="ch-head"><div class="ch-no">1</div><div><h2>الملخص التنفيذي</h2><p><span class="tag mgmt">للإدارة</span> الوضع العام في صفحتين</p></div></div>
   <p class="lead">نظام ويب لمتابعة مهام قسم الدعم الفني والصيانة: تسجيل المهام وتوزيعها على المهندسين، ومتابعة إنجازها وتأخرها، وتقارير ومؤشرات لحظية. يحل محل ملفات Google Sheets والسكربتات الملحقة بها ولوحة Looker Studio، ويعمل بالعربية من اليمين لليسار على الحاسوب والجوال.</p>
   <div class="grid4" style="margin:5mm 0">
-    <div class="kpi"><b data-fill="count">27</b><span>إصداراً خلال 6 أيام</span></div>
+    <div class="kpi"><b data-fill="count">28</b><span>إصداراً خلال 6 أيام</span></div>
     <div class="kpi t"><b>2</b><span>بيئتان مستقلتان: إنتاج للعمل، وتجربة للتطوير</span></div>
     <div class="kpi g"><b>177</b><span>اختباراً آلياً للصلاحيات والدوال</span></div>
     <div class="kpi o"><b>0</b><span>تكلفة اشتراك: خطط مجانية</span></div>
@@ -267,7 +267,7 @@
       <tr><td><b>الثانية</b></td><td class="ltr">1.1.0 – 1.6.0</td><td>بيئة التجربة، والدخول بالرقم، وإدارة كلمات المرور</td></tr>
       <tr><td><b>الثالثة</b></td><td class="ltr">1.7.0 – 1.11.2</td><td>تجهيز البيانات: الاستيراد بلا فقد، والمراجعة</td></tr>
       <tr><td><b>الرابعة</b></td><td class="ltr">1.12.0 – 1.14.2</td><td>فصل البيئات وتوحيد الحسابات، وأول تعديلات تدريبية</td></tr>
-      <tr><td><b>الخامسة</b></td><td class="ltr">1.15.0 – 1.18.0</td><td>التواصل داخل النظام، وتحسينات التشغيل</td></tr>
+      <tr><td><b>الخامسة</b></td><td class="ltr">1.15.0 – 1.19.0</td><td>التواصل داخل النظام، وتحسينات التشغيل</td></tr>
     </tbody>
   </table>
 
@@ -663,6 +663,20 @@
   </section>
 
   <section class="ver">
+    <div class="ver-head"><span class="ver-no">1.19.0</span><h3>نوع المراسلة لمهام «مراسلة» فقط</h3><span class="tag feat">ميزة</span><span class="ver-date">2026/11/05</span></div>
+    <div class="ver-body">
+      <div class="req"><b>الملاحظة:</b> <span class="q">«نوع المراسلة تظهر فقط في حالة أن نوع المهمة مراسلة»</span>. والخيارات المعتمدة: <b>يختفي ويظهر</b>، وتُ<b>مسح</b> القيمة عند تغيير النوع، و<b>إلزامي</b> مع «مراسلة».</div>
+      <ul>
+        <li>«نوع المراسلة» انتقل بجانب «نوع المهمة»، ويظهر فقط عند اختيار «مراسلة»، مع علامة الإلزام.</li>
+        <li>تغيير النوع إلى غير «مراسلة» يُخفي الحقل وتُمسح قيمته عند الحفظ، فلا تبقى قيمة بلا معنى.</li>
+        <li><b>مهمة مستوردة تنتظر المراجعة:</b> تبقى قيمتها كما في الملف مع تنبيه تحت الحقل، وتُطبَّق القاعدة عند «تمت المراجعة».</li>
+      </ul>
+      <figure class="narrow"><img src="img/22-corr.jpg"><figcaption>«نوع المراسلة» يظهر بجانب «نوع المهمة» عند اختيار «مراسلة»</figcaption></figure>
+      <div class="aud-box eng"><h5><span class="tag eng">للمهندس</span></h5>«مراسلة» تُعرف من اسمها في قائمة أنواع المهام (يبدأ بـ «مراسل»). القاعدة في نموذج الإدخال فقط، فالاستيراد يبقى كما في الملف. لا يوجد ملف SQL.</div>
+    </div>
+  </section>
+
+  <section class="ver">
     <div class="ver-head"><span class="ver-no">—</span><h3>المزامنة التلقائية للمستودع المرجعي</h3><span class="tag infra">بنية</span><span class="ver-date">2026/11/05</span></div>
     <div class="ver-body">
       <div class="req"><b>الطلب:</b> الحساب الأساسي في GitHub <span class="q">«يظل كما هو»</span> بدور المرجع: نسخة مطابقة للإنتاج دون العمل فيه.</div>
@@ -953,6 +967,7 @@
       <tr><td class="ltr">2026/11/05</td><td class="ltr">1.17.0</td><td>حماية حساب مزامنة التجربة.</td></tr>
       <tr><td class="ltr">2026/11/05</td><td class="ltr">1.18.0</td><td>أزرار الإحصائيات تفلتر.</td></tr>
       <tr><td class="ltr">2026/11/05</td><td class="ltr">1.18.0</td><td>ملحق (ب): نقل النظام إلى حسابات جديدة.</td></tr>
+      <tr><td class="ltr">2026/11/05</td><td class="ltr">1.19.0</td><td>نوع المراسلة لمهام «مراسلة» فقط.</td></tr>
     </tbody>
   </table>
 </section>
