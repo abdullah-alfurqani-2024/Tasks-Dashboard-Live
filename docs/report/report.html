@@ -22,8 +22,8 @@
   <div class="sub">سجل التطوير والإصدارات: الطلبات والتعديلات من البداية حتى اليوم</div>
   <div class="rule"></div>
   <div class="meta">
-    <div><span>آخر إصدار</span><b class="ltr" data-fill="latest">1.16.1</b></div>
-    <div><span>عدد الإصدارات</span><b data-fill="count">25</b></div>
+    <div><span>آخر إصدار</span><b class="ltr" data-fill="latest">1.17.0</b></div>
+    <div><span>عدد الإصدارات</span><b data-fill="count">26</b></div>
     <div><span>تاريخ المستند</span><b class="ltr" data-fill="date">2026/11/05</b></div>
   </div>
   <div class="aud">موجَّه إلى: <span class="chip">الإدارة العليا</span><span class="chip">مستخدمي النظام</span><span class="chip">المهندس المسؤول</span></div>
@@ -73,9 +73,9 @@
   <div class="ch-head"><div class="ch-no">1</div><div><h2>الملخص التنفيذي</h2><p><span class="tag mgmt">للإدارة</span> الوضع العام في صفحتين</p></div></div>
   <p class="lead">نظام ويب لمتابعة مهام قسم الدعم الفني والصيانة: تسجيل المهام وتوزيعها على المهندسين، ومتابعة إنجازها وتأخرها، وتقارير ومؤشرات لحظية. يحل محل ملفات Google Sheets والسكربتات الملحقة بها ولوحة Looker Studio، ويعمل بالعربية من اليمين لليسار على الحاسوب والجوال.</p>
   <div class="grid4" style="margin:5mm 0">
-    <div class="kpi"><b data-fill="count">25</b><span>إصداراً خلال 6 أيام</span></div>
+    <div class="kpi"><b data-fill="count">26</b><span>إصداراً خلال 6 أيام</span></div>
     <div class="kpi t"><b>2</b><span>بيئتان مستقلتان: إنتاج للعمل، وتجربة للتطوير</span></div>
-    <div class="kpi g"><b>174</b><span>اختباراً آلياً للصلاحيات والدوال</span></div>
+    <div class="kpi g"><b>177</b><span>اختباراً آلياً للصلاحيات والدوال</span></div>
     <div class="kpi o"><b>0</b><span>تكلفة اشتراك: خطط مجانية</span></div>
   </div>
   <h3>أين وصلنا</h3>
@@ -267,7 +267,7 @@
       <tr><td><b>الثانية</b></td><td class="ltr">1.1.0 – 1.6.0</td><td>بيئة التجربة، والدخول بالرقم، وإدارة كلمات المرور</td></tr>
       <tr><td><b>الثالثة</b></td><td class="ltr">1.7.0 – 1.11.2</td><td>تجهيز البيانات: الاستيراد بلا فقد، والمراجعة</td></tr>
       <tr><td><b>الرابعة</b></td><td class="ltr">1.12.0 – 1.14.2</td><td>فصل البيئات وتوحيد الحسابات، وأول تعديلات تدريبية</td></tr>
-      <tr><td><b>الخامسة</b></td><td class="ltr">1.15.0 – 1.16.1</td><td>التواصل داخل النظام: إعلانات المدير</td></tr>
+      <tr><td><b>الخامسة</b></td><td class="ltr">1.15.0 – 1.17.0</td><td>التواصل داخل النظام، وتحسينات التشغيل</td></tr>
     </tbody>
   </table>
 
@@ -576,7 +576,7 @@
   </section>
 
   <!-- ===== المرحلة الخامسة ===== -->
-  <div class="stage"><span>المرحلة الخامسة: التواصل داخل النظام</span><div class="bar"></div></div>
+  <div class="stage"><span>المرحلة الخامسة: التواصل داخل النظام وتحسينات التشغيل</span><div class="bar"></div></div>
 
   <section class="ver">
     <div class="ver-head"><span class="ver-no">1.15.0</span><h3>إعلان من مدير النظام لكل المستخدمين</h3><span class="tag feat">ميزة</span><span class="tag sql">SQL</span><span class="ver-date">2026/11/04</span></div>
@@ -630,6 +630,20 @@
         <li>دوال الخادم ترجع رسالة عربية تشرح السبب (مثل فشل دخول حساب المزامنة)، لكن الواجهة كانت تستبدلها برسالة عامة لكل أخطاء الخادم.</li>
         <li>أصبحت الرسالة الفعلية تظهر كما هي، وأي خطأ آخر يظهر مع رقمه، وتجاوز حدود الدالة في Supabase له رسالة خاصة.</li>
       </ul>
+    </div>
+  </section>
+
+  <section class="ver">
+    <div class="ver-head"><span class="ver-no">1.17.0</span><h3>حماية حساب مزامنة التجربة</h3><span class="tag feat">ميزة</span><span class="ver-date">2026/11/05</span></div>
+    <div class="ver-body">
+      <div class="req"><b>الطلب:</b> بعد أن توقف نسخ البيانات لأن كلمة مرور حساب المزامنة تغيّرت في الإنتاج، اقتُرح أن يُستثنى الحساب تلقائياً: <span class="q">«اقتراحك في محله»</span>.</div>
+      <ul>
+        <li>في <b>المستخدمون ← تعديل</b> لحساب بدور «مشاهد»: خيار <b>«حساب مزامنة التجربة»</b>، وشارة بجانب اسمه. وتنبيه في الصفحة إن لم يُحدَّد بعد.</li>
+        <li><b>«كلمات المرور للكل»</b> يستثنيه دائماً، ويذكره في نافذة التأكيد والنتيجة.</li>
+        <li>تغيير كلمة مروره يدوياً يعرض تنبيهاً قبل الحفظ، وبعده يذكّر بتحديث السر في مشروع التجربة، ولا يُلزمه بتغييرها.</li>
+      </ul>
+      <div class="aud-box user"><h5><span class="tag user">لمدير النظام</span></h5>مرة واحدة في الإنتاج: المستخدمون ← «مزامنة التجربة» ← تعديل ← حدّد «حساب مزامنة التجربة» ← حفظ.</div>
+      <div class="aud-box eng"><h5><span class="tag eng">للمهندس</span></h5>الإعداد <code>sync_user_id</code> في جدول الإعدادات (بلا ملف SQL). الاستثناء مفروض في دالة <code>admin-users</code>، فتُحدَّث في المشروعين <b>قبل</b> الدمج. 3 اختبارات جديدة (53 ناجحاً).</div>
     </div>
   </section>
 
@@ -688,7 +702,7 @@
   <div class="ch-head"><div class="ch-no">8</div><div><h2>الجودة والاختبارات</h2><p><span class="tag eng">للمهندس</span> كيف نتأكد أن الجديد لا يكسر القديم</p></div></div>
   <div class="grid3">
     <div class="kpi"><b>104</b><span>اختباراً لقاعدة البيانات: الصلاحيات لكل دور، والقيود، والسجل، والنسخ إلى التجربة، والحذف الجماعي</span></div>
-    <div class="kpi t"><b>50</b><span>اختباراً لدوال الخادم (إدارة المستخدمين والدخول بالرقم) على محاكاة Supabase</span></div>
+    <div class="kpi t"><b>53</b><span>اختباراً لدوال الخادم (إدارة المستخدمين والدخول بالرقم) على محاكاة Supabase</span></div>
     <div class="kpi g"><b>20</b><span>اختباراً لدالة نسخ البيانات: قراءة فقط من الإنتاج، وكلمات المرور، والربط، والأسرار الناقصة</span></div>
   </div>
   <h3>قبل كل إصدار</h3>
@@ -705,7 +719,7 @@
       <tr><td>الواجهة (JavaScript)</td><td class="c">4,700 سطر</td></tr>
       <tr><td>التنسيق (CSS)</td><td class="c">440 سطراً</td></tr>
       <tr><td>قاعدة البيانات (SQL)</td><td class="c">1,430 سطراً في 15 ملفاً مرقّماً</td></tr>
-      <tr><td>دوال الخادم (TypeScript)</td><td class="c">660 سطراً في 3 دوال</td></tr>
+      <tr><td>دوال الخادم (TypeScript)</td><td class="c">680 سطراً في 3 دوال</td></tr>
       <tr><td>ملفات المستودع</td><td class="c">85 ملفاً</td></tr>
     </tbody>
   </table>
@@ -853,6 +867,7 @@
       <tr><td class="ltr">2026/11/04</td><td class="ltr">1.16.0</td><td>النسخة الأولى من المستند: كل الإصدارات من 1.0.0 إلى 1.16.0.</td></tr>
       <tr><td class="ltr">2026/11/05</td><td class="ltr">1.16.0</td><td>نقل 1.16.0 إلى الإنتاج، وتفعيل المزامنة التلقائية للمستودع المرجعي.</td></tr>
       <tr><td class="ltr">2026/11/05</td><td class="ltr">1.16.1</td><td>إصلاح رسائل أخطاء الخادم.</td></tr>
+      <tr><td class="ltr">2026/11/05</td><td class="ltr">1.17.0</td><td>حماية حساب مزامنة التجربة.</td></tr>
     </tbody>
   </table>
 </section>

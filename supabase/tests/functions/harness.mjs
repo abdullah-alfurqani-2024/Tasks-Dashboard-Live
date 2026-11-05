@@ -69,7 +69,7 @@ globalThis.fetch = async (url, init = {}) => {
   if (u.pathname.startsWith('/rest/v1/')) {
     const table = u.pathname.slice(9);
     const schema = h['content-profile'] && method !== 'GET' ? h['content-profile'] : h['accept-profile'];
-    if (table === 'app_settings') return J([]);
+    if (table === 'app_settings') return J(globalThis.SETTINGS || []);
     const rows = db[schema];
     const params = [...u.searchParams];
     if (method === 'GET') return J(rows.filter((r) => match(r, params)));
@@ -204,6 +204,16 @@ ok('الكل: المعطّل شُمل عند الطلب', auth.get('off').passwo
 ok('الكل: بدون إلزام التغيير', prof('support_tasks_staging', 'off').must_change_password === false);
 r = await call('admin', 'admin-users-staging', { action: 'reset_all', mode: 'same', password: 'Test2026' }, 'tok-eng');
 ok('الكل: غير المدير مرفوض', r.status === 403 || r.status === 401 || r.status === 400, JSON.stringify(r));
+// حساب مزامنة التجربة يُستثنى دائماً
+auth.set('sync', { email: 'sync@x.om', password: 'pw-sync' });
+db.support_tasks_staging.push({ id: 'sync', email: 'sync@x.om', role: 'viewer', is_active: true, login_no: '5000500', full_name: 'مزامنة التجربة' });
+globalThis.SETTINGS = [{ key: 'sync_user_id', value: 'sync' }];
+r = await call('admin', 'admin-users-staging', { action: 'reset_all', mode: 'same', password: 'Other2026', force: true }, T);
+ok('الكل: حساب المزامنة لم يتغير', r.status === 200 && auth.get('sync').password === 'pw-sync' && auth.get('eng').password === 'Other2026', JSON.stringify(r.body));
+ok('الكل: حساب المزامنة مذكور في النتيجة', r.body.skipped.some((x) => x.name === 'مزامنة التجربة' && /مزامنة/.test(x.reason)));
+r = await call('admin', 'admin-users-staging', { action: 'reset_password', id: 'sync', password: 'NewSync2026' }, T);
+ok('حساب المزامنة: تغيير فردي يعمل بلا إلزام تغيير', r.status === 200 && r.body.sync === true && auth.get('sync').password === 'NewSync2026' && prof('support_tasks_staging', 'sync').must_change_password === false);
+globalThis.SETTINGS = [];
 
 // 10) الدخول بحساب مستخدم آخر (التجربة فقط)
 const pwBefore = auth.get('eng').password;

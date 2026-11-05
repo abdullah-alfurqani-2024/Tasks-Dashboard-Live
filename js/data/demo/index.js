@@ -327,6 +327,7 @@ export function createAdapter() {
         let reset = 0; const skipped = [];
         for (const u of db.users) {
           if (u.id === me.id) continue;
+          if (st.syncUserId && u.id === st.syncUserId) { skipped.push({ name: u.fullName, reason: 'حساب مزامنة التجربة (يُستثنى دائماً)' }); continue; }
           if (!u.isActive && !o.includeInactive) { skipped.push({ name: u.fullName, reason: 'حساب معطّل' }); continue; }
           const pw = o.mode === 'loginNo' ? u.loginNo : o.password;
           if (!pw) { skipped.push({ name: u.fullName, reason: 'ليس له رقم' }); continue; }
@@ -341,7 +342,8 @@ export function createAdapter() {
         const st = normalizeSettings(db.settings);
         if (pw.length < st.minPasswordLength) throw err(`كلمة المرور ${st.minPasswordLength} أحرف على الأقل.`);
         const row = db.users.find((x) => x.id === id);
-        row.password = pw; row.mustChangePassword = st.forcePasswordChange; persist();
+        row.password = pw; row.mustChangePassword = st.syncUserId === id ? false : st.forcePasswordChange; persist();
+        return { ok: true, sync: st.syncUserId === id };
       },
     },
 

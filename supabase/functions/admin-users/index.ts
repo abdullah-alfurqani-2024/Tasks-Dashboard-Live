@@ -110,11 +110,13 @@ function clean(v: unknown) {
 // قواعد كلمة المرور من إعدادات النظام (يحددها المدير). 6 = أقل ما تقبله Supabase
 const PW_FLOOR = 6;
 async function passwordRules() {
-  const rows = await admin("/rest/v1/app_settings?key=in.(min_password_length,force_password_change)&select=key,value");
+  const rows = await admin("/rest/v1/app_settings?key=in.(min_password_length,force_password_change,sync_user_id)&select=key,value");
   const m = Object.fromEntries((rows || []).map((r: { key: string; value: unknown }) => [r.key, r.value]));
   const min = Math.min(72, Math.max(PW_FLOOR, Number(m.min_password_length) || PW_FLOOR));
   const force = m.force_password_change === undefined ? true : m.force_password_change === true || m.force_password_change === "true";
-  return { min, force };
+  // حساب «مزامنة التجربة»: كلمة مروره محفوظة سراً في مشروع التجربة، فلا تُغيَّر مع «كلمات المرور للكل»
+  const syncId = typeof m.sync_user_id === "string" ? m.sync_user_id : "";
+  return { min, force, syncId };
 }
 
 function checkPassword(p: unknown, min: number) {
@@ -248,6 +250,7 @@ async function resetAll(body: Record<string, unknown>, callerId: string) {
   const done: string[] = [];
   const skipped: { name: string; reason: string }[] = [];
   const queue = users.filter((u) => {
+    if (rules.syncId && u.id === rules.syncId) { skipped.push({ name: u.full_name, reason: "حساب مزامنة التجربة (يُستثنى دائماً)" }); return false; }
     if (!u.is_active && !includeInactive) { skipped.push({ name: u.full_name, reason: "حساب معطّل" }); return false; }
     if (mode === "login_no" && !u.login_no) { skipped.push({ name: u.full_name, reason: "ليس له رقم" }); return false; }
     if (mode === "login_no" && u.login_no!.length < rules.min) { skipped.push({ name: u.full_name, reason: `رقمه أقصر من ${rules.min} خانات` }); return false; }
@@ -313,9 +316,10 @@ async function resetPassword(body: Record<string, unknown>) {
   await admin(`/auth/v1/admin/users/${id}`, { method: "PUT", body: JSON.stringify({ password: body.password }) });
   await admin(`/rest/v1/profiles?id=eq.${id}`, {
     method: "PATCH",
-    body: JSON.stringify({ must_change_password: rules.force }),
+    // حساب المزامنة لا يدخله شخص، فلا معنى لإلزامه بالتغيير
+    body: JSON.stringify({ must_change_password: rules.syncId === id ? false : rules.force }),
   });
-  return { ok: true };
+  return { ok: true, sync: rules.syncId === id };
 }
 
 Deno.serve(async (req) => {
