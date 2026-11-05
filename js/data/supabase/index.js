@@ -206,7 +206,7 @@ export function createAdapter(config) {
         return toUser(r.user);
       },
       async resetPassword(id, password) {
-        await c.invoke(fn, { action: 'reset_password', id, password });
+        return c.invoke(fn, { action: 'reset_password', id, password });
       },
       /** opts: { mode: 'same'|'loginNo', password?, force, includeInactive } ← { reset, skipped: [{name, reason}] } */
       async resetAll(o) {
@@ -223,6 +223,7 @@ export function createAdapter(config) {
           minPasswordLength: m.min_password_length, forcePasswordChange: m.force_password_change,
           allowPurgeTasks: m.allow_purge_tasks, announcement: m.announcement,
           announcementType: m.announcement_type, announcementExpiresAt: m.announcement_expires_at,
+          syncUserId: m.sync_user_id,
         });
       },
       async save(s) {
@@ -236,6 +237,7 @@ export function createAdapter(config) {
           { key: 'announcement', value: n.announcement },
           { key: 'announcement_type', value: n.announcementType },
           { key: 'announcement_expires_at', value: n.announcementExpiresAt },
+          { key: 'sync_user_id', value: n.syncUserId },
         ], 'key');
         return this.load();
       },

@@ -12,6 +12,10 @@ import { CONFIG } from '../config.js';
 import { normalizeSettings } from '../core/settings.js';
 
 const pwRules = () => normalizeSettings(state.settings || {});
+// حساب «مزامنة التجربة» يُحدَّد في الإنتاج (والوضع التجريبي)، فنسخة التجربة لا تحتاجه
+const SYNC_ON = isDemo || CONFIG.env === 'production';
+const syncId = () => (SYNC_ON ? pwRules().syncUserId : '');
+const SYNC_SECRET_NOTE = 'كلمة مروره يجب أن تطابق السر PROD_SYNC_PASSWORD في مشروع التجربة (Tasks-Test ← Edge Functions ← Secrets)، وإلا يتوقف «تحديث بيانات التجربة من الإنتاج».';
 
 const ROLE_HELP = {
   admin: 'كل الصلاحيات: المستخدمون، الإعدادات، الحذف والاستعادة، الاستيراد.',
@@ -53,6 +57,7 @@ export default async function users(ctx, main) {
     ${pageHead({ title: 'المستخدمون', sub: 'المدير يضيف الحسابات ويحدد الأدوار. لا يوجد تسجيل ذاتي.', actions: html`<button class="btn" data-act="reset-all">${icon('key')}كلمات المرور للكل</button><button class="btn btn-primary" data-act="new">${icon('plus')}مستخدم جديد</button>` })}
     ${isDemo ? '' : html`<div class="alert small" style="margin-bottom:14px">إضافة المستخدمين وتعطيلهم وإعادة كلمات المرور تتم عبر دالة <span class="ltr">admin-users</span> على Supabase. إذا ظهر خطأ «غير منشورة» راجع دليل التركيب.</div>`}
     <div class="alert warn" id="no-number" style="margin-bottom:14px" hidden></div>
+    <div class="alert small" id="no-sync" style="margin-bottom:14px" hidden></div>
     <div class="card filters"><div class="field wide">${searchBox('', 'الاسم أو الرقم أو البريد…')}</div></div>
     <div class="card" id="tbl" style="margin-top:14px">${loading()}</div>`);
 
@@ -61,7 +66,7 @@ export default async function users(ctx, main) {
   // الدخول بحساب مستخدم آخر: نسخة التجربة (والوضع التجريبي) فقط
   const canActAs = isDemo || CONFIG.env === 'staging';
   const columns = [
-    { key: 'fullName', label: 'الاسم', render: (u) => html`<b>${u.fullName}</b>${u.id === state.user.id ? html` <span class="badge info">أنت</span>` : ''}${u.shortName ? html`<div class="small muted">${u.shortName}</div>` : ''}` },
+    { key: 'fullName', label: 'الاسم', render: (u) => html`<b>${u.fullName}</b>${u.id === state.user.id ? html` <span class="badge info">أنت</span>` : ''}${u.id === syncId() ? html` <span class="badge warn" title="يُستثنى من «كلمات المرور للكل»">مزامنة التجربة</span>` : ''}${u.shortName ? html`<div class="small muted">${u.shortName}</div>` : ''}` },
     { key: 'loginNo', label: 'الرقم', cls: 'num', render: (u) => (u.loginNo ? html`<span class="ltr">${u.loginNo}</span>` : html`<span class="badge bad">بلا رقم</span>`) },
     { key: 'email', label: 'البريد', render: (u) => html`<span class="ltr">${u.email || ''}</span>` },
     { key: 'role', label: 'الدور', render: (u) => html`<span class="badge ${ROLE_BADGE[u.role]}">${ROLE_LABELS[u.role]}</span>` },
@@ -81,6 +86,9 @@ export default async function users(ctx, main) {
       const missing = list.filter((u) => !u.loginNo);
       const warn = $('#no-number', root);
       warn.hidden = !missing.length;
+      const noSync = $('#no-sync', root);
+      noSync.hidden = !(SYNC_ON && !list.some((u) => u.id === syncId()) && list.some((u) => u.role === 'viewer'));
+      if (!noSync.hidden) mount(noSync, html`<b>لم يُحدَّد «حساب مزامنة التجربة».</b> افتح «تعديل» للحساب الذي يستخدمه زر نسخ البيانات إلى التجربة (دوره «مشاهد») وحدّد الخيار، فيُستثنى من «كلمات المرور للكل».`);
       if (missing.length) mount(warn, html`<b>${missing.length} من المستخدمين بلا رقم مدني/وظيفي</b> (${missing.map((u) => u.fullName).join('، ')}). الرقم إلزامي: أضفه من «تعديل»، ولن يُحفظ أي تعديل آخر لهم قبل إضافته.`);
       if (!table) table = dataTable($('#tbl', root), { columns, rows: view(), sortKey: 'fullName', sortDir: 'asc', pageSize: 50 });
       else table.setRows(view());
@@ -114,13 +122,19 @@ export default async function users(ctx, main) {
           : html`<div class="field"><span class="label">الحساب</span>
           <label class="check"><input type="checkbox" name="isActive" ${u.isActive ? 'checked' : ''} ${self ? 'disabled' : ''}> نشط (يستطيع الدخول)</label>
           ${self ? html`<span class="hint">لا يمكنك تغيير دورك أو تعطيل حسابك بنفسك.</span>` : ''}</div>`}
+        ${SYNC_ON && !isNew && !self ? html`<div class="field span-2"><label class="check"><input type="checkbox" name="isSync" ${u.id === syncId() ? 'checked' : ''} ${u.role !== 'viewer' ? 'disabled' : ''}> حساب مزامنة التجربة</label>
+          <span class="hint" id="u-sync-hint">${u.role === 'viewer' ? `الحساب الذي يقرأ به زر «تحديث بيانات التجربة من الإنتاج». يُستثنى من «كلمات المرور للكل». ${SYNC_SECRET_NOTE}` : 'متاح لدور «مشاهد» فقط.'}</span></div>` : ''}
         <div class="alert bad span-2" data-err hidden></div>
       </form>`,
       footer: html`<button class="btn btn-primary" data-save>${icon('check')}${isNew ? 'إضافة' : 'حفظ'}</button><button class="btn" data-x>إلغاء</button>`,
     });
     const f = $('form', m.el);
     const err = $('[data-err]', m.el);
-    f.elements.role.onchange = () => { $('#u-role-help', m.el).textContent = ROLE_HELP[f.elements.role.value]; };
+    f.elements.role.onchange = () => {
+      $('#u-role-help', m.el).textContent = ROLE_HELP[f.elements.role.value];
+      const sync = f.elements.isSync;
+      if (sync) { sync.disabled = f.elements.role.value !== 'viewer'; if (sync.disabled) sync.checked = false; }
+    };
     f.addEventListener('input', () => { err.hidden = true; });
     if (isNew) {
       // كلمة المرور الأولى = الرقم، ما لم يكتب المدير غيرها
@@ -160,6 +174,11 @@ export default async function users(ctx, main) {
             if (loginNo !== (u.loginNo || '')) patch.loginNo = loginNo;
             if (!self) { patch.role = v.role; patch.isActive = v.isActive; }
             const saved = await db.users.update(u.id, patch);
+            if (f.elements.isSync) {
+              const want = f.elements.isSync.checked && saved.role === 'viewer';
+              const was = u.id === syncId();
+              if (want !== was) state.settings = await db.settings.save({ ...state.settings, syncUserId: want ? u.id : '' });
+            }
             if (self) { Object.assign(state.user, { fullName: saved.fullName, shortName: saved.shortName, email: saved.email, loginNo: saved.loginNo }); refreshChrome(); }
             toast('تم الحفظ.', 'ok');
             m.close();
@@ -178,13 +197,14 @@ export default async function users(ctx, main) {
   /** إعادة تعيين كلمات المرور لكل المستخدمين عدا الحساب الحالي */
   function resetAllDialog() {
     const { minPasswordLength: min, forcePasswordChange } = pwRules();
-    const others = list.filter((u) => u.id !== state.user.id);
+    const syncU = list.find((u) => u.id === syncId() && u.id !== state.user.id);
+    const others = list.filter((u) => u.id !== state.user.id && u !== syncU);
     const WORD = 'تأكيد';
     const m = modal({
       title: 'إعادة تعيين كلمات المرور للكل',
       body: html`<form class="stack" novalidate>
         <div class="alert warn">
-          تتغير كلمة مرور <b>${others.length}</b> مستخدماً، أي كل المستخدمين عدا حسابك أنت. ستتوقف كلماتهم الحالية عن العمل فوراً.
+          تتغير كلمة مرور <b>${others.length}</b> مستخدماً، أي كل المستخدمين عدا حسابك أنت${syncU ? html` وحساب مزامنة التجربة «${syncU.fullName}»` : ''}. ستتوقف كلماتهم الحالية عن العمل فوراً.
         </div>
         <div class="field"><span class="label">كلمة المرور الجديدة</span>
           <label class="check"><input type="radio" name="mode" value="same"> كلمة مرور موحدة للجميع</label>
@@ -245,10 +265,13 @@ export default async function users(ctx, main) {
   on(root, 'click', '[data-edit]', (e, b) => form(list.find((u) => u.id === b.dataset.edit)));
   on(root, 'click', '[data-reset]', async (e, b) => {
     const u = list.find((x) => x.id === b.dataset.reset);
-    const { minPasswordLength: min, forcePasswordChange: force } = pwRules();
+    const { minPasswordLength: min, forcePasswordChange: force0 } = pwRules();
+    const isSync = u.id === syncId();
+    const force = force0 && !isSync;
     const m = modal({
       title: `كلمة مرور جديدة: ${u.fullName}`, size: 'sm',
       body: html`<form novalidate class="stack">
+        ${isSync ? html`<div class="alert warn small"><b>هذا حساب مزامنة التجربة.</b> ${SYNC_SECRET_NOTE}</div>` : ''}
         <div class="field"><label for="r-pw">كلمة المرور الجديدة</label>
           <input class="input ltr" style="display:block;text-align:left" id="r-pw" name="password" value="${tempPassword()}" minlength="${min}" required autofocus>
           <span class="hint">مقترحة عشوائياً، ويمكنك كتابة غيرها (${min} أحرف على الأقل). ستتوقف كلمة المرور الحالية عن العمل${force ? '، وسيُطلب منه تغييرها عند الدخول' : ''}.</span></div>
@@ -263,7 +286,16 @@ export default async function users(ctx, main) {
       try {
         await db.users.resetPassword(u.id, pw);
         m.close();
-        showCredentials('كلمة المرور الجديدة', u, pw);
+        if (isSync) {
+          const done = modal({
+            title: 'تغيّرت كلمة مرور حساب المزامنة', size: 'sm',
+            body: html`<p style="margin-top:0">الخطوة التالية: ضع كلمة المرور نفسها في <b>Tasks-Test ← Edge Functions ← Secrets</b> في السر <span class="ltr">PROD_SYNC_PASSWORD</span>، وإلا يتوقف «تحديث بيانات التجربة من الإنتاج».</p>
+              <pre class="input" style="white-space:pre-wrap;direction:ltr;min-height:0;font:inherit">${pw}</pre>`,
+            footer: html`<button class="btn btn-primary" data-copy>${icon('copy')}نسخ</button><button class="btn" data-x>تم</button>`,
+          });
+          $('[data-copy]', done.el).onclick = () => copy(pw);
+          $('[data-x]', done.el).onclick = () => done.close();
+        } else showCredentials('كلمة المرور الجديدة', u, pw);
         await load();
       } catch (ex) { err.textContent = ex.message; err.hidden = false; }
     });
