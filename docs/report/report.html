@@ -24,7 +24,7 @@
   <div class="meta">
     <div><span>آخر إصدار</span><b class="ltr" data-fill="latest">1.16.0</b></div>
     <div><span>عدد الإصدارات</span><b data-fill="count">24</b></div>
-    <div><span>تاريخ المستند</span><b class="ltr" data-fill="date">2026/11/04</b></div>
+    <div><span>تاريخ المستند</span><b class="ltr" data-fill="date">2026/11/05</b></div>
   </div>
   <div class="aud">موجَّه إلى: <span class="chip">الإدارة العليا</span><span class="chip">مستخدمي النظام</span><span class="chip">المهندس المسؤول</span></div>
 </section>
@@ -80,8 +80,9 @@
   </div>
   <h3>أين وصلنا</h3>
   <ul>
-    <li><b>الإنتاج يعمل</b> على الإصدار <span class="ltr">1.15.1</span>، وفيه مهام القسم مستوردة من ملف Google Sheets. البيانات ما زالت في <b>مرحلة التجهيز</b> قبل الإطلاق الرسمي، والملف هو المرجع حتى ذلك الحين.</li>
-    <li><b>نسخة التجربة</b> تعمل على الإصدار <span class="ltr" data-fill="latest">1.16.0</span>، وبياناتها نسخة من الإنتاج تُحدَّث بزر واحد.</li>
+    <li><b>الإنتاج يعمل</b> على الإصدار <span class="ltr">1.16.0</span>، وفيه مهام القسم مستوردة من ملف Google Sheets. البيانات ما زالت في <b>مرحلة التجهيز</b> قبل الإطلاق الرسمي، والملف هو المرجع حتى ذلك الحين.</li>
+    <li><b>نسخة التجربة</b> تعمل على نفس الإصدار، وبياناتها نسخة من الإنتاج تُحدَّث بزر واحد.</li>
+    <li><b>نسخة مرجعية</b> مطابقة للإنتاج في الحساب الأساسي، تُحدَّث تلقائياً بعد كل اعتماد.</li>
     <li><b>كل تعديل يمر بالتجربة أولاً</b>، ولا يصل للموظفين إلا بعد اعتماد مدير النظام ونقله بنفسه. والتراجع عن أي إصدار بزر واحد.</li>
   </ul>
   <h3>ما يقدمه النظام للقسم</h3>
@@ -617,7 +618,20 @@
       <figure><img src="img/15-ann-important.jpg"><figcaption>الإعلان المهم: شريط أحمر بلا زر إخفاء</figcaption></figure>
       <figure><img src="img/14-ann-settings.jpg"><figcaption>بطاقة الإعلان في الإعدادات: النص والنوع ووقت الانتهاء وسطر الحالة</figcaption></figure>
       <div class="aud-box eng"><h5><span class="tag eng">للمهندس</span></h5>الملف <code>15_announcement_type.sql</code>: إعدادا <code>announcement_type</code> و<code>announcement_expires_at</code>. منع إخفاء «المهم» مفروض من الواجهة، وهو كافٍ لغرضه لكنه ليس حماية على الخادم.</div>
-      <div class="note info"><b>الحالة عند كتابة المستند</b>في نسخة التجربة بانتظار التجربة والاعتماد والدمج.</div>
+      <div class="note ok"><b>الحالة</b>نُقل إلى الإنتاج في 2026/11/04.</div>
+    </div>
+  </section>
+
+  <section class="ver">
+    <div class="ver-head"><span class="ver-no">—</span><h3>المزامنة التلقائية للمستودع المرجعي</h3><span class="tag infra">بنية</span><span class="ver-date">2026/11/05</span></div>
+    <div class="ver-body">
+      <div class="req"><b>الطلب:</b> الحساب الأساسي في GitHub <span class="q">«يظل كما هو»</span> بدور المرجع: نسخة مطابقة للإنتاج دون العمل فيه.</div>
+      <ul>
+        <li>بعد كل دمج في <code>main</code> تنسخ عملية <b>«مزامنة المرجع»</b> الإنتاج إلى مستودع الحساب الأساسي تلقائياً.</li>
+        <li>مستقلة عن نشر الموقع: لو فشلت لا يتأثر الإنتاج ولا التجربة، ويُعوَّض كل ما فات في أول مزامنة ناجحة.</li>
+        <li>عمليتا النشر والمزامنة لا تعملان داخل المستودع المرجعي نفسه.</li>
+      </ul>
+      <div class="aud-box eng"><h5><span class="tag eng">للمهندس</span></h5>السر <code>REFERENCE_TOKEN</code> في مستودع 2024: مفتاح Fine-grained من الحساب الأساسي على مستودع واحد، بصلاحيتي <b>Contents</b> و<b>Workflows</b> (الثانية لازمة لأن الكود يحتوي ملفات <code>.github/workflows</code>). عند انتهاء المفتاح: Regenerate token ثم تحديث السر.</div>
     </div>
   </section>
 </section>
@@ -636,7 +650,7 @@
       <tr><td><b>المهمة المستوردة باسم مهندسها</b></td><td>السجل يعكس صاحب العمل الحقيقي، مع حفظ من نفّذ الاستيراد.</td></tr>
       <tr><td><b>فصل الإنتاج في مشروع مستقل</b></td><td>تجربة كلمات المرور والحذف في التجربة لا تمس الإنتاج أبداً.</td></tr>
       <tr><td><b>حساب GitHub واحد، وحساب Supabase واحد بمشروعين</b></td><td>إدارة أبسط دون التنقل بين الحسابات، مع بقاء البيئتين منفصلتين.</td></tr>
-      <tr><td><b>الحساب الأساسي في GitHub مرجعاً</b></td><td>يبقى نسخة مطابقة للإنتاج في حساب مستقل (آلية المزامنة مؤجلة، الفصل 9).</td></tr>
+      <tr><td><b>الحساب الأساسي في GitHub مرجعاً</b></td><td>يبقى نسخة مطابقة للإنتاج في حساب مستقل، تُحدَّث تلقائياً بعد كل دمج.</td></tr>
       <tr><td><b>لا رسائل بريد من النظام</b></td><td>طلب صريح: <span class="q">«حاليا النظام في طور التصميم والتطوير فلا داعي لإرسال ايميلات أيا كان نوعها»</span>.</td></tr>
       <tr><td><b>ملفات SQL «إضافية» فقط</b></td><td>تُنفَّذ قبل الدمج دون أن تكسر الإصدار الحالي، فلا توقف للعمل أثناء التحديث.</td></tr>
       <tr><td><b>أفكار للدراسة لا للتنفيذ</b></td><td>ما يُطرح بصيغة «مجرد فكرة» يُدرس ويُشرح ولا يُنفَّذ، مثل الرجوع لإصدار سابق، والمستودع العام والخاص، ونقل بيانات التجربة إلى الإنتاج.</td></tr>
@@ -693,19 +707,18 @@
   <table>
     <thead><tr><th style="width:6%">#</th><th>الخطوة</th><th style="width:18%">الحالة</th></tr></thead>
     <tbody>
-      <tr><td>1</td><td>اعتماد الإصدار 1.16.0 ونقله للإنتاج (بعد تنفيذ ملف 15 في المشروعين)</td><td><span class="tag pending">في التجربة</span></td></tr>
+      <tr><td>1</td><td>اعتماد الإصدار 1.16.0 ونقله للإنتاج (بعد تنفيذ ملف 15 في المشروعين)</td><td><span class="tag user">تم</span></td></tr>
       <tr><td>2</td><td>الاستيراد النهائي من Google Sheets إلى الإنتاج، ثم نسخ البيانات إلى التجربة</td><td><span class="tag pending">عند الإطلاق</span></td></tr>
       <tr><td>3</td><td>مراجعة المهام المعلَّمة «تحتاج مراجعة» من المهندسين</td><td><span class="tag pending">بعد الاستيراد</span></td></tr>
       <tr><td>4</td><td>إيقاف «السماح بحذف كل المهام» في إعدادات الإنتاج</td><td><span class="tag pending">عند الإطلاق</span></td></tr>
       <tr><td>5</td><td>ضبط «مدة قفل التعديل» بعد انتهاء المراجعة</td><td><span class="tag pending">بعد المراجعة</span></td></tr>
     </tbody>
   </table>
-  <h3>أعمال مجدولة أو مؤجلة</h3>
+  <h3>أعمال مجدولة</h3>
   <table>
     <thead><tr><th style="width:30%">العمل</th><th>التفاصيل</th></tr></thead>
     <tbody>
       <tr><td><b>تنظيف 9 نوفمبر</b></td><td>تذكير مجدول بإيقاف أو حذف مشروع التجربة القديم في حساب Supabase القديم، وأرشفة مستودع التجربة القديم وإيقاف موقعه. لا شيء يُنفَّذ دون موافقة.</td></tr>
-      <tr><td><b>مزامنة المستودع المرجعي</b></td><td>نسخ الفرع <code>main</code> تلقائياً إلى مستودع الحساب الأساسي بعد كل دمج. ينتظر إنشاء مفتاح وصول في الحساب الأساسي وحفظه سراً باسم <code>REFERENCE_TOKEN</code>. مؤجل بطلب المالك.</td></tr>
       <tr><td><b>تحديث أدوات النشر</b></td><td>تحديث إصدارات خطوات GitHub Actions لإزالة تنبيه Node 20. اختياري، لا يؤثر على العمل.</td></tr>
     </tbody>
   </table>
@@ -739,7 +752,7 @@
       <tr><td>دالة نسخ البيانات</td><td>—</td><td><code>refresh-staging</code></td></tr>
       <tr><td>أسرار الدوال (أسماء)</td><td>—</td><td><code>PROD_URL</code>، <code>PROD_KEY</code>، <code>PROD_SYNC_LOGIN</code>، <code>PROD_SYNC_PASSWORD</code></td></tr>
       <tr><td>مفاتيح الحفظ في المتصفح</td><td><code>tsk.</code></td><td><code>tsk.stg.</code></td></tr>
-      <tr><td>المستودع المرجعي</td><td colspan="2"><span class="ltr">abdullah-alfurqani/Tasks-Dashboard-Live</span> (الحساب الأساسي)</td></tr>
+      <tr><td>المستودع المرجعي</td><td colspan="2"><span class="ltr">abdullah-alfurqani/Tasks-Dashboard-Live</span> (الحساب الأساسي)، يُحدَّث تلقائياً بالسر <code>REFERENCE_TOKEN</code>: مفتاح Fine-grained على هذا المستودع فقط بصلاحيتي Contents وWorkflows</td></tr>
     </tbody>
   </table>
   <h3>ملفات قاعدة البيانات</h3>
@@ -779,6 +792,7 @@
       <tr><td><code>tools/</code></td><td>رقم الإصدار، وتوليد ملفات التجهيز، وبناء هذا المستند</td></tr>
       <tr><td><code>docs/</code></td><td>دليل التركيب، ودليل الإصدار، وهذا المستند ومصدره (لا تُنشر في الموقع)</td></tr>
       <tr><td><code>.github/workflows/pages.yml</code></td><td>النشر التلقائي للنسختين</td></tr>
+      <tr><td><code>.github/workflows/mirror.yml</code></td><td>مزامنة المستودع المرجعي بعد كل دمج</td></tr>
     </tbody>
   </table>
   <h3>أوامر المطوّر</h3>
@@ -826,6 +840,7 @@
     <thead><tr><th style="width:18%">التاريخ</th><th style="width:16%">حتى الإصدار</th><th>التغيير</th></tr></thead>
     <tbody>
       <tr><td class="ltr">2026/11/04</td><td class="ltr">1.16.0</td><td>النسخة الأولى من المستند: كل الإصدارات من 1.0.0 إلى 1.16.0.</td></tr>
+      <tr><td class="ltr">2026/11/05</td><td class="ltr">1.16.0</td><td>نقل 1.16.0 إلى الإنتاج، وتفعيل المزامنة التلقائية للمستودع المرجعي.</td></tr>
     </tbody>
   </table>
 </section>
