@@ -137,3 +137,85 @@ supabase: {
 - انسخ البيانات دورياً بإحدى طريقتين:
   - صدّر **التقرير** بكل الفترات إلى Excel من النظام؛
   - أو من **Table Editor ← tasks ← Export to CSV** في لوحة Supabase.
+
+## نقل النظام كاملاً إلى حساب GitHub وحساب Supabase جديدين
+
+أربع مراحل. في الكود ثلاثة ملفات فقط فيها أسماء الحسابات الحالية. `NEW` = اسم حساب GitHub الجديد.
+
+### المرحلة 1: مشروعا Supabase في الحساب الجديد
+
+**أ) مشروع الإنتاج**
+1. أنشئ الحساب ثم **New project**، واحفظ كلمة مرور قاعدة البيانات عندك فقط.
+2. **SQL Editor:** نفّذ `supabase/production/setup_production.sql` (كل ملفات قاعدة البيانات بالترتيب).
+3. **Project Settings ← Data API ← Exposed schemas:** أضف `support_tasks`.
+4. **Authentication:**
+   - **Sign In / Providers ← Email:** «Minimum password length» = 6.
+   - أوقف «Allow new users to sign up».
+5. **أول مدير:** **Authentication ← Users ← Add user** (بريدك وكلمة مرور، مع Auto Confirm)، ثم ضع بياناتك في `supabase/production/first_admin.sql` ونفّذه.
+6. **Edge Functions:** دالتان بنفس الاسم، والكود من الملفات:
+   - `admin-users` ← `supabase/functions/admin-users/index.ts` (Verify JWT **مفعّل**)
+   - `auth-login` ← `supabase/functions/auth-login/index.ts` (Verify JWT **متوقف**)
+7. **Project Settings ← API Keys:** انسخ **Project URL** و**Publishable key**.
+
+**ب) مشروع التجربة**
+1. **New project** في نفس الحساب.
+2. **SQL Editor:** نفّذ `supabase/staging/setup_staging.sql`، ثم أضف نفسك من Users ونفّذ `supabase/staging/first_admin.sql`.
+3. **Exposed schemas:** أضف `support_tasks_staging`.
+4. **Authentication:** نفس إعدادات الإنتاج.
+5. **Edge Functions:** ثلاث دوال:
+   - `admin-users-staging` ← نفس كود `admin-users` (Verify JWT **مفعّل**)
+   - `auth-login-staging` ← نفس كود `auth-login` (Verify JWT **متوقف**)
+   - `refresh-staging` ← `supabase/functions/refresh-staging/index.ts` (Verify JWT **مفعّل**)
+6. انسخ **Project URL** و**Publishable key** لهذا المشروع أيضاً.
+
+### المرحلة 2: مستودع GitHub في الحساب الجديد
+
+1. بالحساب الجديد افتح **github.com/new/import**:
+   - **URL:** رابط المستودع الحالي.
+   - **Public** (الاستضافة المجانية لـ Pages تحتاج مستودعاً عاماً).
+
+   الاستيراد ينسخ الفرعين `main` و`staging` مع كل التاريخ. وهو أفضل من Fork، لأنه لا يربط المستودع الجديد بالقديم.
+2. **عدّل ثلاثة ملفات** في الفرعين `main` و`staging` معاً:
+
+   | الملف | ما يتغير |
+   |---|---|
+   | `js/config.js` | `hosts` ← `NEW.github.io`، ورابط ومفتاح عام لكل مشروع |
+   | `.github/workflows/pages.yml` | الشرط `github.repository == 'NEW/Tasks-Dashboard-Live'`. **بدونه لا يُنشر الموقع** |
+   | `.github/workflows/mirror.yml` | يُحذف، أو يُوجَّه إلى مستودع مرجعي جديد مع سر `REFERENCE_TOKEN` جديد |
+
+3. **Settings ← Actions ← General:** تأكد أن Actions مفعّلة.
+4. **Settings ← Pages ← Source:** **GitHub Actions**.
+5. **Settings ← Environments ← github-pages ← Deployment branches:** أضف `staging` بجانب `main`.
+6. **Settings ← Rules ← Rulesets:** قاعدة `protect-main` على الفرع الافتراضي:
+   - Restrict deletions.
+   - Block force pushes.
+   - Require a pull request (Required approvals = 0).
+   - بدون Linear history، وبدون Signed commits، وبدون Status checks.
+7. **أول نشر:** **Actions ← نشر الموقع ← Run workflow**، ثم افتح:
+   - الإنتاج: `https://NEW.github.io/Tasks-Dashboard-Live/`
+   - التجربة: `https://NEW.github.io/Tasks-Dashboard-Live/test/`
+
+### المرحلة 3: ربط التجربة بالإنتاج (زر نسخ البيانات)
+
+1. **في نظام الإنتاج ← المستخدمون:** أضف «مزامنة التجربة» بدور **مشاهد** برقم وكلمة مرور، ثم «تعديل» ← حدّد **«حساب مزامنة التجربة»**.
+2. **في مشروع التجربة ← Edge Functions ← Secrets:**
+
+   | السر | القيمة |
+   |---|---|
+   | `PROD_URL` | رابط مشروع الإنتاج |
+   | `PROD_KEY` | المفتاح العام لمشروع الإنتاج |
+   | `PROD_SYNC_LOGIN` | رقم حساب المزامنة |
+   | `PROD_SYNC_PASSWORD` | كلمة مروره |
+
+### المرحلة 4: البيانات
+
+حسابات الدخول وكلمات المرور لا تُنقل، لأن لكل مشروع Supabase حساباته.
+1. **المستخدمون:** يُضافون من جديد بأرقامهم، وكلمة المرور الأولى = الرقم.
+2. **المهام:** من النظام القديم: **التقرير ← كل الفترات ← Excel**، ثم **الاستيراد** في الجديد.
+3. **الإعدادات والقوائم:** تُضبط من الشاشات.
+4. **التجربة:** «تحديث بيانات التجربة من الإنتاج».
+
+> **تنبيه:** الاستيراد من Excel ينقل المهام فقط، و**سجل التعديلات القديم لا ينتقل**.
+> البديل نسخ قاعدة البيانات كاملة بأدوات PostgreSQL، وهذا يحتاج كلمة مرور قاعدة البيانات فيُنفَّذ على جهاز المالك.
+
+النظام القديم يبقى يعمل حتى يُوقف، فيمكن تجربة الجديد بجانبه قبل التحويل.
