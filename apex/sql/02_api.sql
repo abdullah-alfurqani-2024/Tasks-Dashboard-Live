@@ -448,6 +448,7 @@ create or replace package body st_api as
     l_role  varchar2(10)  := nvl(jstr(o, 'role'), 'engineer');
     l_pw    varchar2(4000):= jstr(o, 'password');
     l_id    varchar2(36)  := new_id;
+    l_force number;
   begin
     require('admin', 'هذه العملية لمدير النظام فقط.');
     if l_no is null then app_error('الرقم المدني أو الوظيفي مطلوب.'); end if;
@@ -457,9 +458,9 @@ create or replace package body st_api as
     check_role(l_role);
     if l_pw is null then l_pw := l_no; end if;   -- كلمة المرور الافتراضية = الرقم
     check_password(l_pw);
+    l_force := case when setting_bool('force_password_change', false) then 1 else 0 end;
     insert into st_profiles (id, login_no, email, full_name, short_name, role, must_change_password)
-    values (l_id, l_no, l_email, l_name, l_short, l_role,
-            case when setting_bool('force_password_change', false) then 1 else 0 end);
+    values (l_id, l_no, l_email, l_name, l_short, l_role, l_force);
     set_password(l_id, l_pw);
     return user_json(l_id);
   end;
@@ -472,6 +473,7 @@ create or replace package body st_api as
     l_name varchar2(200);
     l_role varchar2(10);
     l_active number(1);
+    l_short varchar2(60);
   begin
     require('admin', 'هذه العملية لمدير النظام فقط.');
     if l_id is null then app_error('المستخدم غير محدد.'); end if;
@@ -493,9 +495,10 @@ create or replace package body st_api as
     -- الرقم إلزامي: لا يُحفظ أي تعديل لمستخدم يبقى بلا رقم
     if l_no is null then app_error('الرقم المدني أو الوظيفي مطلوب. أضف رقم هذا المستخدم أولاً.'); end if;
     ensure_unique(l_no, l_email, l_id);
+    l_short := case when jhas(o, 'short_name') then trim(jstr(o, 'short_name')) else cur.short_name end;
     update st_profiles
        set full_name = l_name,
-           short_name = case when jhas(o, 'short_name') then trim(jstr(o, 'short_name')) else short_name end,
+           short_name = l_short,
            role = l_role, is_active = l_active, login_no = l_no, email = l_email, updated_at = systimestamp
      where id = l_id;
     -- الحساب المعطّل لا يستطيع الدخول، ولا يبقى أحد يتصفح بحسابه
@@ -654,18 +657,56 @@ create or replace package body st_api as
     return e.to_clob;
   end;
 
+  -- قيم المهمة من JSON في متغيرات (الدوال الخاصة بالحزمة لا تُستدعى داخل جمل SQL)
+  type t_task is record (
+    id number, engineer_id varchar2(36), ref_no varchar2(1000), requester varchar2(1000), employee_name varchar2(1000),
+    subject clob, received_date date, completed_date date, notes clob,
+    task_type_id number, correspondence_type_id number, status_id number, delay_reason clob,
+    created_at timestamp with time zone, created_by varchar2(36), updated_at timestamp with time zone, updated_by varchar2(36),
+    deleted_at timestamp with time zone, deleted_by varchar2(36), review_reasons clob, priority varchar2(10),
+    has_engineer number, has_priority number, has_review number);
+
+  function task_rec(t in json_object_t) return t_task is
+    r t_task;
+  begin
+    r.id := jnum(t, 'id');
+    r.engineer_id := jstr(t, 'engineer_id');
+    r.ref_no := jstr(t, 'ref_no');
+    r.requester := jstr(t, 'requester');
+    r.employee_name := jstr(t, 'employee_name');
+    r.subject := jclob(t, 'subject');
+    r.received_date := parse_date(jstr(t, 'received_date'));
+    r.completed_date := parse_date(jstr(t, 'completed_date'));
+    r.notes := jclob(t, 'notes');
+    r.task_type_id := jnum(t, 'task_type_id');
+    r.correspondence_type_id := jnum(t, 'correspondence_type_id');
+    r.status_id := jnum(t, 'status_id');
+    r.delay_reason := jclob(t, 'delay_reason');
+    r.created_at := parse_ts(jstr(t, 'created_at'));
+    r.created_by := jstr(t, 'created_by');
+    r.updated_at := parse_ts(jstr(t, 'updated_at'));
+    r.updated_by := jstr(t, 'updated_by');
+    r.deleted_at := parse_ts(jstr(t, 'deleted_at'));
+    r.deleted_by := jstr(t, 'deleted_by');
+    r.review_reasons := review_reasons_of(t);
+    r.priority := case when jstr(t, 'priority') = 'urgent' then 'urgent' else 'normal' end;
+    r.has_engineer := case when r.engineer_id is not null then 1 else 0 end;
+    r.has_priority := case when jhas(t, 'priority') then 1 else 0 end;
+    r.has_review := case when jhas(t, 'review_reasons') then 1 else 0 end;
+    return r;
+  end;
+
   function task_insert(t in json_object_t) return number is
     l_id number;
+    r    t_task := task_rec(t);
   begin
     insert into st_tasks (engineer_id, ref_no, requester, employee_name, subject, received_date, completed_date,
                           notes, task_type_id, correspondence_type_id, status_id, delay_reason,
                           created_by, priority, review_reasons)
-    values (jstr(t, 'engineer_id'), jstr(t, 'ref_no'), jstr(t, 'requester'), jstr(t, 'employee_name'),
-            jclob(t, 'subject'), parse_date(jstr(t, 'received_date')), parse_date(jstr(t, 'completed_date')),
-            jclob(t, 'notes'), jnum(t, 'task_type_id'), jnum(t, 'correspondence_type_id'), jnum(t, 'status_id'),
-            jclob(t, 'delay_reason'), jstr(t, 'created_by'),
-            case when jstr(t, 'priority') = 'urgent' then 'urgent' else 'normal' end,
-            review_reasons_of(t))
+    values (r.engineer_id, r.ref_no, r.requester, r.employee_name,
+            r.subject, r.received_date, r.completed_date,
+            r.notes, r.task_type_id, r.correspondence_type_id, r.status_id,
+            r.delay_reason, r.created_by, r.priority, r.review_reasons)
     returning id into l_id;
     return l_id;
   end;
@@ -684,6 +725,7 @@ create or replace package body st_api as
     l_eng  varchar2(36);
     l_del  timestamp with time zone;
     l_ok   boolean;
+    r      t_task;
   begin
     begin
       select engineer_id, deleted_at into l_eng, l_del from st_tasks where id = l_id for update;
@@ -695,21 +737,22 @@ create or replace package body st_api as
          or (l_del is null and g_role = 'engineer' and l_eng = g_uid);
     if not l_ok then app_error('لا تملك صلاحية تعديل هذه المهمة، أو أنها حُذفت.'); end if;
 
+    r := task_rec(t);
     update st_tasks set
-      engineer_id            = case when jhas(t, 'engineer_id') and jstr(t, 'engineer_id') is not null then jstr(t, 'engineer_id') else engineer_id end,
-      ref_no                 = jstr(t, 'ref_no'),
-      requester              = jstr(t, 'requester'),
-      employee_name          = jstr(t, 'employee_name'),
-      subject                = jclob(t, 'subject'),
-      received_date          = parse_date(jstr(t, 'received_date')),
-      completed_date         = parse_date(jstr(t, 'completed_date')),
-      notes                  = jclob(t, 'notes'),
-      task_type_id           = jnum(t, 'task_type_id'),
-      correspondence_type_id = jnum(t, 'correspondence_type_id'),
-      status_id              = jnum(t, 'status_id'),
-      delay_reason           = jclob(t, 'delay_reason'),
-      priority               = case when jhas(t, 'priority') then case when jstr(t, 'priority') = 'urgent' then 'urgent' else 'normal' end else priority end,
-      review_reasons         = case when jhas(t, 'review_reasons') then review_reasons_of(t) else review_reasons end
+      engineer_id            = case when r.has_engineer = 1 then r.engineer_id else engineer_id end,
+      ref_no                 = r.ref_no,
+      requester              = r.requester,
+      employee_name          = r.employee_name,
+      subject                = r.subject,
+      received_date          = r.received_date,
+      completed_date         = r.completed_date,
+      notes                  = r.notes,
+      task_type_id           = r.task_type_id,
+      correspondence_type_id = r.correspondence_type_id,
+      status_id              = r.status_id,
+      delay_reason           = r.delay_reason,
+      priority               = case when r.has_priority = 1 then r.priority else priority end,
+      review_reasons         = case when r.has_review = 1 then r.review_reasons else review_reasons end
     where id = l_id;
     return task_get(l_id);
   end;
@@ -900,6 +943,14 @@ create or replace package body st_api as
     l_removed number := 0;
     l_notes   json_array_t := json_array_t();
     n         number;
+    v_n       number;
+    v_s       varchar2(4000);
+    v_short   varchar2(4000);
+    v_kind    varchar2(20);
+    v_sort    number;
+    v_act     number;
+    v_ts      timestamp with time zone;
+    v_clob    clob;
     r         json_object_t := json_object_t();
     procedure note(p_name varchar2, p_note varchar2) is
       x json_object_t := json_object_t();
@@ -921,21 +972,23 @@ create or replace package body st_api as
     a := o.get_array('task_types');
     for i in 0 .. a.get_size - 1 loop
       p := treat(a.get(i) as json_object_t);
-      insert into st_task_types (id, name, sort_order, is_active)
-      values (jnum(p, 'id'), jstr(p, 'name'), nvl(jnum(p, 'sort_order'), 0), case when jbool(p, 'is_active', true) then 1 else 0 end);
+      v_n := jnum(p, 'id'); v_s := jstr(p, 'name'); v_sort := nvl(jnum(p, 'sort_order'), 0);
+      v_act := case when jbool(p, 'is_active', true) then 1 else 0 end;
+      insert into st_task_types (id, name, sort_order, is_active) values (v_n, v_s, v_sort, v_act);
     end loop;
     a := o.get_array('correspondence_types');
     for i in 0 .. a.get_size - 1 loop
       p := treat(a.get(i) as json_object_t);
-      insert into st_correspondence_types (id, name, sort_order, is_active)
-      values (jnum(p, 'id'), jstr(p, 'name'), nvl(jnum(p, 'sort_order'), 0), case when jbool(p, 'is_active', true) then 1 else 0 end);
+      v_n := jnum(p, 'id'); v_s := jstr(p, 'name'); v_sort := nvl(jnum(p, 'sort_order'), 0);
+      v_act := case when jbool(p, 'is_active', true) then 1 else 0 end;
+      insert into st_correspondence_types (id, name, sort_order, is_active) values (v_n, v_s, v_sort, v_act);
     end loop;
     a := o.get_array('task_statuses');
     for i in 0 .. a.get_size - 1 loop
       p := treat(a.get(i) as json_object_t);
-      insert into st_task_statuses (id, name, kind, sort_order, is_active)
-      values (jnum(p, 'id'), jstr(p, 'name'), nvl(jstr(p, 'kind'), 'open'), nvl(jnum(p, 'sort_order'), 0),
-              case when jbool(p, 'is_active', true) then 1 else 0 end);
+      v_n := jnum(p, 'id'); v_s := jstr(p, 'name'); v_sort := nvl(jnum(p, 'sort_order'), 0);
+      v_act := case when jbool(p, 'is_active', true) then 1 else 0 end; v_kind := nvl(jstr(p, 'kind'), 'open');
+      insert into st_task_statuses (id, name, kind, sort_order, is_active) values (v_n, v_s, v_kind, v_sort, v_act);
     end loop;
 
     -- الإعدادات كما في الإنتاج
@@ -943,8 +996,8 @@ create or replace package body st_api as
     a := o.get_array('settings');
     for i in 0 .. a.get_size - 1 loop
       p := treat(a.get(i) as json_object_t);
-      insert into st_app_settings (setting_key, setting_value, updated_by)
-      values (jstr(p, 'key'), p.get('value').to_clob, g_real_uid);
+      v_s := jstr(p, 'key'); v_clob := p.get('value').to_clob;
+      insert into st_app_settings (setting_key, setting_value, updated_by) values (v_s, v_clob, g_real_uid);
     end loop;
 
     -- المستخدمون: حسابك أنت يبقى بكلمة مروره ودور «مدير النظام»
@@ -961,20 +1014,21 @@ create or replace package body st_api as
       l_no := jstr(p, 'login_no');
       l_email := lower(jstr(p, 'email'));
       if l_email like '%@tasks.internal' then l_email := null; end if;   -- بريد داخلي من Supabase
+      v_s := jstr(p, 'full_name'); v_short := jstr(p, 'short_name'); v_kind := jstr(p, 'role');
+      v_act := case when jbool(p, 'is_active', true) then 1 else 0 end;
+      v_ts := nvl(parse_ts(jstr(p, 'created_at')), systimestamp);
       select count(*) into n from st_profiles where id = l_id;
       if n = 0 then
         insert into st_profiles (id, login_no, email, full_name, short_name, role, is_active, must_change_password, created_at)
-        values (l_id, l_no, l_email, jstr(p, 'full_name'), jstr(p, 'short_name'), jstr(p, 'role'),
-                case when jbool(p, 'is_active', true) then 1 else 0 end, l_force, nvl(parse_ts(jstr(p, 'created_at')), systimestamp));
+        values (l_id, l_no, l_email, v_s, v_short, v_kind, v_act, l_force, v_ts);
         l_created := l_created + 1;
       elsif l_id = g_real_uid then
-        update st_profiles set login_no = l_no, email = l_email, full_name = jstr(p, 'full_name'),
-               short_name = jstr(p, 'short_name'), role = 'admin', is_active = 1, updated_at = systimestamp
+        update st_profiles set login_no = l_no, email = l_email, full_name = v_s,
+               short_name = v_short, role = 'admin', is_active = 1, updated_at = systimestamp
          where id = l_id;
       else
-        update st_profiles set login_no = l_no, email = l_email, full_name = jstr(p, 'full_name'),
-               short_name = jstr(p, 'short_name'), role = jstr(p, 'role'),
-               is_active = case when jbool(p, 'is_active', true) then 1 else 0 end,
+        update st_profiles set login_no = l_no, email = l_email, full_name = v_s,
+               short_name = v_short, role = v_kind, is_active = v_act,
                must_change_password = l_force, updated_at = systimestamp
          where id = l_id;
       end if;
@@ -1002,23 +1056,20 @@ create or replace package body st_api as
 
   function migrate_tasks(o in json_object_t) return clob is
     a json_array_t := o.get_array('rows');
-    t json_object_t;
+    r t_task;
   begin
     require_real_admin;
     g_migrating := true;
     for i in 0 .. a.get_size - 1 loop
-      t := treat(a.get(i) as json_object_t);
+      r := task_rec(treat(a.get(i) as json_object_t));
       insert into st_tasks (id, engineer_id, ref_no, requester, employee_name, subject, received_date, completed_date,
                             notes, task_type_id, correspondence_type_id, status_id, delay_reason,
                             created_at, created_by, updated_at, updated_by, deleted_at, deleted_by, review_reasons, priority)
-      values (jnum(t, 'id'), jstr(t, 'engineer_id'), jstr(t, 'ref_no'), jstr(t, 'requester'), jstr(t, 'employee_name'),
-              jclob(t, 'subject'), parse_date(jstr(t, 'received_date')), parse_date(jstr(t, 'completed_date')),
-              jclob(t, 'notes'), jnum(t, 'task_type_id'), jnum(t, 'correspondence_type_id'), jnum(t, 'status_id'),
-              jclob(t, 'delay_reason'),
-              nvl(parse_ts(jstr(t, 'created_at')), systimestamp), jstr(t, 'created_by'),
-              nvl(parse_ts(jstr(t, 'updated_at')), systimestamp), jstr(t, 'updated_by'),
-              parse_ts(jstr(t, 'deleted_at')), jstr(t, 'deleted_by'),
-              review_reasons_of(t), nvl(jstr(t, 'priority'), 'normal'));
+      values (r.id, r.engineer_id, r.ref_no, r.requester, r.employee_name,
+              r.subject, r.received_date, r.completed_date,
+              r.notes, r.task_type_id, r.correspondence_type_id, r.status_id, r.delay_reason,
+              nvl(r.created_at, systimestamp), r.created_by, nvl(r.updated_at, systimestamp), r.updated_by,
+              r.deleted_at, r.deleted_by, r.review_reasons, r.priority);
     end loop;
     return '{"count":' || a.get_size || '}';
   end;
@@ -1026,16 +1077,20 @@ create or replace package body st_api as
   function migrate_audit(o in json_object_t) return clob is
     a json_array_t := o.get_array('rows');
     t json_object_t;
+    v_id number; v_task number; v_action varchar2(10); v_by varchar2(36); v_at timestamp with time zone;
+    v_fields clob; v_old clob; v_new clob;
   begin
     require_real_admin;
     for i in 0 .. a.get_size - 1 loop
       t := treat(a.get(i) as json_object_t);
+      v_id := jnum(t, 'id'); v_task := jnum(t, 'task_id'); v_action := jstr(t, 'action'); v_by := jstr(t, 'changed_by');
+      v_at := nvl(parse_ts(jstr(t, 'changed_at')), systimestamp);
+      v_fields := null; v_old := null; v_new := null;
+      if t.has('changed_fields') and not t.get('changed_fields').is_null then v_fields := t.get('changed_fields').to_clob; end if;
+      if t.has('old_data') and not t.get('old_data').is_null then v_old := t.get('old_data').to_clob; end if;
+      if t.has('new_data') and not t.get('new_data').is_null then v_new := t.get('new_data').to_clob; end if;
       insert into st_task_audit (id, task_id, action, changed_by, changed_at, changed_fields, old_data, new_data)
-      values (jnum(t, 'id'), jnum(t, 'task_id'), jstr(t, 'action'), jstr(t, 'changed_by'),
-              nvl(parse_ts(jstr(t, 'changed_at')), systimestamp),
-              case when t.has('changed_fields') and not t.get('changed_fields').is_null then t.get('changed_fields').to_clob end,
-              case when t.has('old_data') and not t.get('old_data').is_null then t.get('old_data').to_clob end,
-              case when t.has('new_data') and not t.get('new_data').is_null then t.get('new_data').to_clob end);
+      values (v_id, v_task, v_action, v_by, v_at, v_fields, v_old, v_new);
     end loop;
     return '{"count":' || a.get_size || '}';
   end;
