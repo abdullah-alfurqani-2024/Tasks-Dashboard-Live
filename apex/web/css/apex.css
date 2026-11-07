@@ -18,6 +18,10 @@ html, body, body.t-PageBody {
   padding: 0 !important;
 }
 
+/* نموذج APEX نفسه يبقى في الصفحة (حقوله المخفية تحمل الجلسة وتلزم الطلبات)، لكن لا يظهر ولا يأخذ مساحة:
+   الواجهة كلها تُنقل خارجه (#st-shell و #st-login) */
+#wwvFlowForm { display: none !important; }
+
 /* الحاويات التي يضعها APEX حول المحتوى */
 .t-Body, .t-Body-main, .t-Body-wrap, .t-Body-col, .t-Body-content, .t-Body-contentInner,
 .t-Body-mainContent, .t-Login-container, .t-Login-body, .t-PageBody--login .t-Body {

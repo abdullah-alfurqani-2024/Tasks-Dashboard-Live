@@ -109,8 +109,8 @@ function between(text, startMarker, endMarker, replacement, what) {
 /* ───────────── أجزاء الصفحات ───────────── */
 
 // رأس الصفحتين: الخط، والتنسيق، والاتجاه والوضع الليلي قبل الرسم
+// (خط Droid Arabic Kufi من Google يرفض الطلبات من نطاق APEX، فنكتفي بنظيره Noto Kufi Arabic المحفوظ مع التطبيق)
 const HEAD = `<link rel="preload" href="#APP_FILES#fonts/noto-kufi-arabic-arabic.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/earlyaccess/droidarabickufi.css">
 <link rel="stylesheet" href="#APP_FILES#css/app.css" id="st-css">
 <link rel="stylesheet" href="#APP_FILES#css/apex.css">
 <link rel="stylesheet" href="#APP_FILES#css/print.css" media="print">
