@@ -57,6 +57,16 @@ create or replace package body st_api as
 
   g_acting_until timestamp with time zone;
 
+  -- قيم المهمة من JSON في متغيرات (الدوال الخاصة بالحزمة لا تُستدعى داخل جمل SQL)
+  type t_task is record (
+    id number, engineer_id varchar2(36), ref_no varchar2(1000), requester varchar2(1000), employee_name varchar2(1000),
+    subject clob, received_date date, completed_date date, notes clob,
+    task_type_id number, correspondence_type_id number, status_id number, delay_reason clob,
+    created_at timestamp with time zone, created_by varchar2(36), updated_at timestamp with time zone, updated_by varchar2(36),
+    deleted_at timestamp with time zone, deleted_by varchar2(36), review_reasons clob, priority varchar2(10),
+    has_engineer number, has_priority number, has_review number);
+
+
   -- ───────────────────────── أدوات عامة ─────────────────────────
 
   procedure app_error(p_message in varchar2) is
@@ -656,15 +666,6 @@ create or replace package body st_api as
     if e is null or e.is_null then return null; end if;
     return e.to_clob;
   end;
-
-  -- قيم المهمة من JSON في متغيرات (الدوال الخاصة بالحزمة لا تُستدعى داخل جمل SQL)
-  type t_task is record (
-    id number, engineer_id varchar2(36), ref_no varchar2(1000), requester varchar2(1000), employee_name varchar2(1000),
-    subject clob, received_date date, completed_date date, notes clob,
-    task_type_id number, correspondence_type_id number, status_id number, delay_reason clob,
-    created_at timestamp with time zone, created_by varchar2(36), updated_at timestamp with time zone, updated_by varchar2(36),
-    deleted_at timestamp with time zone, deleted_by varchar2(36), review_reasons clob, priority varchar2(10),
-    has_engineer number, has_priority number, has_review number);
 
   function task_rec(t in json_object_t) return t_task is
     r t_task;
