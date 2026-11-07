@@ -256,8 +256,9 @@ wwv_flow_imp_shared.create_authentication(
 ,p_name=>'Tasks Custom'
 ,p_static_id=>'tasks-custom'
 ,p_scheme_type=>'NATIVE_CUSTOM'
-,p_attribute_03=>'st_api.authenticate'
-,p_attribute_05=>'N'
+,p_attributes=>wwv_flow_t_plugin_attributes(wwv_flow_t_varchar2(
+  'authentication_function', 'st_api.authenticate',
+  'enable_legacy_attributes', 'N')).to_clob
 ,p_invalid_session_type=>'LOGIN'
 ,p_post_auth_process=>'st_api.post_auth'
 ,p_use_secure_cookie_yn=>'N'

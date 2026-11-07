@@ -109,7 +109,7 @@ wwv_imp_workspace.create_flow(
 ,p_created_by=>'ABDULLAH.ALFURQANI.2020@GMAIL.COM'
 ,p_last_updated_by=>'ABDULLAH.ALFURQANI.2020@GMAIL.COM'
 ,p_file_prefix=>nvl(wwv_flow_application_install.get_static_app_file_prefix,'')
-,p_files_version=>1794085456
+,p_files_version=>1794087405
 ,p_version_scn=>'15854718398022'
 ,p_print_server_type=>'INSTANCE'
 ,p_file_storage=>'DB'
@@ -3718,8 +3718,9 @@ wwv_flow_imp_shared.create_authentication(
 ,p_name=>'Tasks Custom'
 ,p_static_id=>'tasks-custom'
 ,p_scheme_type=>'NATIVE_CUSTOM'
-,p_attribute_03=>'st_api.authenticate'
-,p_attribute_05=>'N'
+,p_attributes=>wwv_flow_t_plugin_attributes(wwv_flow_t_varchar2(
+  'authentication_function', 'st_api.authenticate',
+  'enable_legacy_attributes', 'N')).to_clob
 ,p_invalid_session_type=>'LOGIN'
 ,p_post_auth_process=>'st_api.post_auth'
 ,p_use_secure_cookie_yn=>'N'
