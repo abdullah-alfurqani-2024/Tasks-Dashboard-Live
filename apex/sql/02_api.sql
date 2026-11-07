@@ -872,6 +872,7 @@ create or replace package body st_api as
     s     json_object_t := o.get_object('settings');
     keys  json_key_list;
     l_val clob;
+    l_key varchar2(100);
   begin
     require('admin', 'الإعدادات لمدير النظام فقط.');
     keys := s.get_keys;
@@ -879,8 +880,9 @@ create or replace package body st_api as
       if keys(i) in ('edit_lock_days', 'delay_threshold_days', 'min_password_length', 'force_password_change',
                      'allow_purge_tasks', 'announcement', 'announcement_type', 'announcement_expires_at', 'sync_user_id') then
         l_val := s.get(keys(i)).to_clob;
+        l_key := keys(i);
         merge into st_app_settings a
-        using (select keys(i) k from dual) x on (a.setting_key = x.k)
+        using (select l_key k from dual) x on (a.setting_key = x.k)
         when matched then update set a.setting_value = l_val, a.updated_at = systimestamp, a.updated_by = g_uid
         when not matched then insert (setting_key, setting_value, updated_by) values (x.k, l_val, g_uid);
       end if;
@@ -1310,6 +1312,9 @@ declare
   type t_list is table of varchar2(64);
   changed  t_list := t_list();
   tmp      varchar2(64);
+  v_fields clob;
+  v_old    clob;
+  v_new    clob;
 begin
   if st_api.g_migrating then return; end if;
 
@@ -1334,8 +1339,9 @@ begin
     if st_api.g_uid is not null and st_api.g_uid <> nvl(:new.created_by, '-') then
       n.put('entered_by', st_api.g_uid);
     end if;
+    v_new := n.to_clob;
     insert into st_task_audit (task_id, action, changed_by, new_data)
-    values (:new.id, 'insert', :new.created_by, n.to_clob);
+    values (:new.id, 'insert', :new.created_by, v_new);
     return;
   end if;
 
@@ -1380,7 +1386,8 @@ begin
     when :old.deleted_at is not null and :new.deleted_at is null then 'restore'
     else 'update' end;
 
+  v_fields := fields.to_clob; v_old := od.to_clob; v_new := nd.to_clob;
   insert into st_task_audit (task_id, action, changed_by, changed_fields, old_data, new_data)
-  values (:new.id, v_action, nvl(st_api.g_uid, :new.updated_by), fields.to_clob, od.to_clob, nd.to_clob);
+  values (:new.id, v_action, nvl(st_api.g_uid, :new.updated_by), v_fields, v_old, v_new);
 end;
 /
