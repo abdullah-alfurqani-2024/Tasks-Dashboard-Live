@@ -146,6 +146,26 @@ const APP_REGION = `<div id="st-shell">
 <script>
 (function () {
   document.body.appendChild(document.getElementById('st-shell'));
+  // قالب APEX فيه عنصر آخر بنفس المعرّف main داخل نموذجه: نغيّر معرّفه حتى تجد الواجهة عنصرها هي
+  var apexMain = document.querySelector('#wwvFlowForm #main');
+  if (apexMain) apexMain.id = 'apex-main';
+  // صفحات APEX فيها <base href> يشير إلى جذر ORDS، فتصبح روابط "#/..." نسبية إليه لا إلى الصفحة.
+  // نجعلها نسبية إلى رابط الصفحة الحالي (في التنقل وفي تحديث الرابط وفي روابط <a>)
+  var here = function () { return location.pathname + location.search; };
+  var fix = function (u) { return typeof u === 'string' && u.charAt(0) === '#' ? here() + u : u; };
+  var rs = history.replaceState, ps = history.pushState;
+  history.replaceState = function (s, t, u) { return rs.call(history, s, t, fix(u)); };
+  history.pushState = function (s, t, u) { return ps.call(history, s, t, fix(u)); };
+  var fixLinks = function (root) {
+    if (!root.querySelectorAll) return;
+    if (root.matches && root.matches('a[href^="#"]')) root.setAttribute('href', here() + root.getAttribute('href'));
+    root.querySelectorAll('a[href^="#"]').forEach(function (a) { a.setAttribute('href', here() + a.getAttribute('href')); });
+  };
+  var shell = document.getElementById('st-shell');
+  fixLinks(shell);
+  new MutationObserver(function (list) {
+    list.forEach(function (m) { m.addedNodes.forEach(fixLinks); if (m.type === 'attributes') fixLinks(m.target); });
+  }).observe(shell, { childList: true, subtree: true, attributes: true, attributeFilter: ['href'] });
   var css = document.getElementById('st-css');
   var s = document.createElement('script');
   s.type = 'module';
