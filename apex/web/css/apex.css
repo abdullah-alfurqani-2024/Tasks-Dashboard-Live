@@ -1,0 +1,41 @@
+/* =====================================================================
+   نسخة Oracle APEX: إخفاء إطار APEX (Universal Theme) حتى تظهر واجهة النظام كما هي
+   يُحمَّل بعد css/app.css في صفحتي التطبيق (1) والدخول (9999)
+   ===================================================================== */
+
+/* إطار APEX: الرأس والقوائم الجانبية والتذييل وفتات الخبز */
+.t-Header, .t-Body-nav, .t-Body-title, .t-Body-side, .t-Body-actions, .t-Footer,
+.t-Breadcrumb-region, .t-Body-info, .t-Login-logo, .t-Login-header, .t-Login-bg,
+.t-Login-bgImg, .t-Login-footer, .st-hidden, #t_Body_skipToContent {
+  display: none !important;
+}
+
+html, body, body.t-PageBody {
+  background: var(--bg) !important;
+  color: var(--ink) !important;
+  font: 14px/1.75 var(--font-body) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* الحاويات التي يضعها APEX حول المحتوى */
+.t-Body, .t-Body-main, .t-Body-wrap, .t-Body-col, .t-Body-content, .t-Body-contentInner,
+.t-Body-mainContent, .t-Login-container, .t-Login-body, .t-PageBody--login .t-Body {
+  margin: 0 !important; padding: 0 !important; border: 0 !important;
+  max-width: none !important; width: auto !important; min-height: 0 !important;
+  background: transparent !important; box-shadow: none !important; transform: none !important;
+}
+.t-PageBody .t-Body, .t-PageBody--leftNav .t-Body-main { margin-inline: 0 !important; padding-top: 0 !important; }
+
+/* واجهة النظام تُنقل خارج نموذج APEX (انظر الصفحة 1) فلا تتأثر بتنسيقاته */
+#st-shell, #st-login { direction: rtl; text-align: start; }
+#st-shell .row, #st-login .row { margin: 0; }
+#st-shell h1, #st-shell h2, #st-shell h3, #st-login h1 { font-family: var(--font-head); letter-spacing: 0; }
+#st-shell :is(button, input, select, textarea), #st-login :is(button, input, select, textarea) { font-family: inherit; }
+
+/* شريط مطوّر APEX (يظهر للمطوّر فقط) */
+#apexDevToolbar { direction: ltr; }
+
+@media print {
+  #apexDevToolbar, .t-Header, .t-Footer { display: none !important; }
+}
