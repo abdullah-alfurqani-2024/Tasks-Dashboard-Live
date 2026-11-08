@@ -73,7 +73,7 @@ export default async function tasksPage(ctx, main) {
         <select class="input" id="f-prio" name="priority">${options([['urgent', 'العاجلة فقط']], F.priority, 'الكل')}</select></div>
       <div class="field"><label for="f-review">المراجعة</label>
         <select class="input" id="f-review" name="review">${options([['1', 'تحتاج مراجعة فقط']], F.review, 'الكل')}</select></div>
-      <div class="field wide"><label for="f-q">بحث</label>${searchBox(F.q, 'الموضوع، الجهة، الموظف، رقم القيد…')}</div>
+      <div class="field wide"><label for="f-q">بحث</label>${searchBox(F.q, 'الموضوع، الجهة، الموظف، رقم القيد…', 'f-q')}</div>
       <div class="btns"><button type="button" class="btn btn-ghost" data-act="reset" title="مسح الفلاتر">${icon('x')}مسح</button></div>
     </form>
     <div class="chips" id="chips" style="margin:14px 0"></div>

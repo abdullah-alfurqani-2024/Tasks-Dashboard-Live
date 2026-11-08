@@ -1,6 +1,6 @@
 /* ---------------- الخط الموحّد ----------------
-   Droid Arabic Kufi أولاً (من Google إن توفّر أو من الجهاز)، ثم Noto Kufi Arabic المحفوظ مع الموقع:
-   وهو الإصدار المحدَّث من Droid Arabic Kufi بنفس التصميم، فيبقى الشكل واحداً في كل الأحوال */
+   Noto Kufi Arabic محفوظ مع الموقع (fonts/): الإصدار المحدَّث من Droid Arabic Kufi بنفس التصميم.
+   (رابط Droid Arabic Kufi في Google أُوقف ويرجع 404، فأُزيل في 1.19.2) */
 @font-face {
   font-family: 'Noto Kufi Arabic';
   font-style: normal; font-weight: 100 900; font-display: swap;
@@ -20,7 +20,7 @@
    ===================================================================== */
 
 :root {
-  --font: 'Droid Arabic Kufi', 'Noto Kufi Arabic', Tahoma, sans-serif;
+  --font: 'Noto Kufi Arabic', Tahoma, sans-serif;
   --font-body: var(--font);
   --font-head: var(--font);
   --radius: 12px;
