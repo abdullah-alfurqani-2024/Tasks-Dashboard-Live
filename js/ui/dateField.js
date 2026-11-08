@@ -3,6 +3,9 @@
  * (حقل التاريخ الأصلي في المتصفح يتبع لغة المتصفح، فيظهر أحياناً شهر/يوم/سنة)
  *
  * الشكل: نص يكتب فيه المستخدم 2026/10/31 + زر تقويم.
+ * التقويم: حقل التاريخ الأصلي شفاف فوق زر التقويم، فتصله لمسة المستخدم أو نقرته مباشرة.
+ *   هكذا يفتح كل متصفح تقويمه بنفسه (iPhone وAndroid والحاسوب) دون الاعتماد على showPicker()
+ *   وحده، فهو غير مدعوم في كل المتصفحات، ولا يعمل على حقل مخفي في بعضها.
  * القيمة الفعلية في حقل مخفي يحمل name ويُرجع 'YYYY-MM-DD'، فبقية الكود يعمل كما هو:
  *   form.elements.from.value        ← '2026-10-31'
  *   form.elements.from.value = iso  ← يحدّث النص المعروض
@@ -21,8 +24,8 @@ export function dateInput({ name, id, value = '', required = false, disabled = f
     <input type="hidden" name="${name}" value="${value || ''}" data-date-iso ${disabled ? 'disabled' : ''}>
     <input class="input date-text" type="text" id="${id}" value="${fmtDate(value)}" placeholder="${PLACEHOLDER}"
       inputmode="numeric" autocomplete="off" maxlength="10" dir="ltr" ${required ? 'required' : ''} ${disabled ? 'disabled' : ''}>
-    <button type="button" class="date-btn" tabindex="-1" aria-label="اختيار من التقويم" ${disabled ? 'disabled' : ''}>${icon('calendar')}</button>
-    <input type="date" class="date-native" tabindex="-1" aria-hidden="true">
+    <input type="date" class="date-native" tabindex="-1" aria-label="اختيار من التقويم" title="اختيار من التقويم" ${disabled ? 'disabled' : ''}>
+    <span class="date-btn" aria-hidden="true">${icon('calendar')}</span>
   </span>`;
 }
 
@@ -37,7 +40,7 @@ function enhance(box) {
   const native = box.querySelector('.date-native');
   let iso = proto.get.call(hidden) || '';
 
-  const setDisabled = (v) => { protoDis.set.call(hidden, v); text.disabled = v; btn.disabled = v; };
+  const setDisabled = (v) => { protoDis.set.call(hidden, v); text.disabled = v; native.disabled = v; btn.classList.toggle('off', !!v); };
   setDisabled(protoDis.get.call(hidden) || text.disabled);
   text.value = fmtDate(iso);
 
@@ -73,16 +76,23 @@ function enhance(box) {
   text.addEventListener('change', (e) => { e.stopPropagation(); commit(); });
   text.addEventListener('keydown', (e) => { if (e.key === 'Enter') { commit(); } });
 
-  btn.addEventListener('click', () => {
-    native.value = iso;
-    try { native.showPicker(); } catch { native.focus(); native.click(); }
-  });
-  native.addEventListener('change', (e) => {
-    e.stopPropagation();
+  // قبل فتح التقويم: يبدأ على التاريخ المكتوب
+  const prime = () => { if (native.value !== iso) native.value = iso; };
+  native.addEventListener('pointerdown', prime);
+  native.addEventListener('touchstart', prime, { passive: true });
+  native.addEventListener('focus', prime);
+  // الحاسوب: showPicker() يفتح التقويم من أي نقطة في الزر. الهاتف يفتحه باللمس نفسه، والخطأ هنا لا يضر
+  native.addEventListener('click', () => { prime(); try { native.showPicker?.(); } catch { /* المتصفح يفتحه بنفسه */ } });
+  // iPhone يرسل القيمة عند «تم» أو عند مغادرة الحقل، وغيره عند الاختيار: نستقبلها في الحالتين
+  const take = (e) => {
+    e?.stopPropagation?.();
     if (!native.value || native.value === iso) return;
     hidden.value = native.value;
     emit();
-  });
+  };
+  native.addEventListener('change', take);
+  native.addEventListener('blur', () => take());
+  native.addEventListener('input', (e) => e.stopPropagation());
 }
 
 /** يجهّز كل حقول التاريخ الجديدة تلقائياً (الصفحات والنوافذ) */

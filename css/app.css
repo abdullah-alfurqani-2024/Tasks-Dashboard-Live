@@ -227,11 +227,23 @@ textarea.input { min-height: 84px; resize: vertical; }
 /* حقل التاريخ سنة/شهر/يوم */
 .date-field { position: relative; display: block; }
 .date-field .date-text { text-align: right; padding-left: 38px; font-variant-numeric: tabular-nums; }
-.date-field .date-btn { position: absolute; left: 4px; top: 50%; transform: translateY(-50%); border: 0; background: none; color: var(--muted); padding: 6px; border-radius: 6px; cursor: pointer; display: grid; }
-.date-field .date-btn:hover { background: var(--surface-2); color: var(--ink); }
-.date-field .date-btn:disabled { cursor: default; opacity: .5; }
+/* أيقونة التقويم للشكل فقط، وفوقها حقل التاريخ الأصلي شفافاً يستقبل اللمس والنقر (كل الهواتف والمتصفحات) */
+.date-field .date-btn { position: absolute; left: 4px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; color: var(--muted); border-radius: 6px; display: grid; place-items: center; pointer-events: none; }
 .date-field .date-btn svg { width: 17px; height: 17px; }
-.date-field .date-native { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
+.date-field .date-btn.off { opacity: .5; }
+.date-field .date-native {
+  position: absolute; left: 4px; top: 50%; transform: translateY(-50%); z-index: 1;
+  width: 34px; height: 34px; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer;
+  font-size: 16px; /* أقل من 16px يجعل iPhone يكبّر الصفحة عند اللمس */
+  -webkit-appearance: none; appearance: none; background: transparent; color: transparent;
+}
+.date-field .date-native:disabled { cursor: default; }
+/* اللمس: هدف أكبر للإصبع */
+@media (pointer: coarse) { .date-field .date-native, .date-field .date-btn { width: 42px; height: 42px; left: 2px; } .date-field .date-text { padding-left: 46px; } }
+.date-field .date-native:not(:disabled):hover + .date-btn { background: var(--surface-2); color: var(--ink); }
+.date-field .date-native:focus-visible + .date-btn { outline: 2px solid var(--brand); outline-offset: 1px; }
+/* Chrome وEdge: علامة التقويم الداخلية تغطي الحقل كله، فأي نقرة تفتحه حتى بلا showPicker() */
+.date-field .date-native::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: auto; height: auto; margin: 0; padding: 0; opacity: 0; cursor: pointer; }
 .date-field.bad-date .date-text { border-color: var(--bad); }
 
 /* شريط الفلاتر */
