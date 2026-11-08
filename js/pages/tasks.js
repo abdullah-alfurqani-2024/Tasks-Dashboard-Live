@@ -94,7 +94,8 @@ export default async function tasksPage(ctx, main) {
     { key: 'durationDays', label: 'المدة', cls: 'num', render: (r) => (r.durationDays == null ? '' : html`<span style="${r.durationDays > delayDays ? 'color:var(--bad);font-weight:600' : ''}">${r.durationDays}</span>`) },
     { key: 'act', label: '', sort: false, render: (r) => html`<div class="row-actions">
       ${isLocked(r) ? html`<span class="muted" title="مقفلة">${icon('lock')}</span>` : ''}
-      ${canEditTask(r) ? html`<button class="btn btn-ghost btn-icon btn-sm" data-edit="${r.id}" aria-label="تعديل">${icon('edit')}</button>` : ''}</div>` },
+      ${can('tasks.create') && !r.deletedAt ? html`<button class="btn btn-ghost btn-icon btn-sm" data-copy="${r.id}" aria-label="نسخ كمهمة جديدة" title="نسخ كمهمة جديدة">${icon('copy')}</button>` : ''}
+      ${canEditTask(r) ? html`<button class="btn btn-ghost btn-icon btn-sm" data-edit="${r.id}" aria-label="تعديل" title="تعديل">${icon('edit')}</button>` : ''}</div>` },
   ];
 
   const requesters = () => [...new Set(all.map((t) => t.requester).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar'));
@@ -206,6 +207,10 @@ export default async function tasksPage(ctx, main) {
       saveF(F);
       tasksPage({ ...ctx, query: {} }, main);
     }
+  });
+  on(root, 'click', '[data-copy]', (e, b) => {
+    const t = all.find((x) => x.id === Number(b.dataset.copy));
+    if (t) openTaskForm({ copyOf: t, requesters: requesters(), onSaved });
   });
   on(root, 'click', '[data-edit]', (e, b) => {
     const t = all.find((x) => x.id === Number(b.dataset.edit));

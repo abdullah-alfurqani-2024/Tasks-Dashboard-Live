@@ -19,22 +19,33 @@ const isCorrType = (taskTypeId) => normalizeAr(state.lookups.taskTypes.find((x) 
 
 /**
  * task: مهمة موجودة أو null لمهمة جديدة
+ * copyOf: مهمة تُنسخ منها مهمة جديدة (تُفتح معبّأة، ولا يُحفظ شيء قبل «إضافة»)
  * requesters: قائمة الجهات السابقة للاقتراح
  * onSaved(task, action) action: 'create'|'update'|'delete'|'restore'
  */
-export function openTaskForm({ task = null, requesters = [], onSaved }) {
+export function openTaskForm({ task = null, copyOf = null, requesters = [], onSaved }) {
+  if (copyOf) task = null;
   const isNew = !task;
   const editable = isNew ? can('tasks.create') : canEditTask(task);
   const locked = !isNew && isLocked(task);
-  const t = task || {
+  const fresh = {
     engineerId: state.user.id,
     receivedDate: today(),
     statusId: state.lookups.statuses.find((s) => s.isActive && s.kind === 'open')?.id || '',
   };
+  // النسخ: الجهة والموظف والموضوع والنوعان والأولوية والملاحظات.
+  // ورقم القيد والتواريخ والحالة وسبب التأخير والمراجعة تبدأ من جديد
+  const t = task || (copyOf ? {
+    ...fresh,
+    engineerId: can('tasks.assign') ? copyOf.engineerId : state.user.id,
+    requester: copyOf.requester, employeeName: copyOf.employeeName, subject: copyOf.subject,
+    taskTypeId: copyOf.taskTypeId, correspondenceTypeId: copyOf.correspondenceTypeId,
+    priority: copyOf.priority, notes: copyOf.notes,
+  } : fresh);
   const dis = editable ? '' : 'disabled';
   const delayDays = state.settings?.delayThresholdDays || 7;
 
-  const title = isNew ? 'مهمة جديدة' : editable ? `تعديل المهمة #${t.id}` : `المهمة #${t.id}`;
+  const title = copyOf ? `مهمة جديدة (نسخة من #${copyOf.id})` : isNew ? 'مهمة جديدة' : editable ? `تعديل المهمة #${t.id}` : `المهمة #${t.id}`;
   const body = html`
     ${locked ? html`<div class="alert warn" style="margin-bottom:14px">${icon('lock')} هذه المهمة مقفلة: مضى على إنجازها أكثر من ${daysAr(state.settings.editLockDays)}. اطلب من مدير النظام أو رئيس القسم تعديلها.</div>` : ''}
     ${t.deletedAt ? html`<div class="alert bad" style="margin-bottom:14px">هذه المهمة محذوفة (${fmtDateTime(t.deletedAt)}).</div>` : ''}
@@ -90,6 +101,7 @@ export function openTaskForm({ task = null, requesters = [], onSaved }) {
     <button class="btn" data-cancel>${editable ? 'إلغاء' : 'إغلاق'}</button>
     <span class="spacer"></span>
     ${!isNew && can('audit.view') ? html`<button class="btn btn-ghost" data-history>${icon('history')}السجل</button>` : ''}
+    ${!isNew && can('tasks.create') && !t.deletedAt ? html`<button class="btn btn-ghost" data-copy title="مهمة جديدة بنفس البيانات">${icon('copy')}نسخ كمهمة جديدة</button>` : ''}
     ${!isNew && can('tasks.delete') && !t.deletedAt ? html`<button class="btn btn-danger" data-delete>${icon('trash')}حذف</button>` : ''}
     ${!isNew && can('tasks.delete') && t.deletedAt ? html`<button class="btn" data-restore>${icon('restore')}استعادة</button>` : ''}`;
 
@@ -187,6 +199,7 @@ export function openTaskForm({ task = null, requesters = [], onSaved }) {
   form.addEventListener('submit', (e) => { e.preventDefault(); if (editable) save($('[data-save]', m.el)); });
   $('[data-cancel]', m.el).onclick = () => m.close();
   $('[data-history]', m.el)?.addEventListener('click', () => { m.close(); navigate(`/audit?task=${t.id}`); });
+  $('[data-copy]', m.el)?.addEventListener('click', () => { m.close(); openTaskForm({ copyOf: t, requesters, onSaved }); });
   $('[data-delete]', m.el)?.addEventListener('click', async () => {
     if (!(await confirmBox({ title: 'حذف المهمة', message: `حذف المهمة #${t.id} «${t.subject}»؟ يمكن استعادتها لاحقاً من فلتر «المحذوفة».`, okText: 'حذف', danger: true }))) return;
     try { await db.tasks.remove(t.id); refreshReviewCount(); toast('حُذفت المهمة.', 'ok'); m.close(); onSaved?.({ ...t, deletedAt: new Date().toISOString() }, 'delete'); } catch (e) { toastError(e); }
