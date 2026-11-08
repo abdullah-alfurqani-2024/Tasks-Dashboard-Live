@@ -1,0 +1,695 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>نظام مهام الدعم الفني والصيانة — نقل النظام إلى Oracle APEX</title>
+<link rel="stylesheet" href="../report/report.css">
+<style>
+  @page {
+    @bottom-right { content: 'نظام مهام الدعم الفني والصيانة — نقل النظام إلى Oracle APEX'; }
+  }
+  .cover { background: linear-gradient(160deg, #3a1a10 0%, #7a2a14 50%, #c74634 100%); }
+  .cover .r3 { background: rgba(255,255,255,.07); }
+  .cover .rule { background: #ffb38a; }
+  .cover .org { color: #f3cbbb; }
+  .cover .meta span { color: #f0c3b2; }
+  .cover .aud { color: #f6d9cd; }
+  .cover .logo svg { stroke: #c74634; }
+  .cmp td:nth-child(2) { color: #3c4658; }
+  .cmp td:nth-child(3) { color: var(--navy); font-weight: 600; }
+</style>
+</head>
+<body>
+<!--
+  مصدر ملف PDF: docs/Tasks-System-APEX-Migration-Report.pdf
+  للتحديث: عدّل هذا الملف ثم شغّل
+    node tools/build-report.mjs docs/apex-report/report.html docs/Tasks-System-APEX-Migration-Report.pdf
+  - خطوة جديدة: انسخ آخر <section class="ver"> في الفصل 5 وعدّلها، وحدّث الغلاف والملخص، وأضف سطراً في «سجل تحديثات المستند».
+  - التنسيق مشترك مع سجل التطوير الأساسي (docs/report/report.css)، فالمستندان بنفس الشكل.
+  - صور الشاشات من نسخة APEX ببيانات الإنتاج، بعد استبدال أسماء الموظفين وإخفاء البريد (المستودع عام).
+-->
+
+<!-- ============================== الغلاف ============================== -->
+<section class="cover">
+  <div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div>
+  <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+  <div class="org">قسم الدعم الفني والصيانة</div>
+  <h1>نظام مهام الدعم الفني والصيانة</h1>
+  <div class="sub">نقل النظام إلى Oracle APEX: الطلب، وخطوات التنفيذ، والمشكلات وحلولها</div>
+  <div class="rule"></div>
+  <div class="meta">
+    <div><span>إصدار الواجهة المنقول</span><b class="ltr">1.19.0</b></div>
+    <div><span>عدد الخطوات</span><b>13</b></div>
+    <div><span>تاريخ المستند</span><b class="ltr">2026/11/08</b></div>
+  </div>
+  <div class="aud">موجَّه إلى: <span class="chip">الإدارة العليا</span><span class="chip">مستخدمي النظام</span><span class="chip">المهندس المسؤول</span></div>
+</section>
+
+<!-- ============================== الفهرس ============================== -->
+<section class="toc">
+  <div class="ch-head"><div class="ch-no">≡</div><div><h2 style="margin:0">المحتويات</h2><p>الفصول وكل خطوة مع رقم صفحتها</p></div></div>
+  <ol id="toc"></ol>
+</section>
+
+<!-- ============================== 0. عن المستند ============================== -->
+<section class="chapter" data-no="0">
+  <div class="ch-head"><div class="ch-no">i</div><div><h2>عن هذا المستند</h2><p>لمن كُتب، وكيف يُقرأ</p></div></div>
+  <p class="lead">يوثّق هذا المستند عملية نقل <b>نظام مهام الدعم الفني والصيانة</b> من Supabase إلى <b>Oracle APEX</b>، التي بدأت ليلة 8 نوفمبر 2026 وانتهت ظهر اليوم نفسه. يشرح كل خطوة: ما الطلب، وما الذي نُفّذ، وما المشكلة التي ظهرت وكيف حُلّت، وما يلزم المهندس معرفته. وهو مستقل عن <b>سجل التطوير والإصدارات</b> الأساسي، ومبني بنفس فصوله وترتيبه.</p>
+  <h3>ثلاثة قرّاء، ثلاث طرق للقراءة</h3>
+  <div class="grid3">
+    <div class="card"><h5><span class="tag mgmt">الإدارة</span></h5>
+      <p class="small">الفصل 1 (الملخص التنفيذي) يكفي لمعرفة ما تم، ثم الفصل 9 (ما تبقى). والفصل 6 يشرح أسباب القرارات.</p></div>
+    <div class="card"><h5><span class="tag user">المستخدم</span></h5>
+      <p class="small">الفصل 2: الشاشات نفسها، والدخول بالرقم نفسه. ما يتغير للمستخدم مذكور في الصناديق الخضراء داخل الفصل 5.</p></div>
+    <div class="card"><h5><span class="tag eng">المهندس</span></h5>
+      <p class="small">الفصول 3 و4 و7 و8، والصناديق الزرقاء في كل خطوة، والملحق (أ) للبنية كاملة، والملحق (ب) لإعادة التركيب من الصفر.</p></div>
+  </div>
+  <h3>رموز الخطوات</h3>
+  <table>
+    <thead><tr><th style="width:24%">الرمز</th><th>المعنى</th></tr></thead>
+    <tbody>
+      <tr><td><span class="tag feat">ميزة</span></td><td>جزء جديد من النظام في نسخة APEX</td></tr>
+      <tr><td><span class="tag fix">إصلاح</span></td><td>مشكلة ظهرت أثناء التركيب أو الاختبار، وحُلّت</td></tr>
+      <tr><td><span class="tag infra">بنية</span></td><td>حسابات أو مستودع أو تركيب، لا يغيّر شاشات المستخدم</td></tr>
+      <tr><td><span class="tag sql">SQL</span></td><td>الخطوة تحتاج تنفيذ ملف على قاعدة بيانات Oracle</td></tr>
+    </tbody>
+  </table>
+  <h3>ترقيم الخطوات</h3>
+  <p>النقل لم يغيّر رقم إصدار النظام: الشاشات هي نفسها شاشات الإصدار <span class="ltr">1.19.0</span>. لذلك تُرقَّم خطوات النقل بالحرف <b class="ltr">A</b> (من APEX) ثم رقم الخطوة بالترتيب الزمني، من <span class="ltr">A1</span> إلى <span class="ltr">A13</span>.</p>
+  <h3>عن صور الشاشات</h3>
+  <p>صور هذا المستند مأخوذة من نسخة APEX نفسها، وهي تعمل ببيانات منقولة من الإنتاج. لأن المستودع عام، <b>استُبدلت أسماء الموظفين في الصور بـ«المهندس ١، ٢…» وأُخفي البريد الإلكتروني</b> قبل الالتقاط. الأرقام (عدد المهام والنسب) حقيقية.</p>
+</section>
+
+<!-- ============================== 1. الملخص التنفيذي ============================== -->
+<section class="chapter" data-no="1">
+  <div class="ch-head"><div class="ch-no">1</div><div><h2>الملخص التنفيذي</h2><p><span class="tag mgmt">للإدارة</span> ما تم في صفحتين</p></div></div>
+  <p class="lead">طُلب تحويل النظام بالكامل ليعمل بتقنية <b>Oracle APEX</b>، في نفس المستودع، بدءاً من تطبيق APEX فارغ. النتيجة: نسخة تجريبية كاملة تعمل على <b>apex.oracle.com</b> بنفس الشاشات والتصميم والصلاحيات، وفيها كل بيانات الإنتاج، دون أي تعديل على نسخة Supabase أو على الموقع الذي يستخدمه القسم.</p>
+  <div class="grid4" style="margin:5mm 0">
+    <div class="kpi"><b>3,016</b><span>مهمة منقولة من الإنتاج مع سجل تعديلاتها كاملاً</span></div>
+    <div class="kpi t"><b>17</b><span>مستخدماً بأدوارهم، والدخول بالرقم نفسه</span></div>
+    <div class="kpi g"><b>0</b><span>ملفاً عُدّل من شاشات النظام الأصلية</span></div>
+    <div class="kpi o"><b>0</b><span>تكلفة: مساحة APEX المجانية للتجربة</span></div>
+  </div>
+  <h3>أين وصلنا</h3>
+  <ul>
+    <li><b>نسخة APEX تعمل</b> في مساحة <span class="ltr">ABDULLAH.ALFURQANI.2024</span>، تطبيق رقم <span class="ltr">20306</span>، بنفس واجهة الإصدار <span class="ltr">1.19.0</span>.</li>
+    <li><b>البيانات حقيقية:</b> نُقلت من الإنتاج بزر «تحديث بيانات التجربة من الإنتاج»، ويمكن تكرار النقل متى شئنا. <b>الإنتاج لم يتغير</b>، فهو يُقرأ فقط.</li>
+    <li><b>جُرّبت الشاشات الأساسية فعلياً:</b> المؤشرات، والمهام بإضافة وتعديل وحذف، والقواعد، وسجل التعديلات، والمستخدمون، والإعدادات، والدخول بحساب مستخدم.</li>
+    <li><b>كل العمل في فرع مستقل</b> <code>apex</code> داخل مجلد <code>apex/</code>، فلا يصل لموقع القسم إلا بقرار.</li>
+  </ul>
+  <h3>ما يقدمه النقل</h3>
+  <div class="grid2">
+    <div class="card"><h5>قاعدة بيانات Oracle</h5><p class="small">نفس الجداول والقواعد والصلاحيات وسجل التعديلات، مكتوبة بـ PL/SQL داخل قاعدة Oracle. خبرة القسم في Oracle تنطبق عليها مباشرة.</p></div>
+    <div class="card"><h5>نفس تجربة المستخدم</h5><p class="small">الشاشات والتصميم والوضع الليلي والجوال ونموذج المهمة والتقارير كما هي، لأن ملفات الواجهة نفسها محفوظة داخل تطبيق APEX.</p></div>
+    <div class="card"><h5>تحديث بأمر واحد</h5><p class="small">أي تحسين على الواجهة في نسخة Supabase ينتقل إلى APEX بإعادة بناء ملف التطبيق واستيراده، دون نسخ يدوي.</p></div>
+    <div class="card"><h5>لا خطر على العمل اليومي</h5><p class="small">لا شيء في نسخة Supabase تغيّر، وبيانات الإنتاج تُقرأ فقط. نسخة APEX منفصلة تماماً.</p></div>
+  </div>
+  <h3>محطات رئيسية</h3>
+  <div class="timeline">
+    <div class="ev"><span class="d">00:13</span> <span class="vs">A1 – A2</span>: الطلب، والأسئلة، ومراجعة الكود، واختيار طريقة البناء، وصلاحية المستودع.</div>
+    <div class="ev"><span class="d">00:50</span> <span class="vs">A3 – A4</span>: بناء قاعدة البيانات، ومحوّل APEX، وأداة بناء ملف التطبيق.</div>
+    <div class="ev"><span class="d">01:20</span> <span class="vs">A5 – A9</span>: التركيب على APEX، وخمس مشكلات ظهرت وحُلّت حتى فتحت الشاشات.</div>
+    <div class="ev"><span class="d">11:52</span> <span class="vs">A10 – A12</span>: اختبار الشاشات، ونقل بيانات الإنتاج، وإصلاحان بعد النقل.</div>
+    <div class="ev"><span class="d">12:15</span> <span class="vs">A13</span>: دليل التركيب، وهذا المستند.</div>
+  </div>
+  <h3>قبل أي استخدام فعلي</h3>
+  <div class="note warn"><b>نسخة APEX للتجربة فقط</b>
+    <ol style="margin:0">
+      <li><b>apex.oracle.com</b> مخصص للتجربة والتطوير حسب شروط Oracle، وليس للاستخدام الفعلي. الاستخدام الفعلي يحتاج قاعدة Oracle خاصة بالقسم أو Oracle Cloud.</li>
+      <li>كلمة مرور كل مستخدم في هذه النسخة هي رقمه المدني/الوظيفي، فهي معروفة. تُغيَّر قبل أي استخدام حقيقي.</li>
+      <li>بقيت شاشات لم تُجرَّب فعلياً بعد على APEX (الفصل 9).</li>
+    </ol>
+  </div>
+  <p class="small muted">تفاصيل المتبقي والمخاطر في الفصل 9.</p>
+</section>
+
+<!-- ============================== 2. الشاشات والأدوار ============================== -->
+<section class="chapter" data-no="2">
+  <div class="ch-head"><div class="ch-no">2</div><div><h2>النظام من الداخل: الشاشات والأدوار</h2><p><span class="tag user">للمستخدم</span> <span class="tag mgmt">للإدارة</span> ما يراه الموظف في نسخة APEX</p></div></div>
+  <p class="lead">الشاشات في نسخة APEX هي نفسها شاشات النظام، بنفس الترتيب والألوان والخط. الفرق الوحيد الظاهر: الشريط البنفسجي أعلى الصفحة يقول «نسخة Oracle APEX التجريبية».</p>
+  <h3>الشاشات وحالة تجربتها على APEX</h3>
+  <table class="long">
+    <thead><tr><th style="width:20%">الشاشة</th><th>ماذا تقدّم</th><th style="width:22%">على APEX</th></tr></thead>
+    <tbody>
+      <tr><td><b>الدخول</b></td><td>الرقم المدني/الوظيفي أو البريد، وكلمة المرور</td><td><span class="tag user">جُرّبت</span></td></tr>
+      <tr><td><b>لوحة المؤشرات</b></td><td>البطاقات والرسوم وأداء المهندسين وأقدم المتأخرات</td><td><span class="tag user">جُرّبت</span> بالأرقام الحقيقية</td></tr>
+      <tr><td><b>المهام</b></td><td>الفلاتر والبحث، والإضافة والتعديل والحذف، والشارات</td><td><span class="tag user">جُرّبت</span> بمهمة تجربة حُذفت</td></tr>
+      <tr><td><b>التقرير</b></td><td>الفلاتر والترتيب والتصدير والطباعة</td><td>تفتح؛ التصدير والطباعة <span class="tag pending">لم تُجرَّب</span></td></tr>
+      <tr><td><b>تحتاج مراجعة</b></td><td>المهام المستوردة التي فيها ملاحظة</td><td><span class="tag user">جُرّبت</span> (العدد يظهر في الشريط)</td></tr>
+      <tr><td><b>سجل التعديلات</b></td><td>من غيّر ماذا ومتى، القديم والجديد</td><td><span class="tag user">جُرّبت</span> مع السجل المنقول</td></tr>
+      <tr><td><b>القوائم</b></td><td>أنواع المهام والمراسلات والحالات</td><td>تفتح؛ التعديل <span class="tag pending">لم يُجرَّب</span></td></tr>
+      <tr><td><b>المستخدمون</b></td><td>الحسابات والأدوار، و«الدخول بحسابه»</td><td><span class="tag user">جُرّب</span> الدخول بحساب مهندس</td></tr>
+      <tr><td><b>الاستيراد</b></td><td>Excel أو CSV مع المعاينة والمراجعة</td><td>تفتح؛ <span class="tag pending">لم يُجرَّب</span> بملف</td></tr>
+      <tr><td><b>الإعدادات</b></td><td>القواعد، والإعلان، ونقل بيانات الإنتاج</td><td><span class="tag user">جُرّبت</span> بنقل البيانات كاملة</td></tr>
+    </tbody>
+  </table>
+  <figure><img src="img/05-dashboard.jpg"><figcaption>لوحة المؤشرات في نسخة APEX بأرقام الإنتاج الحقيقية (الأسماء مستبدلة)</figcaption></figure>
+  <div class="grid2">
+    <figure><img src="img/01-login.jpg"><figcaption>شاشة الدخول: صفحة APEX بتصميم النظام نفسه</figcaption></figure>
+    <figure><img src="img/06-settings.jpg"><figcaption>الإعدادات: «قاعدة البيانات: apex» والسكيما في معلومات النظام</figcaption></figure>
+  </div>
+
+  <h3>الأدوار والصلاحيات</h3>
+  <p>الأدوار الأربعة وصلاحياتها <b>مطابقة تماماً</b> لنسخة Supabase. الفرق في مكان فرضها: في Supabase بسياسات RLS، وفي APEX داخل الحزمة <code>ST_API</code> التي يمر بها كل طلب.</p>
+  <table>
+    <thead><tr><th style="width:30%"></th><th class="c">مدير النظام</th><th class="c">رئيس القسم</th><th class="c">مهندس</th><th class="c">مشاهد</th></tr></thead>
+    <tbody>
+      <tr><td>يرى المهام والتقارير</td><td class="c yes">الكل</td><td class="c yes">الكل</td><td class="c">مهامه فقط</td><td class="c yes">الكل</td></tr>
+      <tr><td>يضيف مهمة</td><td class="c">لأي مهندس</td><td class="c">لأي مهندس</td><td class="c">لنفسه</td><td class="c no">✗</td></tr>
+      <tr><td>يعدّل مهمة</td><td class="c">أي مهمة</td><td class="c">أي مهمة</td><td class="c">مهامه حتى تنتهي مدة القفل</td><td class="c no">✗</td></tr>
+      <tr><td>الحذف والاستعادة</td><td class="c yes">✔</td><td class="c no">✗</td><td class="c no">✗</td><td class="c no">✗</td></tr>
+      <tr><td>القوائم وسجل التعديلات</td><td class="c yes">✔</td><td class="c yes">✔</td><td class="c no">✗</td><td class="c no">✗</td></tr>
+      <tr><td>المستخدمون والإعدادات والاستيراد</td><td class="c yes">✔</td><td class="c no">✗</td><td class="c no">✗</td><td class="c no">✗</td></tr>
+    </tbody>
+  </table>
+  <figure><img src="img/08-engineer.jpg"><figcaption>«الدخول بحساب مهندس»: الشريط البرتقالي، وقائمة مختصرة بلا إدارة، والأرقام لمهامه فقط</figcaption></figure>
+  <h3>تفاصيل بقيت كما هي</h3>
+  <ul>
+    <li><b>الدخول بالرقم المدني أو الوظيفي</b>، ويقبل الأرقام العربية والإنجليزية.</li>
+    <li><b>التاريخ الموحّد</b> سنة/شهر/يوم، والوقت بتوقيت مسقط، وحقل التاريخ الخاص بالنظام.</li>
+    <li><b>الوضع الليلي</b>، و<b>تصميم الجوال</b>، و<b>الخط الكوفي</b> المحفوظ داخل التطبيق.</li>
+    <li><b>إعادة تحميل الصفحة</b> تبقيك في نفس الشاشة دون خروج.</li>
+  </ul>
+  <div style="display:grid;grid-template-columns:48mm 1fr;gap:6mm;align-items:start">
+    <figure class="mobile"><img src="img/09-mobile.jpg"><figcaption>على الجوال</figcaption></figure>
+    <div>
+      <div class="note info"><b>ما تغيّر للمستخدم</b>
+        <ul style="margin:0">
+          <li>الرابط: صفحة على <span class="ltr">oracleapex.com</span> بدل GitHub Pages.</li>
+          <li>كلمة المرور في هذه النسخة: الرقم المدني/الوظيفي (مستقلة عن كلمة مرور الإنتاج).</li>
+          <li>لا يظهر شريط «يتوفر تحديث»: APEX يرسل الملفات الجديدة تلقائياً بعد كل تحديث.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== 3. البنية التقنية ============================== -->
+<section class="chapter" data-no="3">
+  <div class="ch-head"><div class="ch-no">3</div><div><h2>البنية التقنية: Supabase وAPEX</h2><p><span class="tag eng">للمهندس</span> <span class="tag mgmt">للإدارة</span> أين تعمل كل نسخة، وما المشترك بينهما</p></div></div>
+  <p class="lead">صُمّم النظام من البداية بحيث لا تعرف الشاشات أي قاعدة بيانات تعمل خلفها: كل الشاشات تتعامل مع «محوّل» واحد. لذلك لم يحتج النقل إلى إعادة كتابة الشاشات، بل إلى ثلاثة أشياء: قاعدة بيانات Oracle بنفس القواعد، ومحوّل جديد يتحدث مع APEX، وأداة تضع الواجهة داخل تطبيق APEX.</p>
+  <div class="arch">
+    <div class="box b"><h5>المتصفح</h5>نفس ملفات الواجهة (HTML وCSS وJavaScript)، ومعها محوّل APEX.</div>
+    <div class="ar">←</div>
+    <div class="col">
+      <div class="box s"><h5>تطبيق APEX رقم 20306</h5>صفحة الدخول 9999، والصفحة 1 تحمل الواجهة، والملفات محفوظة داخله، وعملية واحدة اسمها <code>API</code>.</div>
+    </div>
+    <div class="ar">←</div>
+    <div class="col">
+      <div class="box p"><h5>قاعدة Oracle</h5>الحزمة <code>ST_API</code> (المنطق والصلاحيات)، ومشغّلان (القواعد والسجل)، و9 جداول تبدأ بـ <code>ST_</code>.</div>
+    </div>
+  </div>
+  <h3>المقارنة</h3>
+  <table class="cmp">
+    <thead><tr><th style="width:22%">الجزء</th><th>نسخة Supabase</th><th>نسخة APEX</th></tr></thead>
+    <tbody>
+      <tr><td><b>الواجهة</b></td><td>ملفات المستودع على GitHub Pages</td><td>نفس الملفات داخل التطبيق (Static Application Files)</td></tr>
+      <tr><td><b>قاعدة البيانات</b></td><td>PostgreSQL، سكيما <code>support_tasks</code></td><td>Oracle 26ai، جداول <code>ST_</code> في سكيما المساحة</td></tr>
+      <tr><td><b>الصلاحيات</b></td><td>سياسات RLS لكل جدول</td><td>فحص في الحزمة <code>ST_API</code> لكل طلب</td></tr>
+      <tr><td><b>القواعد والسجل</b></td><td>دوال ومشغّلات PL/pgSQL</td><td>مشغّلان PL/SQL بنفس القواعد ونفس الرسائل العربية</td></tr>
+      <tr><td><b>الدخول</b></td><td>Supabase Auth ودالة <code>auth-login</code></td><td>مصادقة APEX مخصصة <code>st_api.authenticate</code></td></tr>
+      <tr><td><b>كلمات المرور</b></td><td>تديرها Supabase</td><td>SHA-256 مكرر 500 مرة مع salt لكل مستخدم</td></tr>
+      <tr><td><b>إدارة المستخدمين</b></td><td>دالة الخادم <code>admin-users</code></td><td>داخل الحزمة <code>ST_API</code></td></tr>
+      <tr><td><b>نقل بيانات الإنتاج</b></td><td>دالة الخادم <code>refresh-staging</code></td><td>المتصفح يقرأ الإنتاج بحساب المدير ويرسل إلى APEX على دفعات</td></tr>
+      <tr><td><b>المحوّل</b></td><td><code>js/data/supabase/</code></td><td><code>apex/web/js/data/apex/</code></td></tr>
+    </tbody>
+  </table>
+  <figure><img src="img/03-static-files.jpg"><figcaption>ملفات الواجهة نفسها محفوظة داخل تطبيق APEX (Static Application Files)</figcaption></figure>
+  <h3>كيف يصل طلب من الشاشة إلى قاعدة البيانات</h3>
+  <div class="flow">
+    <div class="step"><span class="n">1</span><b>الشاشة</b>تطلب من المحوّل مثلاً «حفظ مهمة»</div>
+    <div class="arr">←</div>
+    <div class="step t"><span class="n">2</span><b>المحوّل</b>يرسل الطلب إلى عملية <code>API</code> في APEX</div>
+    <div class="arr">←</div>
+    <div class="step t"><span class="n">3</span><b>APEX</b>يتأكد من الجلسة ويستدعي <code>st_api.ajax</code></div>
+    <div class="arr">←</div>
+    <div class="step o"><span class="n">4</span><b>ST_API</b>يحدد المستخدم ودوره ويفحص الصلاحية</div>
+    <div class="arr">←</div>
+    <div class="step g"><span class="n">5</span><b>المشغّلات</b>القواعد ثم السجل، ثم الرد بـ JSON</div>
+  </div>
+  <div class="note info"><b>لماذا عملية واحدة؟</b>كل طلبات الواجهة تمر بباب واحد، فلا يوجد أي طريق آخر من المتصفح إلى الجداول. فحوصات الواجهة للراحة فقط، كما في نسخة Supabase.</div>
+</section>
+
+<!-- ============================== 4. دورة التحديث ============================== -->
+<section class="chapter" data-no="4">
+  <div class="ch-head"><div class="ch-no">4</div><div><h2>دورة التحديث: من المستودع إلى APEX</h2><p><span class="tag eng">للمهندس</span> <span class="tag mgmt">للإدارة</span> كيف يصل أي تعديل إلى نسخة APEX</p></div></div>
+  <div class="flow">
+    <div class="step"><span class="n">1</span><b>التعديل</b>في الواجهة أو في <code>apex/</code></div>
+    <div class="arr">←</div>
+    <div class="step t"><span class="n">2</span><b>البناء</b><code>node apex/tools/build.mjs</code></div>
+    <div class="arr">←</div>
+    <div class="step o"><span class="n">3</span><b>SQL</b>إن تغيّر <code>02_api.sql</code>: SQL Workshop</div>
+    <div class="arr">←</div>
+    <div class="step g"><span class="n">4</span><b>الاستيراد</b>App Builder ← Import ← Replace</div>
+    <div class="arr">←</div>
+    <div class="step g"><span class="n">5</span><b>التحقق</b>فتح التطبيق والشاشة المعدّلة</div>
+  </div>
+  <h3>الخطوات بالتفصيل</h3>
+  <ol>
+    <li><b>التعديل:</b> تعديل شاشة يتم في ملفات النظام الأصلية (<code>js/</code> و<code>css/</code>)، فيستفيد منه النظامان. ما يخص APEX وحده في <code>apex/web/</code>.</li>
+    <li><b>البناء:</b> الأداة تأخذ ملفات الواجهة من المستودع، وتستبدل بها ملفات APEX الخاصة، وتضعها كلها داخل ملف التطبيق <code>apex/f116280.sql</code>.</li>
+    <li><b>SQL:</b> إن تغيّر منطق قاعدة البيانات، يُنفَّذ <code>02_api.sql</code> في SQL Workshop. يستبدل الحزمة والمشغّلين دون أن يمس البيانات.</li>
+    <li><b>الاستيراد:</b> App Builder ← Import، ثم <b>Change Application ID</b> بالرقم الحالي <span class="ltr">20306</span>، ثم <b>Replace</b>. الرابط لا يتغير والبيانات لا تتأثر.</li>
+    <li><b>التحقق:</b> APEX يغيّر رابط الملفات مع كل استيراد، فيحصل المتصفح على النسخة الجديدة دون مسح الذاكرة.</li>
+  </ol>
+  <figure><img src="img/02-app-builder.jpg"><figcaption>التطبيق في App Builder: ثلاث صفحات فقط، لأن الشاشات كلها داخل الصفحة 1</figcaption></figure>
+  <div class="note warn"><b>الاستبدال ينهي جلسات المستخدمين</b>استيراد نسخة جديدة فوق التطبيق يُخرج من كان داخل النظام، فيسجّل الدخول من جديد. يُفضّل التحديث خارج وقت العمل.</div>
+  <div class="note bad"><b>عند ظهور مشكلة بعد التحديث</b>كل نسخة من ملف التطبيق محفوظة في تاريخ فرع <code>apex</code>. استيراد النسخة السابقة من GitHub يعيد التطبيق كما كان خلال دقيقة، والبيانات لا تتأثر.</div>
+</section>
+
+<!-- ============================== 5. سجل الخطوات ============================== -->
+<section class="chapter" data-no="5">
+  <div class="ch-head"><div class="ch-no">5</div><div><h2>سجل خطوات النقل بالتفصيل</h2><p>كل خطوة: الطلب، وما نُفّذ، والمشكلة وحلها</p></div></div>
+  <p class="lead">الخطوات مرتبة زمنياً في خمس مراحل. ما بين «» في خانة <b>الطلب</b> هو نص الطلب كما كُتب. الأوقات بتوقيت مسقط، يوم 2026/11/08.</p>
+  <table>
+    <thead><tr><th style="width:14%">المرحلة</th><th style="width:16%">الخطوات</th><th>المحور</th></tr></thead>
+    <tbody>
+      <tr><td><b>الأولى</b></td><td class="ltr">A1 – A2</td><td>الطلب، والتخطيط، والصلاحيات</td></tr>
+      <tr><td><b>الثانية</b></td><td class="ltr">A3 – A4</td><td>بناء قاعدة البيانات والمحوّل وأداة البناء</td></tr>
+      <tr><td><b>الثالثة</b></td><td class="ltr">A5 – A9</td><td>التركيب على APEX ومشكلاته</td></tr>
+      <tr><td><b>الرابعة</b></td><td class="ltr">A10 – A12</td><td>الاختبار ونقل بيانات الإنتاج</td></tr>
+      <tr><td><b>الخامسة</b></td><td class="ltr">A13</td><td>التوثيق</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ===== المرحلة الأولى ===== -->
+  <div class="stage"><span>المرحلة الأولى: الطلب والتخطيط</span><div class="bar"></div></div>
+
+  <section class="ver">
+    <div class="ver-head"><span class="ver-no">A1</span><h3>الطلب، والأسئلة، واختيار طريقة البناء</h3><span class="tag infra">بنية</span><span class="ver-date">00:13 – 00:46</span></div>
+    <div class="ver-body">
+      <div class="req"><b>الطلب:</b> <span class="q">«قمنا بعمل نظام الكتروني، أريد منك تحويله بالكامل بتقنية oracle apex في نفس المستودع، سأقوم برفع برنامج فاضي من اوركل ابكس بصيغة sql»</span>.</div>
+      <h4>الأسئلة قبل البدء وإجاباتها</h4>
+      <table>
+        <thead><tr><th style="width:32%">السؤال</th><th>القرار</th></tr></thead>
+        <tbody>
+          <tr><td>مصدر الكود</td><td>ربط المستودع مباشرة</td></tr>
+          <tr><td>مكان نسخة APEX</td><td>مجلد مستقل بجانب نسخة Supabase</td></tr>
+          <tr><td>البيانات</td><td>تصدير من بيانات Supabase</td></tr>
+          <tr><td>الدخول والصلاحيات</td><td>مصادقة مخصصة بالأدوار الأربعة</td></tr>
+          <tr><td>الشكل</td><td>محاكاة التصميم الحالي</td></tr>
+          <tr><td>البيئة</td><td>apex.oracle.com للتجربة فقط</td></tr>
+          <tr><td>شكل التسليم</td><td>ملفات منفصلة: سكربتات الجداول، ثم ملف التطبيق</td></tr>
+        </tbody>
+      </table>
+      <h4>مراجعة الكود وخيار البناء</h4>
+      <ul>
+        <li>مراجعة كاملة للإصدار <span class="ltr">1.19.0</span>: 15 ملف SQL، ودوال الخادم الثلاث، وكل الشاشات، وإعداد قائمة بكل ميزة ومقابلها في APEX.</li>
+        <li>عُرض خياران: <b>(أ)</b> واجهة النظام الحالية تعمل فوق APEX بمحوّل جديد، أو <b>(ب)</b> مكونات APEX الأصلية بتصميم مقارب. <b>القرار: (أ)</b>، لأنه يحفظ التصميم والسلوك حرفياً.</li>
+        <li><b>كلمات المرور بعد النقل:</b> <span class="q">«كلمة المرور هي الرقم المدني ولكن بدون إلزام التغيير»</span>.</li>
+        <li><b>«الدخول بحساب مستخدم»:</b> يُنقل. و«تحديث التجربة من الإنتاج» يصبح نقلاً من Supabase.</li>
+        <li><b>الفرع:</b> <code>apex</code> من <code>staging</code>. والاختبار في المتصفح المدمج بعد دخول المالك.</li>
+      </ul>
+      <div class="aud-box mgmt"><h5><span class="tag mgmt">للإدارة</span></h5>اختيار (أ) جعل النقل يتم في ليلة واحدة، وكل تحسين قادم على الواجهة يخدم النسختين معاً.</div>
+    </div>
+  </section>
+
+  <section class="ver">
+    <div class="ver-head"><span class="ver-no">A2</span><h3>صلاحية الكتابة في المستودع</h3><span class="tag infra">بنية</span><span class="ver-date">00:38 – 00:42</span></div>
+    <div class="ver-body">
+      <div class="req"><b>الملاحظة:</b> <span class="q">«أنا أضفت سابقا حسابي ٢٥ جت هب في كلود، انت تطلب مني إضافة حساب ٢٤»</span>.</div>
+      <ul>
+        <li>القراءة كانت متاحة لأن المستودع عام، والكتابة مرفوضة لأن الحساب المربوط (2025) ليس له صلاحية على مستودع حساب 2024.</li>
+        <li><b>الحل:</b> إضافة حساب 2025 «متعاوناً» (Collaborator) على المستودع من حساب 2024، بدل تغيير الحساب المربوط.</li>
+      </ul>
+      <div class="aud-box eng"><h5><span class="tag eng">للمهندس</span></h5>Settings ← Collaborators ← Add people في حساب 2024، ثم قبول الدعوة من حساب 2025.</div>
+    </div>
+  </section>
+
+  <!-- ===== المرحلة الثانية ===== -->
+  <div class="stage"><span>المرحلة الثانية: البناء</span><div class="bar"></div></div>
+
+  <section class="ver">
+    <div class="ver-head"><span class="ver-no">A3</span><h3>قاعدة بيانات Oracle: الجداول والحزمة والمشغّلات</h3><span class="tag feat">ميزة</span><span class="tag sql">SQL</span><span class="ver-date">00:50 – 01:05</span></div>
+    <div class="ver-body">
+      <div class="req"><b>الهدف:</b> نفس قواعد نسخة Supabase ونفس رسائلها العربية، لكن بلغة Oracle.</div>
+      <ul>
+        <li><code>01_schema.sql</code>: تسعة جداول تبدأ بـ <code>ST_</code> حتى لا تختلط بجداول المساحة الأخرى، والعرض <code>ST_V_TASKS</code>. المدة محسوبة تلقائياً (عمود افتراضي).</li>
+        <li><code>02_api.sql</code>: الحزمة <code>ST_API</code> تحل محل ثلاثة أشياء في Supabase: سياسات RLS، ودالة الدخول، ودالة إدارة المستخدمين. ومعها مشغّلان: قواعد الحفظ، وسجل التعديلات بنفس شكل JSON.</li>
+        <li><code>03_seed.sql</code>: القوائم والإعدادات الأولية. و<code>04_first_admin.sql</code>: أول مدير. و<code>uninstall.sql</code>: الحذف لإعادة التركيب.</li>
+        <li>حماية من التخمين: 8 محاولات خاطئة خلال 15 دقيقة توقف الدخول للرقم نفسه.</li>
+      </ul>
+      <div class="aud-box eng"><h5><span class="tag eng">للمهندس</span></h5>في Oracle النص الفارغ يساوي NULL، فالحقول التي تقبل نصاً فارغاً في PostgreSQL تقبل NULL هنا. وأسماء أعمدة الإعدادات أصبحت <code>setting_key</code> و<code>setting_value</code> لأن KEY وVALUE كلمات محجوزة في دوال JSON.</div>
+    </div>
+  </section>
+
+  <section class="ver">
+    <div class="ver-head"><span class="ver-no">A4</span><h3>محوّل APEX وأداة بناء ملف التطبيق</h3><span class="tag feat">ميزة</span><span class="ver-date">01:05 – 01:15</span></div>
+    <div class="ver-body">
+      <ul>
+        <li><b>المحوّل</b> <code>apex/web/js/data/apex/</code>: يطبّق نفس «العقد» الذي يطبّقه محوّل Supabase، فلا تشعر الشاشات بالفرق.</li>
+        <li><b>النقل من الإنتاج</b> (<code>migrate.js</code>): يطلب رقم وكلمة مرور مدير النظام في الإنتاج، ويقرأ كل شيء من Supabase مباشرة من المتصفح، ثم يرسله إلى APEX على دفعات. لا يُحفظ الدخول ولا يصل إلى خادم APEX.</li>
+        <li><b>أداة البناء</b> <code>apex/tools/build.mjs</code>: تبدأ من ملف التطبيق الفارغ الذي رُفع، وتضيف إليه 41 ملفاً من الواجهة، وعملية <code>API</code>، والمصادقة المخصصة، وصفحة دخول بتصميم النظام.</li>
+        <li><b>بلا تعديل على الشاشات:</b> ثلاثة نصوص فقط تذكر Supabase تُعدَّل وقت البناء. إن تغيّر أحدها في المستقبل يتوقف البناء برسالة واضحة.</li>
+      </ul>
+      <div class="aud-box eng"><h5><span class="tag eng">للمهندس</span></h5>رقم التطبيق في ملف التصدير 116280 من مساحة 2020، والتركيب تم في مساحة 2024 فأخذ رقماً جديداً هو <span class="ltr">20306</span></div>
+    </div>
+  </section>
+
+  <!-- ===== المرحلة الثالثة ===== -->
+  <div class="stage"><span>المرحلة الثالثة: التركيب ومشكلاته</span><div class="bar"></div></div>
+
+  <section class="ver">
+    <div class="ver-head"><span class="ver-no">A5</span><h3>تنفيذ ملفات SQL على المساحة</h3><span class="tag fix">إصلاح</span><span class="tag sql">SQL</span><span class="ver-date">01:18 – 01:28</span></div>
+    <div class="ver-body">
+      <ul>
+        <li>دخول المالك إلى المساحة في المتصفح المدمج، والسماح الدائم لموقع <span class="ltr">oracleapex.com</span>. (الموقع <span class="ltr">apex.oracle.com</span> يحوّل إليه الآن.)</li>
+        <li>قبل التنفيذ: التأكد أنه لا توجد كائنات بأسماء <code>ST_</code> في المساحة، حتى لا يُستبدل شيء.</li>
+        <li>الجداول نُفّذت دون أخطاء. الحزمة احتاجت ثلاثة تصحيحات حتى تُترجم:</li>
+      </ul>
+      <table>
+        <thead><tr><th style="width:30%">الخطأ</th><th>السبب والحل</th></tr></thead>
+        <tbody>
+          <tr><td class="ltr">PLS-00231</td><td>دوال خاصة بالحزمة استُدعيت داخل جمل SQL في سبعة مواضع، وOracle لا يسمح بذلك. <b>الحل:</b> قراءة القيم في متغيرات أولاً.</td></tr>
+          <tr><td class="ltr">PLS-00103</td><td>تعريف نوع داخل جسم الحزمة بعد الدوال. <b>الحل:</b> نقله إلى أعلى الجسم.</td></tr>
+          <tr><td class="ltr">ORA-40573</td><td>كائن JSON استُخدم داخل جملة إدخال في مشغّل السجل. <b>الحل:</b> تحويله إلى نص في متغير قبل الإدخال.</td></tr>
+        </tbody>
+      </table>
+      <div class="aud-box eng"><h5><span class="tag eng">للمهندس</span></h5>بعد التصحيح: صفر أخطاء في <code>user_errors</code>. ثم اختبار داخل قاعدة البيانات: كلمة المرور المشفّرة، ونقل المهمة لمهندس آخر (يُرفض)، والمكتملة بلا تاريخ (تُرفض)، وأسباب المراجعة (تُرفض لغير الاستيراد)، والمدة، وشكل السجل. كلها كما في Supabase.</div>
+    </div>
+  </section>
+
+  <section class="ver">
+    <div class="ver-head"><span class="ver-no">A6</span><h3>استيراد التطبيق، وأول مدير للنظام</h3><span class="tag infra">بنية</span><span class="tag fix">إصلاح</span><span class="ver-date">01:28 – 01:33</span></div>
+    <div class="ver-body">
+      <ul>
+        <li>استيراد <code>f116280.sql</code> من App Builder دون أخطاء، برقم <span class="ltr">20306</span>. صفحة الدخول ظهرت بتصميم النظام، وفحص الدخول أعاد الرسائل العربية.</li>
+        <li>تنفيذ سكربت أول مدير ظهر معه <span class="ltr">ORA-00900: invalid SQL statement</span>.</li>
+        <li><b>السبب:</b> كان نص <code>0000000</code> مظلَّلاً في المحرر عند الضغط على Run، وSQL Commands تنفّذ النص المظلل فقط إن وُجد. <b>الحل:</b> إزالة التظليل وإعادة التنفيذ.</li>
+      </ul>
+      <div class="aud-box eng"><h5><span class="tag eng">للمهندس</span></h5>أُضيف التنبيه إلى دليل التركيب: لا تظلّل أي نص قبل Run في SQL Commands.</div>
+    </div>
+  </section>
+
+  <section class="ver">
+    <div class="ver-head"><span class="ver-no">A7</span><h3>الدخول يرفض كلمة المرور الصحيحة</h3><span class="tag fix">إصلاح</span><span class="ver-date">01:34 – 01:37</span></div>
+    <div class="ver-body">
+      <div class="req"><b>الملاحظة:</b> <span class="q">«لم أستطع دخول النظم برقمي»</span>.</div>
+      <ul>
+        <li>الحساب موجود ونشط وله كلمة مرور، لكن APEX يرد «بيانات صلاحية تسجيل الدخول غير صالحة».</li>
+        <li><b>السبب:</b> APEX 26 يحفظ إعداد دالة الدخول بصيغة JSON جديدة (<code>authentication_function</code>)، وملف التطبيق كان يستخدم الصيغة القديمة، فبقيت الدالة فارغة.</li>
+        <li><b>الحل:</b> ضبطها من App Builder، ثم قراءة كيف حفظها APEX، وتصحيح أداة البناء بالصيغة نفسها حتى لا تتكرر.</li>
+      </ul>
+      <figure><img src="img/04-auth.jpg"><figcaption>إعداد المصادقة المخصصة: Authentication Function Name = st_api.authenticate</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="ver">
+    <div class="ver-head"><span class="ver-no">A8</span><h3>«تعذّر فتح الصفحة» بعد الدخول</h3><span class="tag fix">إصلاح</span><span class="ver-date">01:37 – 01:40</span></div>
+    <div class="ver-body">
+      <div class="req"><b>الملاحظة:</b> <span class="q">«دخلت وظهر معي خطأ، هل تشاهده؟؟»</span>.</div>
+      <ul>
+        <li><b>السبب الأول:</b> قالب APEX فيه عنصر داخلي اسمه <code>main</code>، وهو اسم العنصر الذي ترسم فيه الواجهة شاشاتها. فرُسمت داخل نموذج APEX، والمتصفح يحذف أي نموذج داخل نموذج، فلم تجد لوحة المؤشرات نموذج فلاترها.</li>
+        <li><b>السبب الثاني:</b> صفحات APEX تحدد رابطاً أساسياً لكل الروابط، فتحوّل رابط الشاشة إلى <span class="ltr">/ords/#/dashboard</span>، وإعادة التحميل عليه تُخرج من النظام.</li>
+        <li><b>الحل:</b> تغيير اسم عنصر APEX، وتصحيح الروابط داخل صفحة التطبيق فقط، دون تعديل أي ملف من ملفات الواجهة.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="ver">
+    <div class="ver-head"><span class="ver-no">A9</span><h3>صفحة فارغة بعد الدخول</h3><span class="tag fix">إصلاح</span><span class="ver-date">01:41 – 01:45</span></div>
+    <div class="ver-body">
+      <div class="req"><b>الملاحظة:</b> <span class="q">«دخلت وتظهر صفحة فاضية»</span>.</div>
+      <ul>
+        <li>لوحة المؤشرات كانت تعمل فعلاً، لكنها رُسمت تحت مساحة فارغة بارتفاع نحو 860 نقطة تركها نموذج APEX في أعلى الصفحة.</li>
+        <li><b>الحل:</b> إخفاء نموذج APEX الفارغ (حقوله المخفية تبقى لأنها تحمل الجلسة).</li>
+        <li>معها: خط Droid Arabic Kufi من Google يرفض الطلبات من نطاق APEX، فاكتُفي بنظيره المطابق Noto Kufi Arabic المحفوظ داخل التطبيق.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ===== المرحلة الرابعة ===== -->
+  <div class="stage"><span>المرحلة الرابعة: الاختبار ونقل البيانات</span><div class="bar"></div></div>
+
+  <section class="ver">
+    <div class="ver-head"><span class="ver-no">A10</span><h3>اختبار الشاشات من جلسة المالك</h3><span class="tag feat">ميزة</span><span class="ver-date">11:51 – 11:55</span></div>
+    <div class="ver-body">
+      <ul>
+        <li>فتح كل الشاشات: المؤشرات، والمهام، والتقرير، والقوائم، والمستخدمون، والإعدادات، والسجل، والاستيراد، وتغيير كلمة المرور. <b>لا أخطاء.</b></li>
+        <li><b>دورة مهمة كاملة:</b> إضافة مهمة تجربة (#41)، ثم محاولة إكمالها بلا تاريخ فظهرت «المهمة المكتملة تحتاج تاريخ الانتهاء»، ثم إكمالها بتاريخ فحُسبت المدة، ثم ظهور الخطوتين في السجل بتوقيت مسقط، ثم حذفها.</li>
+        <li>إعادة تحميل الصفحة تبقي المستخدم في نفس الشاشة دون خروج.</li>
+      </ul>
+      <div class="aud-box user"><h5><span class="tag user">للمستخدم</span></h5>إضافة المهمة وتعديلها وحذفها، والرسائل، والسجل، تعمل كما اعتدتها تماماً.</div>
+    </div>
+  </section>
+
+  <section class="ver">
+    <div class="ver-head"><span class="ver-no">A11</span><h3>نقل بيانات الإنتاج، والخروج المتكرر بعده</h3><span class="tag feat">ميزة</span><span class="tag fix">إصلاح</span><span class="tag sql">SQL</span><span class="ver-date">11:57 – 12:08</span></div>
+    <div class="ver-body">
+      <div class="req"><b>الملاحظة:</b> <span class="q">«تظهر رسالة، انتهت الجلسة يرجى تسجيل الدخول، وبعدها تظهر صفحة الباسوورد، ولكن عند إدخل البيانات تعود مرة أخرى»</span>.</div>
+      <ul>
+        <li><b>النقل نفسه نجح بالكامل:</b> 17 مستخدماً، و3,016 مهمة، و3,016 سطراً في السجل، والقوائم والإعدادات. حساب المالك رُبط بحسابه في الإنتاج لأن الرقم نفسه، وبقيت كلمة مروره.</li>
+        <li><b>السبب:</b> ثلاثة إعدادات نصية (نوع الإعلان ونصه ووقت انتهائه) حُفظت بلا علامتي التنصيص التي يتطلبها JSON، بسبب خاصية في Oracle تُسقطهما عند تحويل نص مفرد. فكلما فُتح التطبيق قرأ إعدادات تالفة، وفسّر ذلك بانتهاء الجلسة.</li>
+        <li><b>الحل في البيانات:</b> تصحيح القيم الثلاث مباشرة.</li>
+        <li><b>الحل في الكود:</b> دالة واحدة لتحويل أي قيمة JSON إلى نص بشكل صحيح، يستخدمها الحفظ والنقل. وقراءة دفاعية للإعدادات. والرد غير المتوقع من الخادم يُظهر رسالة خطأ ولا يُخرج المستخدم، إلا إذا انتهت الجلسة فعلاً.</li>
+      </ul>
+      <figure><img src="img/07-migrate.jpg"><figcaption>نافذة نقل البيانات: خيار كلمات المرور، والإنتاج يُقرأ فقط</figcaption></figure>
+      <div class="aud-box mgmt"><h5><span class="tag mgmt">للإدارة</span></h5>بيانات الإنتاج لم تتغير، فالنقل يقرأ منها فقط. ويمكن تكراره لأخذ نسخة أحدث متى شئنا.</div>
+    </div>
+  </section>
+
+  <section class="ver">
+    <div class="ver-head"><span class="ver-no">A12</span><h3>شريط إعلان فارغ يظهر فيه ""</h3><span class="tag fix">إصلاح</span><span class="tag sql">SQL</span><span class="ver-date">12:20</span></div>
+    <div class="ver-body">
+      <ul>
+        <li>ظهر أثناء التقاط صور هذا المستند: شريط الإعلان الأصفر يظهر وفيه <span class="ltr">""</span>، رغم أن الإعلان فارغ.</li>
+        <li><b>السبب:</b> Oracle لا يقبل تحليل قيمة JSON مفردة (نص أو رقم) مباشرة، فالقراءة الدفاعية من الخطوة السابقة أعادتها نصاً كما هي.</li>
+        <li><b>الحل:</b> تحليل القيمة داخل مصفوفة ثم أخذ عنصرها الأول. نُفّذ واختُبر في قاعدة البيانات.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ===== المرحلة الخامسة ===== -->
+  <div class="stage"><span>المرحلة الخامسة: التوثيق</span><div class="bar"></div></div>
+
+  <section class="ver">
+    <div class="ver-head"><span class="ver-no">A13</span><h3>دليل التركيب، وهذا المستند</h3><span class="tag infra">بنية</span><span class="ver-date">12:10 – 12:30</span></div>
+    <div class="ver-body">
+      <div class="req"><b>الطلب:</b> <span class="q">«دع توثيق خطوات عملية نقل النظام لoracle apex في ملف pdf مستقل، ولكن يكون بنفس تنظيم وترتيب الملف السابق»</span>.</div>
+      <ul>
+        <li><code>apex/README.md</code>: دليل التركيب من الصفر والتحديث، بالعربية.</li>
+        <li>هذا المستند ومصدره في <code>docs/apex-report/</code>، بنفس تنسيق سجل التطوير الأساسي. أداة بناء ملف PDF أصبحت تقبل مصدراً ومخرجاً، فتبني المستندين.</li>
+        <li>الصور من نسخة APEX ببيانات الإنتاج، بعد استبدال الأسماء وإخفاء البريد.</li>
+      </ul>
+    </div>
+  </section>
+</section>
+
+<!-- ============================== 6. القرارات ============================== -->
+<section class="chapter" data-no="6">
+  <div class="ch-head"><div class="ch-no">6</div><div><h2>القرارات الرئيسية ومبرراتها</h2><p><span class="tag mgmt">للإدارة</span> <span class="tag eng">للمهندس</span> لماذا صار النقل على ما هو عليه</p></div></div>
+  <table class="long">
+    <thead><tr><th style="width:28%">القرار</th><th>المبرر</th></tr></thead>
+    <tbody>
+      <tr><td><b>الواجهة الحالية فوق APEX</b> (خيار أ)</td><td>يحفظ التصميم والسلوك حرفياً، وينتهي في ليلة واحدة، وكل تحسين على الواجهة يخدم النسختين. العيب المقبول: الشاشات لا تُعدَّل من Page Designer.</td></tr>
+      <tr><td><b>مجلد مستقل وفرع مستقل</b></td><td>لا شيء يتغير في نسخة Supabase أو في موقع القسم. القرار بدمج النسخة أو تركها يبقى لاحقاً.</td></tr>
+      <tr><td><b>كل المنطق في حزمة واحدة <code>ST_API</code></b></td><td>باب واحد لكل الطلبات يسهل فحص الصلاحيات ومراجعتها، ويقابل سياسات RLS في Supabase.</td></tr>
+      <tr><td><b>المشغّلات للقواعد والسجل</b></td><td>القواعد تُطبَّق حتى على ما يُدخل من SQL Workshop، والسجل لا يمكن تجاوزه.</td></tr>
+      <tr><td><b>الجداول بالبادئة <code>ST_</code></b></td><td>المساحة فيها جداول أخرى للمالك، والبادئة تمنع أي تداخل وتسهل الحذف الكامل.</td></tr>
+      <tr><td><b>كلمة المرور = الرقم، بلا إلزام التغيير</b></td><td>طلب صريح، لأن النسخة للتجربة. يجب تغييرها قبل أي استخدام حقيقي.</td></tr>
+      <tr><td><b>النقل من المتصفح بحساب المدير</b></td><td>لا يحتاج أسراراً محفوظة في APEX أو صلاحيات شبكة من قاعدة Oracle إلى Supabase. والإنتاج يُقرأ فقط.</td></tr>
+      <tr><td><b>أداة بناء بدل نسخ يدوي</b></td><td>ملف التطبيق يُولَّد من ملفات المستودع، فلا تختلف نسخة APEX عن الأصل دون علم.</td></tr>
+      <tr><td><b>apex.oracle.com للتجربة</b></td><td>مجاني وجاهز. الاستخدام الفعلي يحتاج قراراً آخر (الفصل 9).</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================== 7. الأمان ============================== -->
+<section class="chapter" data-no="7">
+  <div class="ch-head"><div class="ch-no">7</div><div><h2>الأمان وحماية البيانات</h2><p><span class="tag eng">للمهندس</span> <span class="tag mgmt">للإدارة</span> المبادئ المطبّقة في نسخة APEX</p></div></div>
+  <div class="grid2">
+    <div class="card"><h5>كلمات المرور</h5><p class="small">لا تُخزن نصاً أبداً: SHA-256 مكرر 500 مرة مع salt مختلف لكل مستخدم. ورسالة خطأ واحدة عند الدخول، وتأخير بسيط، وإيقاف 15 دقيقة بعد 8 محاولات خاطئة.</p></div>
+    <div class="card"><h5>الصلاحيات</h5><p class="small">كل طلب يمر بـ <code>ST_API</code> التي تحدد المستخدم من جلسة APEX لا من المتصفح، ثم تفحص دوره. المهندس لا يصل إلا لمهامه حتى لو حاول من خارج الواجهة.</p></div>
+    <div class="card"><h5>العملية الوحيدة</h5><p class="small">عملية <code>API</code> لا تعمل إلا لمستخدم مسجّل الدخول. ولا توجد صفحات APEX أخرى أو تقارير تكشف الجداول.</p></div>
+    <div class="card"><h5>الدخول بحساب مستخدم</h5><p class="small">لمدير النظام فقط، ولا يكشف كلمة مرور المستخدم ولا يغيّرها، وينتهي تلقائياً بعد ساعة.</p></div>
+    <div class="card"><h5>نقل الإنتاج</h5><p class="small">رقم وكلمة مرور الإنتاج يُكتبان في نافذة النقل ويُستخدمان من المتصفح مباشرة. لا يُحفظان، ولا يصلان إلى خادم APEX.</p></div>
+    <div class="card"><h5>السجل</h5><p class="small">كل تغيير على المهام يُسجَّل تلقائياً بمشغّل، ولا يوجد في الحزمة أي طريق لتعديل السجل.</p></div>
+  </div>
+  <div class="note warn"><b>نقطتان قبل أي استخدام حقيقي</b>كلمات المرور الحالية هي الأرقام المدنية/الوظيفية، فهي معروفة. وملف التطبيق والسكربتات في مستودع عام: لا تحتوي أي سر، لكن رابط التطبيق ظاهر لمن يقرأ المستودع.</div>
+  <div class="note info"><b>هذا المستند</b>محفوظ في المستودع ولا يُنشر ضمن موقع النظام. صوره بأسماء مستبدلة وبلا بريد.</div>
+</section>
+
+<!-- ============================== 8. الجودة ============================== -->
+<section class="chapter" data-no="8">
+  <div class="ch-head"><div class="ch-no">8</div><div><h2>الجودة والاختبارات</h2><p><span class="tag eng">للمهندس</span> كيف تأكدنا أن نسخة APEX تعمل مثل الأصل</p></div></div>
+  <div class="grid3">
+    <div class="kpi"><b>0</b><span>أخطاء ترجمة في الحزمة والمشغّلين بعد التصحيحات (<code>user_errors</code>)</span></div>
+    <div class="kpi t"><b>10</b><span>شاشات فُتحت وفُحصت من جلسة حقيقية دون أخطاء</span></div>
+    <div class="kpi g"><b>3,016</b><span>مهمة منقولة وتطابق عددها مع الإنتاج</span></div>
+  </div>
+  <h3>ما اختُبر</h3>
+  <table class="long">
+    <thead><tr><th style="width:28%">المستوى</th><th>الاختبار</th></tr></thead>
+    <tbody>
+      <tr><td><b>قاعدة البيانات</b></td><td>كلمة المرور المشفّرة وتحققها، والإدخال باسم المستخدم الحالي، ورفض نقل المهمة لمهندس آخر، ورفض المكتملة بلا تاريخ، ورفض أسباب المراجعة لغير الاستيراد، وحساب المدة، وشكل JSON في السجل للإضافة والتعديل.</td></tr>
+      <tr><td><b>الدخول</b></td><td>رسائل الخطأ العربية، والدخول بالرقم، وإعادة التحميل دون خروج.</td></tr>
+      <tr><td><b>الشاشات</b></td><td>فتح الشاشات العشر، وإضافة مهمة وتعديلها وحذفها، والسجل بعدها.</td></tr>
+      <tr><td><b>الصلاحيات</b></td><td>الدخول بحساب مهندس: قائمة مختصرة، ولا فلتر مهندسين، ومهامه فقط، ثم العودة لحساب المدير.</td></tr>
+      <tr><td><b>البيانات</b></td><td>نقل الإنتاج كاملاً، ومطابقة الأعداد، وظهور الأرقام الحقيقية في المؤشرات.</td></tr>
+    </tbody>
+  </table>
+  <div class="note warn"><b>الفرق عن نسخة Supabase</b>نسخة Supabase مغطاة بـ 177 اختباراً آلياً. نسخة APEX اختُبرت يدوياً حتى الآن، ولا توجد لها اختبارات آلية بعد (الفصل 9).</div>
+  <h3>المكوّنات المثبّتة</h3>
+  <table>
+    <thead><tr><th style="width:22%">النوع</th><th>الكائنات</th><th class="c" style="width:14%">الحالة</th></tr></thead>
+    <tbody>
+      <tr><td>جداول (9)</td><td class="small"><code>ST_PROFILES</code> <code>ST_TASKS</code> <code>ST_TASK_AUDIT</code> <code>ST_TASK_TYPES</code> <code>ST_CORRESPONDENCE_TYPES</code> <code>ST_TASK_STATUSES</code> <code>ST_APP_SETTINGS</code> <code>ST_LOGIN_FAILURES</code> <code>ST_ACTING</code></td><td class="c yes">VALID</td></tr>
+      <tr><td>عرض</td><td><code>ST_V_TASKS</code></td><td class="c yes">VALID</td></tr>
+      <tr><td>حزمة</td><td><code>ST_API</code> (المواصفات والجسم)</td><td class="c yes">VALID</td></tr>
+      <tr><td>مشغّلات</td><td><code>ST_TASKS_BIU</code> (القواعد) و<code>ST_TASKS_AUDIT</code> (السجل)</td><td class="c yes">VALID</td></tr>
+    </tbody>
+  </table>
+  <h3>أرقام النقل</h3>
+  <table>
+    <thead><tr><th>البند</th><th class="c" style="width:28%">الحجم التقريبي</th></tr></thead>
+    <tbody>
+      <tr><td>قاعدة البيانات (SQL وPL/SQL)</td><td class="c">1,700 سطر في 5 ملفات</td></tr>
+      <tr><td>المحوّل والنقل وملفات APEX الخاصة (JavaScript وCSS)</td><td class="c">560 سطراً</td></tr>
+      <tr><td>أداة البناء</td><td class="c">330 سطراً</td></tr>
+      <tr><td>ملفات الواجهة داخل التطبيق</td><td class="c">41 ملفاً</td></tr>
+      <tr><td>ملف التطبيق الناتج</td><td class="c">نحو 1 MB</td></tr>
+      <tr><td>ملفات النظام الأصلية المعدّلة</td><td class="c">0</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================== 9. المتبقي ============================== -->
+<section class="chapter" data-no="9">
+  <div class="ch-head"><div class="ch-no">9</div><div><h2>ما تبقى والخطوات القادمة</h2><p><span class="tag mgmt">للإدارة</span> <span class="tag eng">للمهندس</span> قبل أي استخدام فعلي لنسخة APEX</p></div></div>
+  <h3>تجارب لم تتم بعد</h3>
+  <table>
+    <thead><tr><th style="width:6%">#</th><th>التجربة</th><th style="width:20%">الحالة</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>الاستيراد من ملف Excel أو CSV كاملاً حتى الحفظ</td><td><span class="tag pending">لم تُجرَّب</span></td></tr>
+      <tr><td>2</td><td>التصدير إلى Excel وCSV، والطباعة أو حفظ PDF</td><td><span class="tag pending">لم تُجرَّب</span></td></tr>
+      <tr><td>3</td><td>تغيير كلمة المرور من المستخدم نفسه</td><td><span class="tag pending">لم تُجرَّب</span></td></tr>
+      <tr><td>4</td><td>إضافة مستخدم وتعديله وتعطيله، و«كلمات المرور للكل»</td><td><span class="tag pending">لم تُجرَّب</span></td></tr>
+      <tr><td>5</td><td>تعديل القوائم، وحفظ الإعدادات والإعلان</td><td><span class="tag pending">لم تُجرَّب</span></td></tr>
+      <tr><td>6</td><td>دخول مهندس بحسابه الحقيقي، وقفل التعديل، والاستعادة بعد الحذف</td><td><span class="tag pending">لم تُجرَّب</span></td></tr>
+    </tbody>
+  </table>
+  <h3>قرارات بانتظار المالك</h3>
+  <table>
+    <thead><tr><th style="width:30%">القرار</th><th>التفاصيل</th></tr></thead>
+    <tbody>
+      <tr><td><b>مكان التشغيل الفعلي</b></td><td>apex.oracle.com للتجربة فقط. الاستخدام الفعلي يحتاج قاعدة Oracle مع APEX خاصة بالقسم، أو Oracle Cloud (Autonomous Database). التركيب هناك بنفس الملفات والخطوات (الملحق ب).</td></tr>
+      <tr><td><b>دمج فرع <code>apex</code></b></td><td>إن دُمج في <code>staging</code> ثم <code>main</code>، يُستثنى مجلد <code>apex/</code> من النشر في <code>pages.yml</code> كما يُستثنى <code>docs/</code>، حتى لا تُنشر ملفات التطبيق على موقع القسم.</td></tr>
+      <tr><td><b>حساب «مزامنة التجربة»</b></td><td>انتقل مع المستخدمين من الإنتاج ولا عمل له في APEX. يُعطَّل من شاشة المستخدمين.</td></tr>
+      <tr><td><b>كلمات المرور</b></td><td>تغييرها من الأرقام إلى كلمات خاصة قبل أي استخدام حقيقي، وتفعيل «إلزام التغيير» إن رُغب.</td></tr>
+    </tbody>
+  </table>
+  <h3>مخاطر ومعالجتها</h3>
+  <table>
+    <thead><tr><th style="width:30%">الخطر</th><th>المعالجة</th></tr></thead>
+    <tbody>
+      <tr><td>اختلاف النسختين مع الوقت</td><td>أداة البناء تأخذ الواجهة من المستودع نفسه، وتتوقف إن تغيّر نص تعدّله. أي تحديث على الواجهة يُبنى ويُستورد.</td></tr>
+      <tr><td>تحديث APEX يغيّر صيغة ملف التطبيق</td><td>حدث فعلاً مع إعداد المصادقة (A7). الملف الأساسي يُصدَّر من جديد من APEX عند الترقية، وأداة البناء تبني عليه.</td></tr>
+      <tr><td>انتهاء جلسة مساحة العمل</td><td>جلسة App Builder تنتهي بعد مدة، فيلزم الدخول من جديد قبل أي تحديث. لا يؤثر على مستخدمي التطبيق.</td></tr>
+      <tr><td>شروط apex.oracle.com</td><td>للتجربة فقط وقد تتغير شروطه. البيانات تبقى قابلة للنقل من الإنتاج متى شئنا.</td></tr>
+      <tr><td>غياب الاختبارات الآلية</td><td>كتابة اختبارات PL/SQL للحزمة على غرار اختبارات نسخة Supabase قبل أي استخدام فعلي.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================== ملحق أ ============================== -->
+<section class="chapter" data-no="أ">
+  <div class="ch-head"><div class="ch-no">أ</div><div><h2>ملحق (أ): البنية التقنية للمهندس</h2><p><span class="tag eng">للمهندس</span> المساحة والمعرّفات والملفات. لا قيم سرية في هذا الملحق</p></div></div>
+  <h3>المساحة والروابط</h3>
+  <table>
+    <thead><tr><th style="width:30%">البند</th><th>القيمة</th></tr></thead>
+    <tbody>
+      <tr><td>المستودع والفرع</td><td><span class="ltr">abdullah-alfurqani-2024/Tasks-Dashboard-Live</span>، الفرع <code>apex</code></td></tr>
+      <tr><td>مساحة APEX</td><td><span class="ltr">ABDULLAH.ALFURQANI.2024</span> على <span class="ltr">oracleapex.com</span></td></tr>
+      <tr><td>السكيما</td><td><code>WKSP_ABDULLAHALFURQANI2024</code></td></tr>
+      <tr><td>قاعدة البيانات</td><td>Oracle AI Database 26ai، و APEX <span class="ltr">26.2.1</span></td></tr>
+      <tr><td>التطبيق</td><td>رقم <span class="ltr">20306</span>، الاسم <span class="ltr">Tasks-Dashboard-Apex</span></td></tr>
+      <tr><td>الرابط</td><td><span class="ltr small">https://oracleapex.com/ords/f?p=20306:1</span></td></tr>
+      <tr><td>الصفحات</td><td>1: الواجهة كاملة. 9999: الدخول وعملية <code>LOGIN_CHECK</code>. 0: الصفحة العامة.</td></tr>
+      <tr><td>المصادقة</td><td><b>Tasks Custom</b>: <code>st_api.authenticate</code>، وبعد الدخول <code>st_api.post_auth</code></td></tr>
+      <tr><td>العملية العامة</td><td><code>API</code> (On Demand) ← <code>st_api.ajax</code>، للمستخدم المسجّل فقط</td></tr>
+      <tr><td>مفاتيح الحفظ في المتصفح</td><td><code>tsk.apex.</code></td></tr>
+      <tr><td>مصدر النقل</td><td>مشروع الإنتاج في Supabase، سكيما <code>support_tasks</code>، دالة <code>auth-login</code></td></tr>
+    </tbody>
+  </table>
+  <h3>الملفات</h3>
+  <table class="long">
+    <thead><tr><th style="width:36%">الملف</th><th>الغرض</th></tr></thead>
+    <tbody>
+      <tr><td><code>apex/sql/01_schema.sql</code></td><td>الجداول والفهارس والعرض</td></tr>
+      <tr><td><code>apex/sql/02_api.sql</code></td><td>الحزمة <code>ST_API</code> والمشغّلان</td></tr>
+      <tr><td><code>apex/sql/03_seed.sql</code></td><td>القوائم والإعدادات الأولية</td></tr>
+      <tr><td><code>apex/sql/04_first_admin.sql</code></td><td>أول مدير للنظام</td></tr>
+      <tr><td><code>apex/sql/uninstall.sql</code></td><td>حذف كل كائنات النظام</td></tr>
+      <tr><td><code>apex/web/js/config.js</code></td><td>إعدادات نسخة APEX ومصدر النقل</td></tr>
+      <tr><td><code>apex/web/js/data/apex/index.js</code></td><td>محوّل APEX</td></tr>
+      <tr><td><code>apex/web/js/data/apex/migrate.js</code></td><td>النقل من الإنتاج</td></tr>
+      <tr><td><code>apex/web/css/apex.css</code></td><td>إخفاء إطار APEX</td></tr>
+      <tr><td><code>apex/tools/build.mjs</code></td><td>بناء ملف التطبيق</td></tr>
+      <tr><td><code>apex/build/base_f116280.sql</code></td><td>تصدير التطبيق الفارغ (أساس البناء)</td></tr>
+      <tr><td><code>apex/f116280.sql</code></td><td>ملف التطبيق الجاهز للاستيراد</td></tr>
+      <tr><td><code>apex/README.md</code></td><td>دليل التركيب والتحديث</td></tr>
+      <tr><td><code>docs/apex-report/</code></td><td>مصدر هذا المستند وصوره</td></tr>
+    </tbody>
+  </table>
+  <h3>أوامر المطوّر</h3>
+  <table>
+    <thead><tr><th style="width:52%">الأمر</th><th>الغرض</th></tr></thead>
+    <tbody>
+      <tr><td><code>node apex/tools/build.mjs</code></td><td>بناء ملف التطبيق من الواجهة الحالية</td></tr>
+      <tr><td class="small"><code>node tools/build-report.mjs docs/apex-report/report.html docs/Tasks-System-APEX-Migration-Report.pdf</code></td><td>بناء ملف PDF لهذا المستند</td></tr>
+      <tr><td class="small"><code>select * from user_errors where name like 'ST\_%' escape '\';</code></td><td>التأكد من ترجمة الحزمة دون أخطاء</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================== ملحق ب ============================== -->
+<section class="chapter" data-no="ب">
+  <div class="ch-head"><div class="ch-no">ب</div><div><h2>ملحق (ب): التركيب من الصفر في أي مساحة APEX</h2><p><span class="tag eng">للمهندس</span> <span class="tag mgmt">للإدارة</span> تشغيل النظام في مساحة أخرى أو قاعدة Oracle خاصة بالقسم</p></div></div>
+  <p class="lead">الخطوات نفسها تصلح لمساحة تجربة جديدة، أو لقاعدة Oracle خاصة بالقسم عند قرار الاستخدام الفعلي. المطلوب فقط: مساحة APEX بإصدار 26 أو أحدث.</p>
+  <table class="long">
+    <thead><tr><th style="width:5%">#</th><th style="width:26%">أين</th><th>ماذا</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>SQL Workshop</td><td>تنفيذ <code>01_schema.sql</code> ثم <code>02_api.sql</code> ثم <code>03_seed.sql</code>، ثم التأكد أن <code>user_errors</code> فارغ.</td></tr>
+      <tr><td>2</td><td>SQL Commands</td><td>كتابة الرقم والاسم في <code>04_first_admin.sql</code> وتنفيذه. <b>دون تظليل أي نص</b> قبل Run.</td></tr>
+      <tr><td>3</td><td>App Builder ← Import</td><td>استيراد <code>apex/f116280.sql</code>، وParsing Schema = سكيما المساحة.</td></tr>
+      <tr><td>4</td><td>التطبيق</td><td>الدخول بالرقم، وكلمة المرور = الرقم.</td></tr>
+      <tr><td>5</td><td>الإعدادات</td><td>«تحديث بيانات التجربة من الإنتاج» لنقل كل البيانات، بحساب مدير النظام في الإنتاج.</td></tr>
+      <tr><td>6</td><td>المستخدمون</td><td>تعطيل حساب «مزامنة التجربة»، وتغيير كلمات المرور إن كان الاستخدام حقيقياً.</td></tr>
+    </tbody>
+  </table>
+  <div class="note info"><b>إن تغيّر إصدار APEX</b>يُنشأ تطبيق فارغ جديد في APEX ويُصدَّر، ويوضع مكان <code>apex/build/base_f116280.sql</code>، ثم يُعاد البناء. هكذا يتبع ملف التطبيق صيغة الإصدار الجديد.</div>
+  <div class="note warn"><b>إعادة التركيب في المساحة نفسها</b><code>uninstall.sql</code> يحذف كل الكائنات وكل البيانات نهائياً. يُنفَّذ فقط عند الرغبة في البدء من الصفر، والتطبيق نفسه يُحذف من App Builder.</div>
+</section>
+
+<!-- ============================== ملحق ج ============================== -->
+<section class="chapter" data-no="ج">
+  <div class="ch-head"><div class="ch-no">ج</div><div><h2>ملحق (ج): مسرد المصطلحات</h2><p>للقارئ غير التقني</p></div></div>
+  <table class="long">
+    <thead><tr><th style="width:26%">المصطلح</th><th>المعنى</th></tr></thead>
+    <tbody>
+      <tr><td><b>Oracle APEX</b></td><td>منصة من Oracle لبناء تطبيقات الويب فوق قاعدة بيانات Oracle مباشرة.</td></tr>
+      <tr><td><b>مساحة العمل (Workspace)</b></td><td>حساب داخل APEX فيه التطبيقات وقاعدة بياناتها.</td></tr>
+      <tr><td><b>السكيما (Schema)</b></td><td>مجموعة الجداول والكائنات الخاصة بالمساحة داخل قاعدة البيانات.</td></tr>
+      <tr><td><b>App Builder</b></td><td>شاشة APEX لإنشاء التطبيقات واستيرادها وتعديلها.</td></tr>
+      <tr><td><b>SQL Workshop</b></td><td>شاشة APEX لتنفيذ أوامر SQL على قاعدة البيانات.</td></tr>
+      <tr><td><b>PL/SQL</b></td><td>لغة البرمجة داخل قاعدة Oracle، بها كُتبت قواعد النظام وصلاحياته.</td></tr>
+      <tr><td><b>الحزمة (Package)</b></td><td>مجموعة إجراءات PL/SQL في ملف واحد. حزمة النظام اسمها <code>ST_API</code>.</td></tr>
+      <tr><td><b>المشغّل (Trigger)</b></td><td>إجراء ينفّذه Oracle تلقائياً عند حفظ مهمة، مثل فحص القواعد وكتابة السجل.</td></tr>
+      <tr><td><b>الملفات الثابتة</b> (Static Files)</td><td>ملفات الواجهة المحفوظة داخل تطبيق APEX.</td></tr>
+      <tr><td><b>المحوّل</b></td><td>الجزء الذي يربط شاشات النظام بقاعدة البيانات. تغييره وحده يكفي لتغيير قاعدة البيانات.</td></tr>
+      <tr><td><b>JSON</b></td><td>صيغة نصية لتبادل البيانات بين المتصفح والخادم.</td></tr>
+      <tr><td><b>الجلسة</b></td><td>فترة الدخول في APEX. تنتهي بالخروج أو بعد مدة من عدم الاستخدام.</td></tr>
+      <tr><td><b>ORDS</b></td><td>خادم Oracle الذي يوصل صفحات APEX إلى المتصفح، ويظهر في الرابط <span class="ltr">/ords/</span>.</td></tr>
+      <tr><td><b>Supabase</b></td><td>المنصة التي تعمل عليها النسخة الأصلية: قاعدة PostgreSQL مع خدمة الدخول.</td></tr>
+    </tbody>
+  </table>
+  <h3>سجل تحديثات المستند</h3>
+  <table>
+    <thead><tr><th style="width:22%">التاريخ</th><th>التحديث</th></tr></thead>
+    <tbody>
+      <tr><td class="ltr">2026/11/08</td><td>الإصدار الأول من المستند: الخطوات من A1 إلى A13.</td></tr>
+    </tbody>
+  </table>
+</section>
+</body>
+</html>

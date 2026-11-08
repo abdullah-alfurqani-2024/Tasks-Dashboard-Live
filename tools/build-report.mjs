@@ -1,5 +1,7 @@
 // بناء ملف PDF لسجل تطوير النظام من مصدره docs/report/report.html
 //   node tools/build-report.mjs
+// أو لمستند آخر بنفس التنسيق (مثل توثيق نقل النظام إلى APEX):
+//   node tools/build-report.mjs docs/apex-report/report.html docs/Tasks-System-APEX-Migration-Report.pdf
 // يحتاج Playwright (Chromium) و pdftotext (poppler-utils) على جهاز المطوّر.
 // الفهرس يُبنى من العناوين: h2 داخل .chapter و h3 داخل .ver، وأرقام صفحاته تُحسب بتمريرتين.
 import { createRequire } from 'node:module';
@@ -13,8 +15,8 @@ const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const src = join(root, 'docs/report/report.html');
-const out = join(root, 'docs/Tasks-System-Development-Report.pdf');
+const src = resolve(root, process.argv[2] || 'docs/report/report.html');
+const out = resolve(root, process.argv[3] || 'docs/Tasks-System-Development-Report.pdf');
 const tmp = mkdtempSync(join(tmpdir(), 'report-'));
 
 const browser = await chromium.launch();
