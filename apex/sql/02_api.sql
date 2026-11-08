@@ -877,7 +877,8 @@ create or replace package body st_api as
   begin
     for s in (select setting_key, setting_value from st_app_settings order by setting_key) loop
       begin
-        o.put(s.setting_key, json_element_t.parse(s.setting_value));
+        -- Oracle لا يقبل تحليل قيمة JSON مفردة ("نص" أو 7) مباشرة، فنحللها داخل مصفوفة
+        o.put(s.setting_key, json_array_t.parse('[' || s.setting_value || ']').get(0));
       exception when others then
         o.put(s.setting_key, dbms_lob.substr(s.setting_value, 4000, 1));   -- قيمة قديمة بلا تنصيص: تُقرأ نصاً
       end;
