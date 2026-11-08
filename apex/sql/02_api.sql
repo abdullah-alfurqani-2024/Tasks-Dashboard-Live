@@ -180,6 +180,18 @@ create or replace package body st_api as
     return v in ('true', '1', 'y', 'yes');
   end;
 
+  -- قيمة JSON كاملة كنص (مع علامتي التنصيص للنصوص). JSON_ELEMENT_T.to_clob يُسقط علامتي التنصيص
+  -- عن النص المفرد في Oracle، فنلفّ القيمة في مصفوفة ثم ننزع القوسين
+  function jvalue(e in json_element_t) return clob is
+    a json_array_t := json_array_t();
+    c clob;
+  begin
+    if e is null then return to_clob('null'); end if;
+    a.append(e);
+    c := a.to_clob;
+    return dbms_lob.substr(c, dbms_lob.getlength(c) - 2, 2);
+  end;
+
   -- JSON: كتابة القيم (تُستخدم في المشغّلات وفي الردود)
   procedure jp_s(o in out nocopy json_object_t, k in varchar2, v in varchar2) is
   begin if v is null then o.put_null(k); else o.put(k, v); end if; end;
@@ -861,11 +873,16 @@ create or replace package body st_api as
   -- ───────────────────────── الإعدادات ─────────────────────────
 
   function settings_load return clob is
-    r clob;
+    o json_object_t := json_object_t();
   begin
-    select json_objectagg(s.setting_key value s.setting_value format json returning clob)
-      into r from st_app_settings s;
-    return nvl(r, to_clob('{}'));
+    for s in (select setting_key, setting_value from st_app_settings order by setting_key) loop
+      begin
+        o.put(s.setting_key, json_element_t.parse(s.setting_value));
+      exception when others then
+        o.put(s.setting_key, dbms_lob.substr(s.setting_value, 4000, 1));   -- قيمة قديمة بلا تنصيص: تُقرأ نصاً
+      end;
+    end loop;
+    return o.to_clob;
   end;
 
   function settings_save(o in json_object_t) return clob is
@@ -879,7 +896,7 @@ create or replace package body st_api as
     for i in 1 .. keys.count loop
       if keys(i) in ('edit_lock_days', 'delay_threshold_days', 'min_password_length', 'force_password_change',
                      'allow_purge_tasks', 'announcement', 'announcement_type', 'announcement_expires_at', 'sync_user_id') then
-        l_val := s.get(keys(i)).to_clob;
+        l_val := jvalue(s.get(keys(i)));
         l_key := keys(i);
         merge into st_app_settings a
         using (select l_key k from dual) x on (a.setting_key = x.k)
@@ -999,7 +1016,7 @@ create or replace package body st_api as
     a := o.get_array('settings');
     for i in 0 .. a.get_size - 1 loop
       p := treat(a.get(i) as json_object_t);
-      v_s := jstr(p, 'key'); v_clob := p.get('value').to_clob;
+      v_s := jstr(p, 'key'); v_clob := jvalue(p.get('value'));
       insert into st_app_settings (setting_key, setting_value, updated_by) values (v_s, v_clob, g_real_uid);
     end loop;
 

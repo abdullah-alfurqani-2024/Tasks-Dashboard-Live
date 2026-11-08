@@ -69,10 +69,12 @@ export function createAdapter(config) {
             reject(new ApiError(d.error, d.expired || ''));
             return;
           }
-          // ردّ من APEX نفسه (لا من st_api): غالباً انتهت الجلسة
-          const msg = String(d?.error || d?.message || text || '');
-          if (!d || /session|جلسة|login/i.test(msg)) { onExpired(); reject(new ApiError('انتهت الجلسة، سجّل الدخول من جديد.', 'session')); return; }
-          reject(new ApiError(msg));
+          // ردّ من APEX نفسه (لا من st_api): انتهاء الجلسة فقط إذا قال APEX ذلك صراحة أو أعاد صفحة الدخول
+          const msg = String(d?.error || d?.message || '');
+          const loginPage = !d && /wwvFlowForm|P9999_|login/i.test(String(text || ''));
+          if (loginPage || /session|جلسة/i.test(msg)) { onExpired(); reject(new ApiError('انتهت الجلسة، سجّل الدخول من جديد.', 'session')); return; }
+          console.error('APEX API', action, String(text || '').slice(0, 500));
+          reject(new ApiError(msg || 'ردّ غير متوقع من الخادم. حاول مرة أخرى، وإن تكرر فأخبر مدير النظام.'));
         })
         .fail((xhr, status, err) => {
           if (xhr?.status === 401 || xhr?.status === 403) { onExpired(); reject(new ApiError('انتهت الجلسة، سجّل الدخول من جديد.', 'session')); return; }
