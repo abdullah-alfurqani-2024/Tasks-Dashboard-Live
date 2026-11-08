@@ -22,8 +22,8 @@
   <div class="sub">سجل التطوير والإصدارات: الطلبات والتعديلات من البداية حتى اليوم</div>
   <div class="rule"></div>
   <div class="meta">
-    <div><span>آخر إصدار</span><b class="ltr" data-fill="latest">1.19.2</b></div>
-    <div><span>عدد الإصدارات</span><b data-fill="count">30</b></div>
+    <div><span>آخر إصدار</span><b class="ltr" data-fill="latest">1.19.3</b></div>
+    <div><span>عدد الإصدارات</span><b data-fill="count">31</b></div>
     <div><span>تاريخ المستند</span><b class="ltr" data-fill="date">2026/11/08</b></div>
   </div>
   <div class="aud">موجَّه إلى: <span class="chip">الإدارة العليا</span><span class="chip">مستخدمي النظام</span><span class="chip">المهندس المسؤول</span></div>
@@ -73,7 +73,7 @@
   <div class="ch-head"><div class="ch-no">1</div><div><h2>الملخص التنفيذي</h2><p><span class="tag mgmt">للإدارة</span> الوضع العام في صفحتين</p></div></div>
   <p class="lead">نظام ويب لمتابعة مهام قسم الدعم الفني والصيانة: تسجيل المهام وتوزيعها على المهندسين، ومتابعة إنجازها وتأخرها، وتقارير ومؤشرات لحظية. يحل محل ملفات Google Sheets والسكربتات الملحقة بها ولوحة Looker Studio، ويعمل بالعربية من اليمين لليسار على الحاسوب والجوال.</p>
   <div class="grid4" style="margin:5mm 0">
-    <div class="kpi"><b data-fill="count">30</b><span>إصداراً خلال 6 أيام</span></div>
+    <div class="kpi"><b data-fill="count">31</b><span>إصداراً خلال 6 أيام</span></div>
     <div class="kpi t"><b>2</b><span>بيئتان مستقلتان: إنتاج للعمل، وتجربة للتطوير</span></div>
     <div class="kpi g"><b>177</b><span>اختباراً آلياً للصلاحيات والدوال</span></div>
     <div class="kpi o"><b>0</b><span>تكلفة اشتراك: خطط مجانية</span></div>
@@ -267,7 +267,7 @@
       <tr><td><b>الثانية</b></td><td class="ltr">1.1.0 – 1.6.0</td><td>بيئة التجربة، والدخول بالرقم، وإدارة كلمات المرور</td></tr>
       <tr><td><b>الثالثة</b></td><td class="ltr">1.7.0 – 1.11.2</td><td>تجهيز البيانات: الاستيراد بلا فقد، والمراجعة</td></tr>
       <tr><td><b>الرابعة</b></td><td class="ltr">1.12.0 – 1.14.2</td><td>فصل البيئات وتوحيد الحسابات، وأول تعديلات تدريبية</td></tr>
-      <tr><td><b>الخامسة</b></td><td class="ltr">1.15.0 – 1.19.2</td><td>التواصل داخل النظام، وتحسينات التشغيل</td></tr>
+      <tr><td><b>الخامسة</b></td><td class="ltr">1.15.0 – 1.19.3</td><td>التواصل داخل النظام، وتحسينات التشغيل</td></tr>
     </tbody>
   </table>
 
@@ -704,6 +704,18 @@
   </section>
 
   <section class="ver">
+    <div class="ver-head"><span class="ver-no">1.19.3</span><h3>تصحيح ربط عنوان «بحث» بحقله</h3><span class="tag fix">إصلاح</span><span class="ver-date">2026/11/08</span></div>
+    <div class="ver-body">
+      <div class="req"><b>الملاحظة:</b> تنبيه في Inspector: <code>Incorrect use of &lt;label for=FORM_ELEMENT&gt;</code>.</div>
+      <ul>
+        <li><b>السبب:</b> في صفحة المهام، عنوان «بحث» مربوط بمعرّف حقل (<code>f-q</code>) لم يكن موجوداً على حقل البحث.</li>
+        <li><b>الإصلاح:</b> حقل البحث صار يحمل المعرّف. الضغط على كلمة «بحث» يضع المؤشر في الحقل، وقارئات الشاشة تقرؤه باسمه.</li>
+        <li>فُحصت كل الشاشات والنوافذ آلياً، ولا يوجد عنوان آخر بهذا الخطأ.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="ver">
     <div class="ver-head"><span class="ver-no">—</span><h3>المزامنة التلقائية للمستودع المرجعي</h3><span class="tag infra">بنية</span><span class="ver-date">2026/11/05</span></div>
     <div class="ver-body">
       <div class="req"><b>الطلب:</b> الحساب الأساسي في GitHub <span class="q">«يظل كما هو»</span> بدور المرجع: نسخة مطابقة للإنتاج دون العمل فيه.</div>
@@ -1071,6 +1083,7 @@
       <tr><td class="ltr">2026/11/06</td><td class="ltr">1.19.0</td><td>«ملاحظات بانتظار الإصلاح»: التقويم لا يظهر على الهاتف، والمطلوب أن يعمل على كل الهواتف والمتصفحات (عاجلة جداً).</td></tr>
       <tr><td class="ltr">2026/11/08</td><td class="ltr">1.19.1</td><td>إصلاح التقويم على كل الهواتف والمتصفحات، وتوثيق فكرة «رمز المهمة» كاملة للدراسة.</td></tr>
       <tr><td class="ltr">2026/11/08</td><td class="ltr">1.19.2</td><td>إزالة رابط الخط المتوقف من Google.</td></tr>
+      <tr><td class="ltr">2026/11/08</td><td class="ltr">1.19.3</td><td>تصحيح ربط عنوان «بحث» بحقله.</td></tr>
     </tbody>
   </table>
 </section>

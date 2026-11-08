@@ -40,8 +40,8 @@ export function statusBadge(t, delayed = false) {
   return html`<span class="badge ${delayed ? 'warn' : KIND_CLS[t.statusKind] ?? ''}">${t.status || '—'}${delayed ? ' · متأخرة' : ''}</span>`;
 }
 
-export function searchBox(value = '', placeholder = 'بحث…') {
-  return html`<div class="search">${icon('search')}<input class="input" type="search" name="q" value="${value}" placeholder="${placeholder}" aria-label="بحث"></div>`;
+export function searchBox(value = '', placeholder = 'بحث…', id = '') {
+  return html`<div class="search">${icon('search')}<input class="input" type="search" name="q" ${id ? html`id="${id}"` : ''} value="${value}" placeholder="${placeholder}" aria-label="بحث"></div>`;
 }
 
 /** عنصر جديد للصفحة داخل main (حتى لا تتراكم مستمعات الأحداث بين الصفحات) */
