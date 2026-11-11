@@ -29,7 +29,7 @@ function showBanner(info) {
   const bar = document.createElement('div');
   bar.id = 'update-bar';
   bar.className = 'update-bar no-print';
-  mount(bar, html`<span>يتوفر تحديث جديد للنظام (${info.version}). احفظ عملك ثم اضغط «تحديث».</span>
+  mount(bar, html`<span>يتوفر تحديث جديد للنظام (<span class="ltr">${info.version}</span>). احفظ عملك ثم اضغط «تحديث».</span>
     <button class="btn btn-sm btn-primary" type="button">تحديث</button>`);
   bar.querySelector('button').onclick = () => refresh(info);
   document.body.appendChild(bar);
