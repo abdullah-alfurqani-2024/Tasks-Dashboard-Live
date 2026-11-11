@@ -16,16 +16,17 @@ const TARGETS = [
 
 // ملفات التعديل اللاحقة (07 فما بعد) تعالج السكيمات بنفسها، فتُضاف كما هي
 // (عدا الملفات المعلَّمة @production-only، و08 إصلاح لقاعدة قديمة)
-const migrations = readdirSync(join(root, 'supabase/sql')).filter((f) => /^(0[7-9]|[1-9]\d)_.*\.sql$/.test(f)).sort()
+const migrations = readdirSync(join(root, 'supabase/sql')).filter((f) => /^(0[7-9]|[1-9]\d)_.*\.sql$/.test(f) && !f.endsWith('.undo.sql')).sort()
   .map((f) => [f, read('supabase/sql', f)])
   .filter(([f, sql]) => !sql.includes('@production-only') && f !== '08_email_repair.sql')
   .map(([f, sql]) => `-- ===================== ${f} =====================\n` + sql);
 
 // تعديلات قيد التطوير (الفرع dev): supabase/dev/sql مكتوبة لسكيما التطوير وحدها، فتدخل ملف التطوير فقط.
+// ملفات التراجع (NN_name.undo.sql) لا تدخل أي ملف تجهيز.
 // تأتي بعد ملفات التجربة، فيمكنها تعديل دالة استقبال نسخة الإنتاج نفسها إن تغيّر شكل الجداول.
 // عند نقلها إلى التجربة تنتقل إلى supabase/sql بقائمة السكيمات الكاملة.
 const devDir = join(root, 'supabase/dev/sql');
-const devOnly = existsSync(devDir) ? readdirSync(devDir).filter((f) => /^\d\d_.*\.sql$/.test(f)).sort()
+const devOnly = existsSync(devDir) ? readdirSync(devDir).filter((f) => /^\d\d_.*\.sql$/.test(f) && !f.endsWith('.undo.sql')).sort()
   .map((f) => `-- ===================== dev/sql/${f} (قيد التطوير) =====================\n` + read('supabase/dev/sql', f)) : [];
 
 for (const t of TARGETS) {

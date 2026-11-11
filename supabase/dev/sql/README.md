@@ -6,12 +6,13 @@
 
 - اسم الملف برقم وموضوع: `16_ملخص.sql` (الرقم التالي في `supabase/sql`).
 - يُكتب لسكيما التطوير **وحدها**: `support_tasks_dev.tasks`، أو حلقة على `array['support_tasks_dev']`.
+- معه ملف تراجع بنفس الاسم واللاحقة `.undo.sql` (مثل `16_ملخص.undo.sql`) يعيد ما غيّره، ولا يدخل أي ملف تجهيز.
 - يُنفَّذ في Tasks-Test ← SQL Editor، فيتغير التطوير فقط.
 - `node tools/staging-sql.mjs` يضيفه في آخر `supabase/dev/setup_dev.sql` فقط (بعد دالة استقبال نسخة الإنتاج،
   فيمكنه تعديلها إن تغيّر شكل الجداول). لا يدخل ملف التجربة ولا الإنتاج.
 
 ## عند نقل العمل إلى التجربة
-1. انقل الملف إلى `supabase/sql` واجعل قائمة السكيمات كاملة:
+1. انقل الملف وملف تراجعه إلى `supabase/sql` واجعل قائمة السكيمات كاملة:
    `array['support_tasks', 'support_tasks_staging', 'support_tasks_dev']` مع تخطّي غير الموجودة (مثل بقية الملفات).
 2. اجعله آمناً لإعادة التنفيذ، لأن التطوير نُفّذ فيه من قبل (`if not exists`، `on conflict do nothing`…).
 3. `node tools/staging-sql.mjs` و`node tools/production-sql.mjs`.

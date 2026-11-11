@@ -269,6 +269,21 @@
     <li><b>لا يُدمج <code>dev</code> في <code>main</code> مباشرة</b> أبداً: يمر على التجربة أولاً.</li>
     <li><b>ملف النشر</b> يُعدَّل في <code>staging</code> فقط، وخطوة حماية فيه توقف النشر من <code>dev</code> إن اختلف الملف فيه.</li>
   </ul>
+  <h3>أرقام الإصدارات والتراجع</h3>
+  <table>
+    <thead><tr><th style="width:26%">النوع</th><th>الفرع</th><th>الرقم</th></tr></thead>
+    <tbody>
+      <tr><td>إصلاح أو تعديل بسيط</td><td><code>staging</code> ← <code>main</code></td><td>يكمل الترقيم الحالي: <span class="ltr">1.21.1</span>، <span class="ltr">1.22.0</span>…</td></tr>
+      <tr><td>نسخة قيد التطوير</td><td><code>dev</code> فقط</td><td><span class="ltr">2.0.0-dev.1</span>، <span class="ltr">2.0.0-dev.2</span>… رقم جديد مع كل رفع</td></tr>
+      <tr><td>اكتمال العمل الجذري</td><td><code>dev</code> ← <code>staging</code> ← <code>main</code></td><td><span class="ltr">2.0.0</span> بلا لاحقة</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li><b>لماذا رقم جديد مع كل رفع للتطوير؟</b> الرقم هو ما يجعل المتصفح يحمّل الملفات الجديدة ويُظهر شريط التحديث. والرقم الرئيسي <span class="ltr">2</span> لا يتصادم مع أرقام الإصلاحات مهما تعددت.</li>
+    <li><b>العلامات:</b> لكل إصدار علامة باسمه في المستودع (<span class="ltr">v1.21.0</span>، <span class="ltr">v2.0.0-dev.1</span>…)، ووُضعت للإصدارات السابقة كلها. فطلب «ارجع إلى 1.20.0» واضح ومباشر.</li>
+    <li><b>التراجع عن الكود</b> ممكن في النسخ الثلاث: في الإنتاج بزر Revert، وفي التجربة والتطوير بإرجاع الفرع إلى علامة سابقة.</li>
+    <li><b>قاعدة البيانات</b> لا ترجع مع الكود: ملفات التعديل تُكتب بحيث تعمل معها الواجهة السابقة، ومع كل ملف تعديل جديد ملف تراجع (<code>.undo.sql</code>) يُنفَّذ يدوياً عند الحاجة فقط.</li>
+  </ul>
   <div class="note bad"><b>عند ظهور مشكلة بعد النقل</b>في صفحة طلب الدمج الأخير زر <b>Revert</b>. الضغط عليه ثم دمج طلب التراجع يعيد الإصدار السابق خلال دقائق. البيانات لا تتأثر بالتراجع، لأنها في قاعدة البيانات لا في الكود.</div>
   <div class="note warn"><b>قبل أي إصدار فيه SQL</b>يُنصح بتصدير نسخة احتياطية من <b>التقرير ← كل الفترات ← Excel</b>.</div>
   <h3>لماذا هذا الترتيب؟</h3>
@@ -1037,7 +1052,7 @@
   <table>
     <thead><tr><th style="width:44%">الأمر</th><th>الغرض</th></tr></thead>
     <tbody>
-      <tr><td><code>node tools/release.mjs 1.21.0</code></td><td>رفع رقم الإصدار في <code>version.json</code> و<code>js/version.js</code></td></tr>
+      <tr><td><code>node tools/release.mjs 1.21.0</code><br><code>node tools/release.mjs 2.0.0-dev.1</code></td><td>رفع رقم الإصدار في <code>version.json</code> و<code>js/version.js</code></td></tr>
       <tr><td><code>node tools/production-sql.mjs</code></td><td>توليد ملف تجهيز الإنتاج</td></tr>
       <tr><td><code>node tools/staging-sql.mjs</code></td><td>توليد ملفي تجهيز التجربة والتطوير</td></tr>
       <tr><td><code>node tools/build-report.mjs</code></td><td>بناء ملف PDF لهذا المستند من مصدره</td></tr>
@@ -1160,6 +1175,7 @@
       <tr><td class="ltr">2026/11/08</td><td class="ltr">1.19.3</td><td>تصحيح ربط عنوان «بحث» بحقله.</td></tr>
       <tr><td class="ltr">2026/11/08</td><td class="ltr">1.20.0</td><td>نسخ مهمة كمهمة جديدة.</td></tr>
       <tr><td class="ltr">2026/11/11</td><td class="ltr">1.21.0</td><td>نسخة التطوير للتعديلات الجذرية: الفصلان 3 و4، والملحق (أ)، والملخص بعد التدشين المبدئي.</td></tr>
+      <tr><td class="ltr">2026/11/11</td><td class="ltr">1.21.0</td><td>الفصل 4: أرقام الإصدارات (<span class="ltr">2.0.0-dev.N</span> للتطوير)، وعلامات الإصدارات، والتراجع وملفات <code>.undo.sql</code>.</td></tr>
     </tbody>
   </table>
 </section>

@@ -8,7 +8,7 @@ const root = new URL('..', import.meta.url).pathname;
 const dir = join(root, 'supabase/sql');
 // 05 (أول مدير) خطوة مستقلة بعد إنشاء حسابك، و06 و08 إصلاحات لقواعد قديمة لا يحتاجها مشروع جديد
 const skip = new Set(['05_first_admin.sql', '06_lists.sql', '08_email_repair.sql']);
-const files = readdirSync(dir).filter((f) => /^\d\d_.*\.sql$/.test(f) && !skip.has(f)).sort();
+const files = readdirSync(dir).filter((f) => /^\d\d_.*\.sql$/.test(f) && !f.endsWith('.undo.sql') && !skip.has(f)).sort();
 
 const header = `-- =====================================================================
 --  نظام مهام الدعم الفني — إعداد مشروع الإنتاج (مشروع Supabase جديد)
