@@ -17,6 +17,7 @@
 //  نفس الكود يُنشر مرتين، والسكيما تُعرف من اسم الدالة:
 //    admin-users          ← support_tasks          (الإنتاج)
 //    admin-users-staging  ← support_tasks_staging  (التجربة)
+//    admin-users-dev      ← support_tasks_dev      (التطوير، في نفس مشروع التجربة)
 // =====================================================================
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -26,6 +27,7 @@ let SCHEMA = "";
 function schemaFor(req: Request) {
   const path = new URL(req.url).pathname;
   if (path.includes("admin-users-staging")) return "support_tasks_staging";
+  if (path.includes("admin-users-dev")) return "support_tasks_dev";
   if (path.includes("admin-users")) return "support_tasks";
   throw new AppError("تعذّر تحديد نسخة النظام من اسم الدالة.", 500);
 }
@@ -278,7 +280,7 @@ async function resetAll(body: Record<string, unknown>, callerId: string) {
  *   generate_link يصنع رمز دخول (لا يُرسل)، ثم verify يحوّله إلى جلسة
  */
 async function impersonate(body: Record<string, unknown>, callerId: string, callerEmail: string) {
-  if (SCHEMA !== "support_tasks_staging") throw new AppError("الدخول بحساب مستخدم آخر متاح في نسخة التجربة فقط.", 403);
+  if (SCHEMA === "support_tasks") throw new AppError("الدخول بحساب مستخدم آخر متاح في نسختي التجربة والتطوير فقط.", 403);
   const id = String(body.id || "");
   if (!id) throw new AppError("المستخدم غير محدد.");
   if (id === callerId) throw new AppError("هذا حسابك أنت.");

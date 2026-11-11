@@ -13,7 +13,7 @@ do $do$
 declare
   s text;
 begin
-  foreach s in array array['support_tasks', 'support_tasks_staging'] loop
+  foreach s in array array['support_tasks', 'support_tasks_staging', 'support_tasks_dev'] loop
     if to_regclass(s || '.app_settings') is null then continue; end if;
     execute format($q$insert into %I.app_settings (key, value) values ('announcement', '""') on conflict (key) do nothing$q$, s);
   end loop;
@@ -24,7 +24,7 @@ create or replace function pg_temp.check_announcement() returns table (السك�
 language plpgsql as $f$
 declare s text;
 begin
-  foreach s in array array['support_tasks', 'support_tasks_staging'] loop
+  foreach s in array array['support_tasks', 'support_tasks_staging', 'support_tasks_dev'] loop
     if to_regclass(s || '.app_settings') is not null then
       return query execute format('select %L::text, value from %I.app_settings where key = %L', s, s, 'announcement');
     end if;

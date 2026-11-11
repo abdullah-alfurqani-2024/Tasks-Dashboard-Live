@@ -14,7 +14,7 @@ do $do$
 declare
   s text;
 begin
-  foreach s in array array['support_tasks', 'support_tasks_staging'] loop
+  foreach s in array array['support_tasks', 'support_tasks_staging', 'support_tasks_dev'] loop
     if to_regclass(s || '.app_settings') is null then continue; end if;
     execute format($q$insert into %I.app_settings (key, value) values
       ('announcement', '""'), ('announcement_type', '"normal"'), ('announcement_expires_at', '""')
@@ -27,7 +27,7 @@ create or replace function pg_temp.check_announcement_type() returns table (ال
 language plpgsql as $f$
 declare s text;
 begin
-  foreach s in array array['support_tasks', 'support_tasks_staging'] loop
+  foreach s in array array['support_tasks', 'support_tasks_staging', 'support_tasks_dev'] loop
     if to_regclass(s || '.app_settings') is not null then
       return query execute format($q$select %L::text, key, value from %I.app_settings where key like 'announcement%%' order by key$q$, s, s);
     end if;

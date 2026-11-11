@@ -1,6 +1,9 @@
 // =====================================================================
 //  refresh-staging — «تحديث بيانات التجربة من الإنتاج» (Supabase Edge Function)
-//  تُنشر في مشروع التجربة فقط. الإنتاج مشروع Supabase مستقل، فالنسخ يتم عبر الإنترنت:
+//  تُنشر في مشروع التجربة فقط. الإنتاج مشروع Supabase مستقل، فالنسخ يتم عبر الإنترنت.
+//  نفس الكود يُنشر مرتين، والسكيما الهدف تُعرف من اسم الدالة:
+//    refresh-staging  ← support_tasks_staging  (التجربة)
+//    refresh-dev      ← support_tasks_dev      (التطوير)
 //
 //    1) تتحقق أن الطالب مدير نظام مفعّل في التجربة
 //    2) تدخل الإنتاج بحساب «مزامنة» دوره «مشاهد» (قراءة فقط، والقاعدة تمنعه من أي تعديل)
@@ -25,7 +28,14 @@
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const STG = "support_tasks_staging";
+// السكيما الهدف في هذا الطلب (انظر targetFor)
+let STG = "support_tasks_staging";
+let ALT = "p";    // بادئة البريد الداخلي البديل عند تعارض البريد في المشروع
+function targetFor(req: Request) {
+  const path = new URL(req.url).pathname;
+  if (path.includes("refresh-dev")) return { schema: "support_tasks_dev", alt: "d" };
+  return { schema: "support_tasks_staging", alt: "p" };
+}
 const PROD = "support_tasks";
 const INTERNAL_DOMAIN = "tasks.internal";
 const PW_FLOOR = 6;
@@ -166,7 +176,7 @@ async function refresh(body: Record<string, unknown>, callerId: string) {
       const fromNo = mode === "login_no" && u.login_no && u.login_no.length >= min ? u.login_no : "";
       let pw = mode === "same" ? shared : fromNo || shared;
       try {
-        let id: string, finalEmail = email || `p-${u.id}@${INTERNAL_DOMAIN}`;
+        let id: string, finalEmail = email || `${ALT}-${u.id}@${INTERNAL_DOMAIN}`;
         if (match) {
           id = match.id;
           used.add(id);
@@ -182,7 +192,9 @@ async function refresh(body: Record<string, unknown>, callerId: string) {
           let user;
           try { user = await stg("/auth/v1/admin/users", { method: "POST", body: JSON.stringify({ email: finalEmail, password: pw, email_confirm: true }) }); }
           catch {
-            finalEmail = `p-${u.id}@${INTERNAL_DOMAIN}`;           // البريد مستخدم في التجربة لحساب بلا ملف
+            // البريد مستخدم في المشروع لحساب آخر (حساب في التجربة، أو بلا ملف): بريد داخلي بديل
+            // التطوير يستخدم بادئة مختلفة (d-) حتى لا يتعارض مع حسابات التجربة في نفس المشروع
+            finalEmail = `${ALT}-${u.id}@${INTERNAL_DOMAIN}`;
             user = await stg("/auth/v1/admin/users", { method: "POST", body: JSON.stringify({ email: finalEmail, password: pw, email_confirm: true }) });
           }
           id = user.id;
@@ -211,6 +223,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
   try {
+    ({ schema: STG, alt: ALT } = targetFor(req));
     const callerId = await requireAdmin(req);
     const body = await req.json().catch(() => ({}));
     return json(await refresh(body, callerId));

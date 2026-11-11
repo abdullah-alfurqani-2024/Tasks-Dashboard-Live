@@ -14,7 +14,7 @@ do $do$
 declare
   s text;
 begin
-  foreach s in array array['support_tasks', 'support_tasks_staging'] loop
+  foreach s in array array['support_tasks', 'support_tasks_staging', 'support_tasks_dev'] loop
     if to_regclass(s || '.tasks') is null then continue; end if;
     if not exists (select 1 from information_schema.columns where table_schema = s and table_name = 'tasks' and column_name = 'review_reasons') then
       raise exception 'نفّذ 10_review.sql أولاً (السكيما %)', s;
@@ -132,5 +132,5 @@ end $do$;
 -- التحقق: يجب أن يظهر سطران بالقيمة YES
 select table_schema, column_name, is_nullable
 from information_schema.columns
-where table_name = 'tasks' and column_name = 'received_date' and table_schema in ('support_tasks', 'support_tasks_staging')
+where table_name = 'tasks' and column_name = 'received_date' and table_schema in ('support_tasks', 'support_tasks_staging', 'support_tasks_dev')
 order by table_schema;

@@ -15,7 +15,7 @@ const pwRules = () => normalizeSettings(state.settings || {});
 // حساب «مزامنة التجربة» يُحدَّد في الإنتاج (والوضع التجريبي)، فنسخة التجربة لا تحتاجه
 const SYNC_ON = isDemo || CONFIG.env === 'production';
 const syncId = () => (SYNC_ON ? pwRules().syncUserId : '');
-const SYNC_SECRET_NOTE = 'كلمة مروره يجب أن تطابق السر PROD_SYNC_PASSWORD في مشروع التجربة (Tasks-Test ← Edge Functions ← Secrets)، وإلا يتوقف «تحديث بيانات التجربة من الإنتاج».';
+const SYNC_SECRET_NOTE = 'كلمة مروره يجب أن تطابق السر PROD_SYNC_PASSWORD في مشروع التجربة (Tasks-Test ← Edge Functions ← Secrets)، وإلا يتوقف «تحديث البيانات من الإنتاج» في التجربة والتطوير.';
 
 const ROLE_HELP = {
   admin: 'كل الصلاحيات: المستخدمون، الإعدادات، الحذف والاستعادة، الاستيراد.',
@@ -64,7 +64,7 @@ export default async function users(ctx, main) {
   let list = [];
   let q = '';
   // الدخول بحساب مستخدم آخر: نسخة التجربة (والوضع التجريبي) فقط
-  const canActAs = isDemo || CONFIG.env === 'staging';
+  const canActAs = isDemo || CONFIG.isTest;
   const columns = [
     { key: 'fullName', label: 'الاسم', render: (u) => html`<b>${u.fullName}</b>${u.id === state.user.id ? html` <span class="badge info">أنت</span>` : ''}${u.id === syncId() ? html` <span class="badge warn" title="يُستثنى من «كلمات المرور للكل»">مزامنة التجربة</span>` : ''}${u.shortName ? html`<div class="small muted">${u.shortName}</div>` : ''}` },
     { key: 'loginNo', label: 'الرقم', cls: 'num', render: (u) => (u.loginNo ? html`<span class="ltr">${u.loginNo}</span>` : html`<span class="badge bad">بلا رقم</span>`) },
@@ -123,7 +123,7 @@ export default async function users(ctx, main) {
           <label class="check"><input type="checkbox" name="isActive" ${u.isActive ? 'checked' : ''} ${self ? 'disabled' : ''}> نشط (يستطيع الدخول)</label>
           ${self ? html`<span class="hint">لا يمكنك تغيير دورك أو تعطيل حسابك بنفسك.</span>` : ''}</div>`}
         ${SYNC_ON && !isNew && !self ? html`<div class="field span-2"><label class="check"><input type="checkbox" name="isSync" ${u.id === syncId() ? 'checked' : ''} ${u.role !== 'viewer' ? 'disabled' : ''}> حساب مزامنة التجربة</label>
-          <span class="hint" id="u-sync-hint">${u.role === 'viewer' ? `الحساب الذي يقرأ به زر «تحديث بيانات التجربة من الإنتاج». يُستثنى من «كلمات المرور للكل». ${SYNC_SECRET_NOTE}` : 'متاح لدور «مشاهد» فقط.'}</span></div>` : ''}
+          <span class="hint" id="u-sync-hint">${u.role === 'viewer' ? `الحساب الذي يقرأ به زر «تحديث البيانات من الإنتاج» في التجربة والتطوير. يُستثنى من «كلمات المرور للكل». ${SYNC_SECRET_NOTE}` : 'متاح لدور «مشاهد» فقط.'}</span></div>` : ''}
         <div class="alert bad span-2" data-err hidden></div>
       </form>`,
       footer: html`<button class="btn btn-primary" data-save>${icon('check')}${isNew ? 'إضافة' : 'حفظ'}</button><button class="btn" data-x>إلغاء</button>`,
@@ -254,7 +254,7 @@ export default async function users(ctx, main) {
     if (!u) return;
     const ok = await confirmBox({
       title: 'الدخول بحساب مستخدم',
-      message: `ستتصفح نسخة التجربة بحساب «${u.fullName}» بنفس صلاحياته، دون معرفة كلمة مروره ودون تغييرها، ولن يلاحظ ذلك. للعودة اضغط «العودة لحسابي» في الشريط أعلى الصفحة.`,
+      message: `ستتصفح نسخة ${CONFIG.envName} بحساب «${u.fullName}» بنفس صلاحياته، دون معرفة كلمة مروره ودون تغييرها، ولن يلاحظ ذلك. للعودة اضغط «العودة لحسابي» في الشريط أعلى الصفحة.`,
       okText: 'الدخول بحسابه',
     });
     if (!ok) return;
@@ -289,7 +289,7 @@ export default async function users(ctx, main) {
         if (isSync) {
           const done = modal({
             title: 'تغيّرت كلمة مرور حساب المزامنة', size: 'sm',
-            body: html`<p style="margin-top:0">الخطوة التالية: ضع كلمة المرور نفسها في <b>Tasks-Test ← Edge Functions ← Secrets</b> في السر <span class="ltr">PROD_SYNC_PASSWORD</span>، وإلا يتوقف «تحديث بيانات التجربة من الإنتاج».</p>
+            body: html`<p style="margin-top:0">الخطوة التالية: ضع كلمة المرور نفسها في <b>Tasks-Test ← Edge Functions ← Secrets</b> في السر <span class="ltr">PROD_SYNC_PASSWORD</span>، وإلا يتوقف «تحديث البيانات من الإنتاج» في التجربة والتطوير.</p>
               <pre class="input" style="white-space:pre-wrap;direction:ltr;min-height:0;font:inherit">${pw}</pre>`,
             footer: html`<button class="btn btn-primary" data-copy>${icon('copy')}نسخ</button><button class="btn" data-x>تم</button>`,
           });

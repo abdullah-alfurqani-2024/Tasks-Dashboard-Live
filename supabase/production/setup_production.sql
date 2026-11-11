@@ -589,7 +589,7 @@ do $$
 declare
   s text;
 begin
-  foreach s in array array['support_tasks', 'support_tasks_staging'] loop
+  foreach s in array array['support_tasks', 'support_tasks_staging', 'support_tasks_dev'] loop
     if to_regclass(s || '.profiles') is null then continue; end if;
 
     execute format('alter table %I.profiles add column if not exists login_no text', s);
@@ -672,7 +672,7 @@ do $do$
 declare
   s text;
 begin
-  foreach s in array array['support_tasks', 'support_tasks_staging'] loop
+  foreach s in array array['support_tasks', 'support_tasks_staging', 'support_tasks_dev'] loop
     if to_regclass(s || '.tasks') is null then continue; end if;
 
     execute format('alter table %I.tasks add column if not exists review_reasons text[]', s);
@@ -749,7 +749,7 @@ do $do$
 declare
   s text;
 begin
-  foreach s in array array['support_tasks', 'support_tasks_staging'] loop
+  foreach s in array array['support_tasks', 'support_tasks_staging', 'support_tasks_dev'] loop
     if to_regclass(s || '.tasks') is null then continue; end if;
     if not exists (select 1 from information_schema.columns where table_schema = s and table_name = 'tasks' and column_name = 'review_reasons') then
       raise exception 'نفّذ 10_review.sql أولاً (السكيما %)', s;
@@ -867,7 +867,7 @@ end $do$;
 -- التحقق: يجب أن يظهر سطران بالقيمة YES
 select table_schema, column_name, is_nullable
 from information_schema.columns
-where table_name = 'tasks' and column_name = 'received_date' and table_schema in ('support_tasks', 'support_tasks_staging')
+where table_name = 'tasks' and column_name = 'received_date' and table_schema in ('support_tasks', 'support_tasks_staging', 'support_tasks_dev')
 order by table_schema;
 
 
@@ -887,7 +887,7 @@ do $do$
 declare
   s text;
 begin
-  foreach s in array array['support_tasks', 'support_tasks_staging'] loop
+  foreach s in array array['support_tasks', 'support_tasks_staging', 'support_tasks_dev'] loop
     if to_regclass(s || '.tasks') is null then continue; end if;
     if not exists (select 1 from information_schema.columns where table_schema = s and table_name = 'tasks' and column_name = 'review_reasons') then
       raise exception 'نفّذ 10_review.sql و 11_import_as_is.sql أولاً (السكيما %)', s;
@@ -1043,7 +1043,7 @@ end $do$;
 -- التحقق: يجب أن يظهر سطران بالقيمة true
 select n.nspname as السكيما, position('entered_by' in p.prosrc) > 0 as محدّثة
 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-where p.proname = 'tasks_audit' and n.nspname in ('support_tasks', 'support_tasks_staging')
+where p.proname = 'tasks_audit' and n.nspname in ('support_tasks', 'support_tasks_staging', 'support_tasks_dev')
 order by 1;
 
 
@@ -1061,7 +1061,7 @@ do $do$
 declare
   s text;
 begin
-  foreach s in array array['support_tasks', 'support_tasks_staging'] loop
+  foreach s in array array['support_tasks', 'support_tasks_staging', 'support_tasks_dev'] loop
     if to_regclass(s || '.tasks') is null then continue; end if;
 
     execute format($q$alter table %I.tasks add column if not exists priority text not null default 'normal'$q$, s);
@@ -1120,7 +1120,7 @@ do $do$
 declare
   s text;
 begin
-  foreach s in array array['support_tasks', 'support_tasks_staging'] loop
+  foreach s in array array['support_tasks', 'support_tasks_staging', 'support_tasks_dev'] loop
     if to_regclass(s || '.app_settings') is null then continue; end if;
     execute format($q$insert into %I.app_settings (key, value) values ('announcement', '""') on conflict (key) do nothing$q$, s);
   end loop;
@@ -1131,7 +1131,7 @@ create or replace function pg_temp.check_announcement() returns table (السك�
 language plpgsql as $f$
 declare s text;
 begin
-  foreach s in array array['support_tasks', 'support_tasks_staging'] loop
+  foreach s in array array['support_tasks', 'support_tasks_staging', 'support_tasks_dev'] loop
     if to_regclass(s || '.app_settings') is not null then
       return query execute format('select %L::text, value from %I.app_settings where key = %L', s, s, 'announcement');
     end if;
@@ -1157,7 +1157,7 @@ do $do$
 declare
   s text;
 begin
-  foreach s in array array['support_tasks', 'support_tasks_staging'] loop
+  foreach s in array array['support_tasks', 'support_tasks_staging', 'support_tasks_dev'] loop
     if to_regclass(s || '.app_settings') is null then continue; end if;
     execute format($q$insert into %I.app_settings (key, value) values
       ('announcement', '""'), ('announcement_type', '"normal"'), ('announcement_expires_at', '""')
@@ -1170,7 +1170,7 @@ create or replace function pg_temp.check_announcement_type() returns table (ال
 language plpgsql as $f$
 declare s text;
 begin
-  foreach s in array array['support_tasks', 'support_tasks_staging'] loop
+  foreach s in array array['support_tasks', 'support_tasks_staging', 'support_tasks_dev'] loop
     if to_regclass(s || '.app_settings') is not null then
       return query execute format($q$select %L::text, key, value from %I.app_settings where key like 'announcement%%' order by key$q$, s, s);
     end if;

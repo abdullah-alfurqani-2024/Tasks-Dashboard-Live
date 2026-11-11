@@ -208,3 +208,7 @@ figure.mobile img { width: 46mm; margin: 0 auto; }
 
 .page-break { break-after: page; }
 td.ltr, th.ltr { display: table-cell; direction: ltr; text-align: right; }
+/* نسخة التطوير (1.21.0) */
+.arch .box.d { border-top: 3px solid #0f766e; }
+.flow .step.d { border-top-color: #0f766e; }
+.flow .step.d .n { background: #0f766e; }
