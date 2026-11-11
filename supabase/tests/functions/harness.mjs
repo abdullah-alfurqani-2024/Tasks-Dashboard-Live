@@ -7,7 +7,7 @@ globalThis.Deno = {
 };
 
 const auth = new Map();          // id -> { email, password, banned }
-const db = { support_tasks: [], support_tasks_staging: [] }; // profiles
+const db = { support_tasks: [], support_tasks_staging: [], support_tasks_dev: [] }; // profiles
 let seq = 0;
 const links = new Map();         // hashed_token -> user id
 const J = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -234,5 +234,19 @@ r = await call('admin', 'admin-users-staging', { action: 'impersonate', id: 'sho
 ok('الدخول بحسابه: حساب دخول موقوف', r.status === 400 && /معطّل/.test(r.body.error), JSON.stringify(r));
 r = await call('admin', 'admin-users-staging', { action: 'impersonate', id: 'nobody' }, T);
 ok('الدخول بحسابه: مستخدم غير موجود', r.status === 404);
+
+// 11) نسخة التطوير: نفس الكود بأسماء -dev، وسكيما مستقلة عن التجربة
+auth.set('dev1', { email: 'dev1@x.om', password: 'pw-dev1' });
+db.support_tasks_dev.push({ id: 'dev1', email: 'dev1@x.om', role: 'engineer', is_active: true, login_no: null, full_name: 'مهندس' });
+db.support_tasks_staging.push({ id: 'dev1', email: 'dev1@x.om', role: 'engineer', is_active: true, login_no: null, full_name: 'مهندس' });
+r = await call('admin', 'admin-users-dev', { action: 'update', id: 'dev1', login_no: '4242', full_name: 'مهندس التطوير', short_name: '' }, T);
+ok('التطوير: التعديل في سكيما التطوير', r.status === 200 && prof('support_tasks_dev', 'dev1').login_no === '4242', JSON.stringify(r));
+ok('التطوير: التجربة لم تتأثر', prof('support_tasks_staging', 'dev1').full_name === 'مهندس' && !prof('support_tasks_staging', 'dev1').login_no);
+r = await call('login', 'auth-login-dev', { login: '4242', password: 'pw-dev1' });
+ok('التطوير: الدخول بالرقم من سكيما التطوير', r.status === 200 && r.body.access_token === 'tok-dev1', JSON.stringify(r));
+r = await call('login', 'auth-login-staging', { login: '4242', password: 'pw-dev1' });
+ok('التطوير: رقم التطوير لا يعمل في التجربة', r.status === 400);
+r = await call('admin', 'admin-users-dev', { action: 'impersonate', id: 'dev1' }, T);
+ok('التطوير: الدخول بحساب مستخدم متاح', r.status === 200 && r.body.session.access_token === 'tok-dev1', JSON.stringify(r));
 
 console.log(`\n${pass} ناجح، ${fail} فاشل`);

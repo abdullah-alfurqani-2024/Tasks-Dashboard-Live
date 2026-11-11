@@ -84,7 +84,7 @@ function renderChrome() {
     mount(banner, html`وضع تجريبي: البيانات وهمية ومحفوظة في متصفحك فقط. لربط قاعدة البيانات اكتب بيانات Supabase في <span class="ltr">js/config.js</span>.`);
   } else if (CONFIG.envLabel) {
     banner.hidden = false;
-    banner.classList.add('env-staging');
+    banner.classList.add(CONFIG.env === 'dev' ? 'env-dev' : 'env-staging');
     mount(banner, html`${CONFIG.envLabel}`);
   }
   // إعلان مدير النظام: يُخفيه المستخدم لهذا الإعلان فقط، ويعود عند إعلان جديد

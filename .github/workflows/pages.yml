@@ -1,21 +1,25 @@
 # =====================================================================
-#  نشر الموقع: الإنتاج والتجربة معاً من مستودع واحد (GitHub Pages)
+#  نشر الموقع: الإنتاج والتجربة والتطوير معاً من مستودع واحد (GitHub Pages)
 #
 #    الفرع main     ← الإنتاج  https://abdullah-alfurqani-2024.github.io/Tasks-Dashboard-Live/
 #    الفرع staging  ← التجربة  https://abdullah-alfurqani-2024.github.io/Tasks-Dashboard-Live/test/
+#    الفرع dev      ← التطوير  https://abdullah-alfurqani-2024.github.io/Tasks-Dashboard-Live/dev/
 #
-#  يعمل تلقائياً عند أي رفع أو دمج في أحد الفرعين، فينشر الفرعين معاً بآخر نسخة من كل منهما.
+#  يعمل تلقائياً عند أي رفع أو دمج في أحد الفروع، فينشر الفروع الثلاثة معاً بآخر نسخة من كل منها.
 #  ويمكن تشغيله يدوياً: Actions ← نشر الموقع ← Run workflow.
 #
 #  مرة واحدة في الإعدادات:
 #    Settings ← Pages ← Source: GitHub Actions
-#    Settings ← Environments ← github-pages ← Deployment branches: أضف staging بجانب main
+#    Settings ← Environments ← github-pages ← Deployment branches: أضف staging و dev بجانب main
+#
+#  تنبيه: GitHub يشغّل نسخة هذا الملف الموجودة في الفرع الذي رُفع إليه. فلا يُعدَّل إلا في staging
+#  (ثم ينتقل إلى dev و main)، وخطوة «حماية» أدناه توقف أي نشر من dev لو اختلف الملف فيه عن staging.
 # =====================================================================
-name: نشر الموقع (الإنتاج والتجربة)
+name: نشر الموقع (الإنتاج والتجربة والتطوير)
 
 on:
   push:
-    branches: [main, staging]
+    branches: [main, staging, dev]
   workflow_dispatch:
 
 permissions:
@@ -49,13 +53,28 @@ jobs:
           ref: staging
           path: site/test
 
+      - name: التطوير (الفرع dev) في المجلد dev
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          path: site/dev
+
+      - name: حماية — ملف النشر في dev يجب أن يطابق staging
+        if: github.ref_name == 'dev'
+        run: |
+          if ! cmp -s site/dev/.github/workflows/pages.yml site/test/.github/workflows/pages.yml; then
+            echo "::error::ملف النشر في الفرع dev يختلف عن staging — أُوقف النشر حتى لا يتأثر الإنتاج والتجربة. عدّل الملف في staging فقط."
+            exit 1
+          fi
+
       - name: تجهيز الموقع
         run: |
-          rm -rf site/.git site/.github site/test/.git site/test/.github
+          rm -rf site/.git site/.github site/test/.git site/test/.github site/dev/.git site/dev/.github
           # التوثيق (ومنه سجل التطوير PDF) يبقى في المستودع فقط ولا يُنشر في الموقع
-          rm -rf site/docs site/test/docs
+          rm -rf site/docs site/test/docs site/dev/docs
           echo "الإنتاج: $(grep -o '"version": *"[^"]*"' site/version.json)"
           echo "التجربة: $(grep -o '"version": *"[^"]*"' site/test/version.json)"
+          echo "التطوير: $(grep -o '"version": *"[^"]*"' site/dev/version.json)"
 
       - uses: actions/configure-pages@v5
 

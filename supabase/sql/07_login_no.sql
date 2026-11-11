@@ -12,7 +12,7 @@ do $$
 declare
   s text;
 begin
-  foreach s in array array['support_tasks', 'support_tasks_staging'] loop
+  foreach s in array array['support_tasks', 'support_tasks_staging', 'support_tasks_dev'] loop
     if to_regclass(s || '.profiles') is null then continue; end if;
 
     execute format('alter table %I.profiles add column if not exists login_no text', s);

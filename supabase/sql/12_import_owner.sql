@@ -13,7 +13,7 @@ do $do$
 declare
   s text;
 begin
-  foreach s in array array['support_tasks', 'support_tasks_staging'] loop
+  foreach s in array array['support_tasks', 'support_tasks_staging', 'support_tasks_dev'] loop
     if to_regclass(s || '.tasks') is null then continue; end if;
     if not exists (select 1 from information_schema.columns where table_schema = s and table_name = 'tasks' and column_name = 'review_reasons') then
       raise exception 'نفّذ 10_review.sql و 11_import_as_is.sql أولاً (السكيما %)', s;
@@ -169,5 +169,5 @@ end $do$;
 -- التحقق: يجب أن يظهر سطران بالقيمة true
 select n.nspname as السكيما, position('entered_by' in p.prosrc) > 0 as محدّثة
 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-where p.proname = 'tasks_audit' and n.nspname in ('support_tasks', 'support_tasks_staging')
+where p.proname = 'tasks_audit' and n.nspname in ('support_tasks', 'support_tasks_staging', 'support_tasks_dev')
 order by 1;

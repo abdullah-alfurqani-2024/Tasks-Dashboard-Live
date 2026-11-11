@@ -1,13 +1,15 @@
 /**
  * إعدادات النظام
  *
- * نسختان من نفس الكود في مستودع واحد، ويعرف النظام نسخته من رابط الموقع تلقائياً:
+ * ثلاث نسخ من نفس الكود في مستودع واحد، ويعرف النظام نسخته من رابط الموقع تلقائياً:
  *   الإنتاج  ← abdullah-alfurqani-2024.github.io/Tasks-Dashboard-Live/        (الفرع main)
  *   التجربة  ← abdullah-alfurqani-2024.github.io/Tasks-Dashboard-Live/test/   (الفرع staging)
+ *   التطوير  ← abdullah-alfurqani-2024.github.io/Tasks-Dashboard-Live/dev/    (الفرع dev: التعديلات الجذرية)
  *             وأي رابط آخر (جهاز المطوّر…) يُعامل كتجربة
+ *   المسار يُفحص قبل النطاق: /dev/ و/test/ لا يمكن أن تُعامل كإنتاج أبداً
  * فلا يلزم تعديل هذا الملف عند نقل تحديث من التجربة إلى الإنتاج.
  *
- * لكل نسخة مشروع Supabase مستقل (حسابات دخول وكلمات مرور مستقلة تماماً).
+ * الإنتاج في مشروع Supabase مستقل. التجربة والتطوير في مشروع Tasks-Test، كل منهما في سكيما مستقلة.
  *
  * backend:
  *   'supabase' ← قاعدة البيانات الحقيقية
@@ -37,22 +39,38 @@ const ENVIRONMENTS = {
     loginFunction: 'auth-login-staging',
     refreshFunction: 'refresh-staging',    // نسخ بيانات الإنتاج إلى التجربة (دالة في مشروع التجربة)
   },
+  dev: {
+    hosts: [],
+    label: 'نسخة التطوير — للتعديلات الجذرية قبل التجربة، والبيانات ليست بيانات القسم الحقيقية',
+    url: 'https://iwawaoweyldzqtuyzbyt.supabase.co',                 // نفس مشروع التجربة (Tasks-Test)
+    anonKey: 'sb_publishable_il_y9CA-Zc18ioM2WDZ8mg_TaOieIyN',
+    schema: 'support_tasks_dev',           // سكيما مستقلة عن التجربة
+    adminFunction: 'admin-users-dev',
+    loginFunction: 'auth-login-dev',
+    refreshFunction: 'refresh-dev',
+  },
 };
 
 const host = typeof location !== 'undefined' ? location.hostname : '';
 const path = typeof location !== 'undefined' ? location.pathname : '';
-// التجربة منشورة داخل موقع الإنتاج في المجلد /test/ فنفرّق بالمسار أيضاً
+// التجربة والتطوير منشورتان داخل موقع الإنتاج في /test/ و/dev/: المسار أولاً ثم النطاق
+const underDev = /\/dev(\/|$)/.test(path);
 const underTest = /\/test(\/|$)/.test(path);
-const envName = ENVIRONMENTS.production.hosts.includes(host) && !underTest ? 'production' : 'staging';
+const envName = underDev ? 'dev'
+  : !underTest && ENVIRONMENTS.production.hosts.includes(host) ? 'production'
+  : 'staging';
 const env = ENVIRONMENTS[envName];
+const ENV_NAMES = { production: 'الإنتاج', staging: 'التجربة', dev: 'التطوير' };
 
 export const CONFIG = {
   appName: 'نظام مهام الدعم الفني والصيانة',
   orgName: 'قسم الدعم الفني والصيانة',
-  env: envName,                 // 'production' | 'staging'
-  envLabel: env.label,          // شريط يظهر أعلى الصفحة في نسخة التجربة
-  // النسختان على نفس الموقع: لكل نسخة مفاتيح تخزين مستقلة في المتصفح (جلسة الدخول والفلاتر)
-  storagePrefix: envName === 'production' ? 'tsk.' : 'tsk.stg.',
+  env: envName,                 // 'production' | 'staging' | 'dev'
+  envName: ENV_NAMES[envName],  // الاسم العربي للنسخة
+  isTest: envName !== 'production',   // التجربة والتطوير: أدوات التجربة متاحة (الدخول بحساب، نسخ البيانات، الحذف بلا قفل)
+  envLabel: env.label,          // شريط يظهر أعلى الصفحة في نسختي التجربة والتطوير
+  // النسخ على نفس الموقع: لكل نسخة مفاتيح تخزين مستقلة في المتصفح (جلسة الدخول والفلاتر)
+  storagePrefix: { production: 'tsk.', staging: 'tsk.stg.', dev: 'tsk.dev.' }[envName],
   backend: 'supabase',
   supabase: {
     url: env.url,

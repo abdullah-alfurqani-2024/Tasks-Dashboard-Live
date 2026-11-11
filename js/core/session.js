@@ -43,6 +43,7 @@ export async function stopActing() {
 }
 
 export function setTitle(t) {
-  const base = CONFIG.env === 'staging' ? `[تجربة] ${CONFIG.appName}` : CONFIG.appName;
+  const tag = { staging: '[تجربة] ', dev: '[تطوير] ' }[CONFIG.env] || '';
+  const base = `${tag}${CONFIG.appName}`;
   document.title = t ? `${t} — ${base}` : base;
 }

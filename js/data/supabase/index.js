@@ -4,6 +4,7 @@
 import { createClient, ApiError } from './client.js';
 import { normalizeSettings } from '../../core/settings.js';
 import { latinDigits as latin } from '../../core/format.js';
+import { CONFIG } from '../../config.js';
 
 const TASK_COLS = 'id,engineer_id,engineer_name,engineer_short,ref_no,requester,employee_name,subject,received_date,completed_date,notes,task_type_id,task_type,correspondence_type_id,correspondence_type,status_id,status,status_kind,delay_reason,duration_days,created_at,created_by,updated_at,updated_by,deleted_at,deleted_by,review_reasons,priority';
 const LOOKUP_TABLES = { taskTypes: 'task_types', correspondenceTypes: 'correspondence_types', statuses: 'task_statuses' };
@@ -64,7 +65,7 @@ export function createAdapter(config) {
     if (!uid) return null;
     const rows = await c.select('profiles', { id: `eq.${uid}`, select: '*' });
     if (!rows.length) {
-      if (c.acting) { c.stopActing(); throw new ApiError('المستخدم غير موجود في نسخة التجربة.'); }
+      if (c.acting) { c.stopActing(); throw new ApiError(`المستخدم غير موجود في نسخة ${CONFIG.envName}.`); }
       await c.signOut();
       throw new ApiError('حسابك غير مسجّل في النظام. تواصل مع مدير النظام.');
     }
@@ -75,7 +76,7 @@ export function createAdapter(config) {
       me.mustChangePassword = false;
     }
     if (!me.isActive) {
-      if (c.acting) { c.stopActing(); throw new ApiError('هذا الحساب معطّل في نسخة التجربة.'); }
+      if (c.acting) { c.stopActing(); throw new ApiError(`هذا الحساب معطّل في نسخة ${CONFIG.envName}.`); }
       await c.signOut();
       throw new ApiError('هذا الحساب معطّل. تواصل مع مدير النظام.');
     }
@@ -102,7 +103,7 @@ export function createAdapter(config) {
         return loadMe();
       },
       async signOut() { me = null; await c.signOut(); },
-      /** التجربة فقط: التصفح بحساب مستخدم آخر دون كلمة مروره */
+      /** التجربة والتطوير فقط: التصفح بحساب مستخدم آخر دون كلمة مروره */
       async actAs(id) {
         const r = await c.invoke(fn, { action: 'impersonate', id });
         c.startActing(r.session);
@@ -244,7 +245,7 @@ export function createAdapter(config) {
     },
 
     maintenance: {
-      /** نسخة التجربة فقط: نسخ بيانات الإنتاج (مشروع مستقل) إلى التجربة عبر دالة refresh-staging
+      /** نسختا التجربة والتطوير فقط: نسخ بيانات الإنتاج (مشروع مستقل) إليها عبر دالة refresh-staging أو refresh-dev
        *  o: { mode: 'login_no'|'same', password, force } */
       async refreshFromProduction(o = {}) {
         const r = await c.invoke(config.supabase.refreshFunction || 'refresh-staging', { mode: o.mode, password: o.password || undefined, force: !!o.force });

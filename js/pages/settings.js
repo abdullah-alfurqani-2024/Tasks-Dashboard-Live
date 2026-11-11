@@ -28,8 +28,9 @@ export default async function settings(ctx, main) {
   const s = await db.settings.load();
   state.settings = s;
   const root = newPage(main);
-  // التجربة (على Supabase): الحذف متاح دائماً. الإنتاج والوضع التجريبي: يحتاج إعداد «السماح بحذف كل المهام» ونسخة احتياطية
-  const guarded = isDemo || CONFIG.env !== 'staging';
+  // التجربة والتطوير (على Supabase): الحذف متاح دائماً. الإنتاج والوضع التجريبي: يحتاج إعداد «السماح بحذف كل المهام» ونسخة احتياطية
+  const guarded = isDemo || !CONFIG.isTest;
+  const N = CONFIG.envName;
   mount(root, html`
     ${pageHead({ title: 'الإعدادات' })}
     <div class="grid grid-2">
@@ -58,7 +59,7 @@ export default async function settings(ctx, main) {
         <div class="card-head"><h2>معلومات النظام</h2></div>
         <div class="card-pad stack small">
           <div>الإصدار: <b class="ltr">${VERSION}</b></div>
-          <div>النسخة: <b>${CONFIG.env === 'production' ? 'الإنتاج' : 'التجربة'}</b></div>
+          <div>النسخة: <b>${CONFIG.envName}</b></div>
           <div>قاعدة البيانات: <b class="ltr">${backendName}</b>${isDemo ? ' (تجريبي — داخل المتصفح)' : html` · السكيما <span class="ltr">${CONFIG.supabase.schema}</span>`}</div>
           ${!isDemo ? html`<div>الخادم: <span class="ltr">${CONFIG.supabase.url}</span></div>` : ''}
           <div>المنطقة الزمنية: <span class="ltr">${CONFIG.timeZone}</span></div>
@@ -66,14 +67,14 @@ export default async function settings(ctx, main) {
           ${isDemo ? html`<div><button class="btn btn-danger" data-reset>${icon('restore')}إعادة البيانات التجريبية</button></div>` : ''}
         </div>
       </div>
-      ${CONFIG.env === 'staging' && db.maintenance?.refreshFromProduction ? html`
+      ${CONFIG.isTest && db.maintenance?.refreshFromProduction ? html`
       <div class="card span-2">
-        <div class="card-head"><h2>بيانات نسخة التجربة</h2></div>
+        <div class="card-head"><h2>بيانات نسخة ${N}</h2></div>
         <div class="card-pad stack">
-          <p style="margin:0">يستبدل كل بيانات التجربة بنسخة حديثة من الإنتاج: المستخدمون، والقوائم، والإعدادات، وكل المهام.
-            ما أضفته أو عدّلته هنا للتجربة سيُحذف. <b>بيانات الإنتاج لا تتغير</b> (تُقرأ فقط).
-            حسابات الدخول في التجربة مستقلة عن الإنتاج، وتختار كلمات مرورها عند كل تحديث.</p>
-          <div><button class="btn btn-primary" data-refresh>${icon('download')}تحديث بيانات التجربة من الإنتاج</button></div>
+          <p style="margin:0">يستبدل كل بيانات ${N} بنسخة حديثة من الإنتاج: المستخدمون، والقوائم، والإعدادات، وكل المهام.
+            ما أضفته أو عدّلته هنا سيُحذف. <b>بيانات الإنتاج لا تتغير</b> (تُقرأ فقط).
+            حسابات الدخول في ${N} مستقلة عن الإنتاج، وتختار كلمات مرورها عند كل تحديث.</p>
+          <div><button class="btn btn-primary" data-refresh>${icon('download')}تحديث بيانات ${N} من الإنتاج</button></div>
           <div class="small muted" data-refresh-result></div>
         </div>
       </div>` : ''}
@@ -108,7 +109,7 @@ export default async function settings(ctx, main) {
           ${guarded
             ? html`<p style="margin:0">يحذف <b>نهائياً</b> كل المهام وسجل تعديلاتها، لتستورد ملف Excel من جديد.
               قبل الحذف يُنزَّل إلى جهازك ملف Excel بكل المهام الحالية (نسخة احتياطية). المستخدمون والقوائم والإعدادات تبقى كما هي.</p>`
-            : html`<p style="margin:0">يحذف <b>نهائياً</b> كل مهام نسخة التجربة وسجل تعديلاتها، لتستورد الملف من جديد. لا يمكن التراجع.
+            : html`<p style="margin:0">يحذف <b>نهائياً</b> كل مهام نسخة ${N} وسجل تعديلاتها، لتستورد الملف من جديد. لا يمكن التراجع.
               المستخدمون والقوائم والإعدادات تبقى كما هي، و<b>الإنتاج لا يتأثر</b>.</p>`}
           <div><button class="btn btn-danger" data-purge>${icon('trash')}حذف كل المهام</button></div>
           <div class="small muted" data-purge-off hidden>موقوف: فعّل «السماح بحذف كل المهام» في «قواعد العمل» ثم احفظ.</div>
@@ -181,10 +182,10 @@ export default async function settings(ctx, main) {
   $('[data-refresh]', root)?.addEventListener('click', () => {
     const min = state.settings?.minPasswordLength || 6;
     const m = modal({
-      title: 'تحديث بيانات التجربة من الإنتاج',
+      title: `تحديث بيانات ${N} من الإنتاج`,
       body: html`<form class="stack" novalidate>
-        <div class="alert warn">ستُستبدل كل بيانات التجربة (المستخدمون والقوائم والإعدادات والمهام وسجلها) بنسخة من الإنتاج. الإنتاج يُقرأ فقط.</div>
-        <div class="field"><span class="label">كلمات مرور التجربة (عدا حسابك أنت)</span>
+        <div class="alert warn">ستُستبدل كل بيانات ${N} (المستخدمون والقوائم والإعدادات والمهام وسجلها) بنسخة من الإنتاج. الإنتاج يُقرأ فقط.</div>
+        <div class="field"><span class="label">كلمات مرور ${N} (عدا حسابك أنت)</span>
           <label class="check"><input type="radio" name="mode" value="login_no" checked> الرقم المدني/الوظيفي لكل مستخدم</label>
           <label class="check"><input type="radio" name="mode" value="same"> كلمة مرور موحدة للجميع</label>
           <input class="input ltr" style="display:block;text-align:left" name="password" minlength="${min}" placeholder="كلمة المرور الموحدة" aria-label="كلمة المرور الموحدة">
@@ -210,7 +211,7 @@ export default async function settings(ctx, main) {
         m.close();
         const out = $('[data-refresh-result]', root);
         mount(out, html`آخر تحديث: ${fmtDateTime(r.at)} — ${r.users} مستخدم (${r.created || 0} جديد)، ${r.tasks} مهمة.
-          ${r.deactivated ? html`<br>عُطّل ${r.deactivated} من مستخدمي التجربة لا نظير لهم في الإنتاج.` : ''}
+          ${r.deactivated ? html`<br>عُطّل ${r.deactivated} من مستخدمي ${N} لا نظير لهم في الإنتاج.` : ''}
           ${r.skippedTasks ? html`<br>لم تُنسخ ${r.skippedTasks} مهمة (مهندسها غير موجود).` : ''}
           ${r.notes?.length ? html`<div class="alert warn small" style="margin-top:6px">${r.notes.map((x) => html`<div>${x.name} — ${x.note}</div>`)}</div>` : ''}`);
         toast(`تم نسخ ${r.tasks} مهمة و${r.users} مستخدماً من الإنتاج.`, 'ok');
@@ -232,7 +233,7 @@ export default async function settings(ctx, main) {
       body: html`<form class="stack" novalidate>
         <div class="alert bad">${guarded
           ? html`ستُحذف كل المهام وسجل تعديلاتها <b>نهائياً</b>. سيُنزَّل أولاً ملف Excel بالمهام الحالية، احتفظ به.`
-          : html`ستُحذف كل مهام نسخة التجربة وسجل تعديلاتها <b>نهائياً</b>، ولا يمكن استعادتها.`}</div>
+          : html`ستُحذف كل مهام نسخة ${N} وسجل تعديلاتها <b>نهائياً</b>، ولا يمكن استعادتها.`}</div>
         <div class="field"><label for="purge-confirm">للتأكيد اكتب «${WORD}»</label>
           <input class="input" id="purge-confirm" name="confirm" autocomplete="off"></div>
         <div class="alert bad" data-err hidden></div></form>`,

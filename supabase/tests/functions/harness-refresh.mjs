@@ -68,15 +68,15 @@ globalThis.fetch = async (url, init = {}) => {
   }
   if (u.pathname === '/rest/v1/app_settings') return J([{ value: 6 }]);
   if (u.pathname === '/rest/v1/rpc/apply_production_snapshot') {
-    snapshot = body.p;
+    snapshot = body.p; snapshot.__schema = h['content-profile'];
     return J({ users: body.p.users.length, tasks: body.p.tasks.length, skipped_tasks: 0, deactivated: 0, at: 'now' });
   }
   throw new Error('unmocked ' + method + ' ' + url);
 };
 
 await import('./.build/refresh-staging.mjs');
-const call = async (body, token = 'tok-s-admin') => {
-  const res = await handler(new Request('https://stg.test/functions/v1/refresh-staging', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify(body) }));
+const call = async (body, token = 'tok-s-admin', fn = 'refresh-staging') => {
+  const res = await handler(new Request(`https://stg.test/functions/v1/${fn}`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify(body) }));
   return { status: res.status, body: await res.json() };
 };
 let pass = 0, fail = 0;
@@ -109,6 +109,19 @@ const before = stgAuth.size;
 r = await call({ mode: 'same', password: 'Unified99', force: true });
 ok('تشغيل ثانٍ: لا حسابات جديدة مكررة', stgAuth.size === before, `${before} -> ${stgAuth.size}`);
 ok('تشغيل ثانٍ: كلمة موحدة للجميع عدا المنفّذ', stgAuth.get('s-eng').password === 'Unified99' && stgAuth.get('s-admin').password === 'my-own-pw');
+
+ok('التجربة تكتب في سكيما التجربة', snapshot.__schema === 'support_tasks_staging', snapshot.__schema);
+
+// نسخة التطوير: نفس الكود باسم refresh-dev يكتب في سكيما التطوير، وبريد بديل d- حتى لا يتعارض مع التجربة
+stgProfiles = [{ id: 's-admin', email: 'boss@x.om', login_no: '1001', source_id: null, role: 'admin', is_active: true }];
+const authBefore = new Map([...stgAuth].map(([k, v]) => [k, { ...v }]));
+r = await call({ mode: 'same', password: 'DevPass99', force: false }, 'tok-s-admin', 'refresh-dev');
+ok('التطوير: النسخ ينجح ويكتب في سكيما التطوير', r.status === 200 && snapshot.__schema === 'support_tasks_dev', JSON.stringify(r).slice(0, 200));
+const devNew = snapshot.users.find((x) => x.source_id === 'p-new');
+ok('التطوير: بريد بديل d- عند التعارض مع حسابات التجربة', devNew && /^d-/.test(devNew.email), devNew && devNew.email);
+ok('التطوير: حسابات التجربة لم تتغير كلمات مرورها', [...authBefore].every(([k, v]) => k === 's-admin' || stgAuth.get(k).password === v.password));
+stgProfiles = snapshot.users.map((x) => ({ id: x.id, email: x.email, login_no: x.login_no, source_id: x.source_id, role: x.role, is_active: true }));
+r = await call({ mode: 'same', password: 'Unified99' });
 
 // حساب المزامنة ليس مشاهداً
 prod.users.find((x) => x.id === 'p-sync').role = 'head';

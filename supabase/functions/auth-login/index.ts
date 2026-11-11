@@ -11,6 +11,7 @@
 //  نفس الكود يُنشر مرتين، والسكيما تُعرف من اسم الدالة:
 //    auth-login          ← support_tasks          (الإنتاج)
 //    auth-login-staging  ← support_tasks_staging  (التجربة)
+//    auth-login-dev      ← support_tasks_dev      (التطوير، في نفس مشروع التجربة)
 //
 //  لا يستخدم أي مكتبة: fetch مباشرة إلى واجهات Supabase
 // =====================================================================
@@ -30,6 +31,7 @@ const json = (body: unknown, status = 200) =>
 function schemaFor(req: Request) {
   const path = new URL(req.url).pathname;
   if (path.includes("auth-login-staging")) return "support_tasks_staging";
+  if (path.includes("auth-login-dev")) return "support_tasks_dev";
   if (path.includes("auth-login")) return "support_tasks";
   return "";
 }
