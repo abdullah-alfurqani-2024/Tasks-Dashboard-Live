@@ -5,6 +5,8 @@
 #                                  في staging و dev تتقدّم العلامة مع الحفظ اللاحق بنفس الرقم (توثيق، إصلاح دالة…).
 #                                  في main لا تتحرك علامة موجودة أبداً (فالتراجع Revert لا يغيّرها).
 #   tag-versions.sh backfill       مرة واحدة: علامات كل الإصدارات السابقة من تاريخ الفروع الثلاثة.
+#                                  ما يرفضه GitHub يُتخطّى ويُذكر في النهاية (من 1.14.0 إلى 1.20.0: حفظها يحمل نسخة قديمة من
+#                                  ملف النشر، وصلاحية Actions لا تنشئ مرجعاً كهذا). معرّفاتها في docs/RELEASE.md.
 # لا يحذف أي علامة، ولا يحرّك علامة إلى حفظ ليس بعدها.
 set -euo pipefail
 
@@ -25,7 +27,10 @@ make_tag() { # make_tag <رقم> <حفظ> <يسمح بالتقدّم 0/1>
     else echo "= $t (باقية على $(git rev-parse --short "$cur"))"; fi
   else
     git tag -a "$t" -m "$(subject_of "$v" "$c")" "$c"
-    git push -q origin "refs/tags/$t"; echo "+ $t على $(git rev-parse --short "$c")"
+    if ! git push -q origin "refs/tags/$t" 2>/tmp/tag-push.err; then
+      git tag -d "$t" >/dev/null; echo "✗ $t على $(git rev-parse --short "$c"): $(grep -o 'refusing[^)]*' /tmp/tag-push.err || tail -1 /tmp/tag-push.err)"; return 1
+    fi
+    echo "+ $t على $(git rev-parse --short "$c")"
   fi
 }
 
@@ -40,6 +45,9 @@ case "${1:-}" in
     for c in $(git rev-list --topo-order --reverse --no-merges "${refs[@]}"); do
       v=$(ver_at "$c"); [ -n "$v" ] && last[$v]=$c
     done
-    for v in "${!last[@]}"; do echo "$v ${last[$v]}"; done | sort -V | while read -r v c; do make_tag "$v" "$c" 0; done ;;
+    skipped=()
+    while read -r v c; do make_tag "$v" "$c" 0 || skipped+=("v$v")
+    done < <(for v in "${!last[@]}"; do echo "$v ${last[$v]}"; done | sort -V)
+    if [ ${#skipped[@]} -gt 0 ]; then echo "::warning::علامات لم تُنشأ (رفضها GitHub، عددها ${#skipped[@]}): ${skipped[*]}"; fi ;;
   *) echo "الاستخدام: tag-versions.sh push <الفرع> | backfill"; exit 1 ;;
 esac
