@@ -1,0 +1,42 @@
+# =====================================================================
+#  علامات الإصدارات (Tags): v1.21.0، v2.0.0-dev.1 … في المستودع نفسه
+#
+#  تلقائياً بعد كل رفع إلى main أو staging أو dev: علامة لرقم الإصدار في version.json إن لم توجد.
+#  ومرة واحدة يدوياً (Actions ← علامات الإصدارات ← Run workflow): علامات كل الإصدارات السابقة.
+#
+#  المنطق كله في tools/tag-versions.sh. لا علاقة له بالنشر ولا بالموقع،
+#  والعلامات التي يضعها لا تشغّل أي ملف آخر. لا يحتاج أي سر: يكفيه صلاحية الكتابة في هذا المستودع.
+# =====================================================================
+name: علامات الإصدارات
+
+on:
+  push:
+    branches: [main, staging, dev]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tags
+  cancel-in-progress: false
+
+jobs:
+  tags:
+    if: github.repository == 'abdullah-alfurqani-2024/Tasks-Dashboard-Live'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: العلامات
+        run: |
+          git fetch -q origin '+refs/heads/*:refs/remotes/origin/*' --tags
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            bash tools/tag-versions.sh backfill
+          else
+            bash tools/tag-versions.sh push "${{ github.ref_name }}"
+          fi
