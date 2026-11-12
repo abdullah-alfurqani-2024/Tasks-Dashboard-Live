@@ -8,7 +8,7 @@
 //      (السابق كان يعمل فقط عند كتابة خلية الموضوع وحدها).
 //   2. كل صف يأخذ تاريخاً لا يتكرر في نفس الملف (فارق ثانية على الأقل).
 //   3. الصف المنسوخ من مهمة سابقة بتاريخ إدخالها يأخذ تاريخاً جديداً، فلا تتشابه مهمتان.
-//   4. يكتب تاريخاً ووقتاً حقيقيين (لا نصاً) بتوقيت الملف نفسه.
+//   4. يكتب تاريخاً ووقتاً حقيقيين (لا نصاً) بتوقيت الملف نفسه، ولا يغيّر تنسيق العمود.
 //   5. شبكة أمان كل ساعة تكمل الناقص وتصلح التكرار في كل الملفات، مع سجل.
 //
 //  الدوال التي تُشغَّل يدوياً (من المحرر: اختر الدالة ثم Run):
@@ -29,7 +29,9 @@ var ENTRY = {
   SUBJECT_COL: 6,            // F الموضوع
   RECEIVED_COL: 7,           // G تاريخ الاستقبال
   ENTRY_COL: 15,             // O تاريخ الإدخال
-  FORMAT: 'yyyy-mm-dd hh:mm:ss',
+  // تنسيق العرض: فارغ = لا يمس التنسيق، فيبقى تنسيق العمود الذي وضعته أنت (مثل 12-Nov-2026 - 19:25:16).
+  // لو أردت أن يفرض السكربت تنسيقاً على الخلايا التي يكتبها: 'dd-mmm-yyyy" - "hh:mm:ss'
+  FORMAT: '',
   // اختياري: معرّف ملف (مثل الملف الرئيسي) تُكتب فيه ورقة «سجل_تاريخ_الإدخال». فارغ = سجل المحرر فقط.
   LOG_FILE_ID: '',
   LOG_SHEET: 'سجل_تاريخ_الإدخال'
@@ -217,8 +219,8 @@ function entryFixRows_(sheet, r1, r2, mode) {
     var b = a;
     while (b + 1 < changed.length && changed[b + 1] === changed[b] + 1) b++;
     var block = ent.slice(changed[a], changed[b] + 1);
-    sheet.getRange(ENTRY.FIRST_ROW + changed[a], ENTRY.ENTRY_COL, block.length, 1)
-      .setValues(block).setNumberFormat(ENTRY.FORMAT);
+    var out = sheet.getRange(ENTRY.FIRST_ROW + changed[a], ENTRY.ENTRY_COL, block.length, 1).setValues(block);
+    if (ENTRY.FORMAT) out.setNumberFormat(ENTRY.FORMAT);
     a = b + 1;
   }
   return { filled: filled, fixed: fixed };
