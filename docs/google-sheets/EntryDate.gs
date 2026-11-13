@@ -48,6 +48,20 @@ var ENTRY = {
 // ---------------------------------------------------------------------
 function onEditHandler(e) {
   if (!e || !e.range) return;
+  try {
+    entryOnEdit_(e);
+  } catch (err) {
+    // يظهر الخطأ ملاحظةً على خلية تاريخ الإدخال في الصف نفسه، فلا حاجة لفتح Executions
+    try {
+      var row = Math.max(e.range.getRow(), ENTRY.FIRST_ROW);
+      e.range.getSheet().getRange(row, ENTRY.ENTRY_COL)
+        .setNote('تعذّر كتابة تاريخ الإدخال (' + new Date() + '):\n' + err.message);
+    } catch (ignore) {}
+    throw err;
+  }
+}
+
+function entryOnEdit_(e) {
   var r = e.range;
   // يخرج فوراً إن لم يشمل التعديل أعمدة الإدخال ولا عمود تاريخ الإدخال
   var c1 = r.getColumn(), c2 = r.getLastColumn();
