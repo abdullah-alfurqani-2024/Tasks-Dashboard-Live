@@ -250,8 +250,10 @@ function entryFixRows_(sheet, r1, r2, mode) {
   }
 
   // آخر تاريخ أعطاه السكربت لهذا الملف (حتى لو مُسح لاحقاً): لا يُعطى نفسه مرة أخرى أبداً
-  var props = PropertiesService.getScriptProperties(), propKey = 'entryLast_' + sheet.getParent().getId();
-  var lastIssued = Number(props.getProperty(propKey)) || 0;
+  // (يحتاج صلاحية «خصائص السكربت»: إن لم تُمنح بعد، يكمل الكتابة دونها ولا يتوقف)
+  var props = null, propKey = 'entryLast_' + sheet.getParent().getId(), lastIssued = 0;
+  try { props = PropertiesService.getScriptProperties(); lastIssued = Number(props.getProperty(propKey)) || 0; }
+  catch (err) { props = null; Logger.log('خصائص السكربت غير متاحة (شغّل أي دالة يدوياً ووافق على الصلاحيات): ' + err.message); }
   var changed = [], filled = 0, fixed = 0, cleared = 0, next = Math.max(nowMs, maxMs + 1000, lastIssued + 1000), issued = 0;
   var recvNext = {}; // لكل يوم استقبال: آخر ثانية استُعملت
   var used = {}; keys.forEach(function (x) { if (x) used[x] = true; });
@@ -276,7 +278,7 @@ function entryFixRows_(sheet, r1, r2, mode) {
     changed.push(j);
     if (need === 'fill') filled++; else fixed++;
   }
-  if (issued) props.setProperty(propKey, String(issued));
+  if (issued && props) { try { props.setProperty(propKey, String(issued)); } catch (err) { Logger.log(err.message); } }
   // كتابة الخلايا المتغيرة فقط (متجاورة دفعة واحدة)
   for (var a = 0; a < changed.length; ) {
     var b = a;
