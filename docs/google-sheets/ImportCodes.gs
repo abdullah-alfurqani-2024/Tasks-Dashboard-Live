@@ -5,7 +5,7 @@
 //
 //  الفكرة:
 //   - ورقة Report في ملف الاستيراد تُبنى من جديد في كل تشغيل كما كانت (صورة من الملف الرئيسي)،
-//     مع عمود جديد في آخرها: «رمز المهمة».
+//     مرتبة تنازلياً حسب تاريخ الاستقبال (مثل Looker)، مع عمود جديد في آخرها: «رمز المهمة».
 //   - الرموز محفوظة في ورقة دائمة «سجل_الرموز» في ملف الاستيراد، لا في Report، فلا تضيع عند إعادة البناء.
 //   - هوية المهمة = رمز المهندس + تاريخ الإدخال (يكتبه EntryDate.gs في ملفات المهندسين).
 //     وإن تغيّرت كتابة اسم مهندس، يُعرف من تواريخ إدخال مهامه فيبقى رمزه ورموز مهامه.
@@ -235,7 +235,18 @@ function codesWriteReport_(ctx, res) {
   var last = d.getLastRow();
   if (last >= row0) d.getRange(row0, col0, last - row0 + 1, w).clearContent();
   if (ctx.rows.length) {
+    var c = ctx.col;
     var out = ctx.rows.map(function (r, i) { return r.concat([ctx.codes[i]]); });
+    // ترتيب تنازلي حسب تاريخ الاستقبال (مثل Looker)، ثم تاريخ الإدخال، ثم ترتيب المصدر. بلا تاريخ استقبال في الآخر
+    var order = out.map(function (r, i) { return { r: r, i: i, rec: codesMs_(r[c.received]), ent: codesMs_(r[c.entry]) }; });
+    order.sort(function (a, b) {
+      var ra = a.rec || -Infinity, rb = b.rec || -Infinity;
+      if (ra !== rb) return rb > ra ? 1 : -1;
+      var ea = a.ent || -Infinity, eb = b.ent || -Infinity;
+      if (ea !== eb) return eb > ea ? 1 : -1;
+      return a.i - b.i;
+    });
+    out = order.map(function (o) { return o.r; });
     d.getRange(row0, col0, out.length, w).setValues(out);
   }
   if (row0 > 1) {
@@ -288,7 +299,11 @@ function codesKey_(v, tz) {
   return s;
 }
 
-function codesMs_(v) { return v instanceof Date ? v.getTime() : 0; }
+function codesMs_(v) {
+  if (v instanceof Date) return v.getTime();
+  var m = String(v || '').trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0)) : 0;
+}
 function codesNorm_(v) { return String(v === null || v === undefined ? '' : v).replace(/\s+/g, ' ').trim(); }
 function codesPad_(n, w) { n = String(n); while (n.length < w) n = '0' + n; return n; }
 function codesColLetter_(n) { var s = ''; while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - m - 1) / 26; } return s; }
