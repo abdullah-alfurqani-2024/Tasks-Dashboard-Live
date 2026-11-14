@@ -43,9 +43,9 @@ var CODES = {
   REQUIRED: ['engineer', 'entry', 'subject', 'received']
 };
 
-var REG_HEAD = ['رمز المهمة', 'رمز المهندس', 'اسم المهندس', 'تاريخ الإدخال', 'البصمة', 'أول ظهور', 'آخر ظهور', 'الحالة', 'ملاحظة'];
-var R = { code: 0, engCode: 1, eng: 2, entry: 3, print: 4, first: 5, last: 6, state: 7, note: 8 };
-var PRESENT = 'موجودة', MISSING = 'غير موجودة في المصدر';
+var CODES_REG_HEAD = ['رمز المهمة', 'رمز المهندس', 'اسم المهندس', 'تاريخ الإدخال', 'البصمة', 'أول ظهور', 'آخر ظهور', 'الحالة', 'ملاحظة'];
+var CODES_RC = { code: 0, engCode: 1, eng: 2, entry: 3, print: 4, first: 5, last: 6, state: 7, note: 8 };
+var CODES_PRESENT = 'موجودة', CODES_MISSING = 'غير موجودة في المصدر';
 
 // ---------------------------------------------------------------------
 function importCopyWithCodes() {
@@ -109,8 +109,8 @@ function codesLoad_() {
     return inputCols.some(function (i) { var v = row[i]; return v instanceof Date || String(v).trim() !== ''; });
   });
 
-  var reg = codesSheet_(dst, CODES.REGISTRY_SHEET, REG_HEAD);
-  var regData = reg.getLastRow() > 1 ? reg.getRange(2, 1, reg.getLastRow() - 1, REG_HEAD.length).getValues() : [];
+  var reg = codesSheet_(dst, CODES.REGISTRY_SHEET, CODES_REG_HEAD);
+  var regData = reg.getLastRow() > 1 ? reg.getRange(2, 1, reg.getLastRow() - 1, CODES_REG_HEAD.length).getValues() : [];
   var engSh = codesSheet_(dst, CODES.ENGINEERS_SHEET, ['اسم المهندس', 'رمز المهندس']);
   var engData = engSh.getLastRow() > 1 ? engSh.getRange(2, 1, engSh.getLastRow() - 1, 2).getValues() : [];
 
@@ -141,10 +141,10 @@ function codesAssign_(ctx) {
   // السجل: فهرس بالهوية (رمز المهندس + تاريخ الإدخال)، وبالبصمة لما لا تاريخ له، وآخر تسلسل لكل مهندس
   var byId = {}, byPrint = {}, byEntry = {}, maxSeq = {}, claimed = {};
   ctx.regData.forEach(function (r, i) {
-    var ec = String(r[R.engCode]).trim(), k = codesKey_(r[R.entry], tz);
+    var ec = String(r[CODES_RC.engCode]).trim(), k = codesKey_(r[CODES_RC.entry], tz);
     if (k) { byId[ec + '|' + k] = i; (byEntry[k.replace(/#\d+$/, '')] = byEntry[k.replace(/#\d+$/, '')] || []).push(ec); }
-    else (byPrint[ec + '|' + r[R.print]] = byPrint[ec + '|' + r[R.print]] || []).push(i);
-    var m = String(r[R.code]).match(/^(.+)-(\d+)$/);
+    else (byPrint[ec + '|' + r[CODES_RC.print]] = byPrint[ec + '|' + r[CODES_RC.print]] || []).push(i);
+    var m = String(r[CODES_RC.code]).match(/^(.+)-(\d+)$/);
     if (m) maxSeq[m[1]] = Math.max(maxSeq[m[1]] || 0, parseInt(m[2], 10));
   });
 
@@ -189,7 +189,7 @@ function codesAssign_(ctx) {
       // مهمة سُجّلت سابقاً بلا تاريخ إدخال ثم أُكمل تاريخها: تُعرف من بصمتها
       if (regIdx === undefined || claimed[regIdx]) {
         var cand = (byPrint[ec + '|' + print] || []).filter(function (i) { return !claimed[i]; });
-        if (cand.length) { regIdx = cand[0]; ctx.regData[regIdx][R.entry] = id; ctx.regData[regIdx][R.note] = ''; res.adopted++; }
+        if (cand.length) { regIdx = cand[0]; ctx.regData[regIdx][CODES_RC.entry] = id; ctx.regData[regIdx][CODES_RC.note] = ''; res.adopted++; }
       }
     } else {
       res.noEntry++;
@@ -199,9 +199,9 @@ function codesAssign_(ctx) {
     if (regIdx !== undefined && !claimed[regIdx]) {
       claimed[regIdx] = true;
       var r = ctx.regData[regIdx];
-      if (r[R.state] !== PRESENT) { res.back.push(r[R.code]); r[R.note] = ''; }
-      r[R.last] = ctx.now; r[R.state] = PRESENT; r[R.print] = print; r[R.eng] = String(row[col.engineer]).trim();
-      codes[idx] = r[R.code];
+      if (r[CODES_RC.state] !== CODES_PRESENT) { res.back.push(r[CODES_RC.code]); r[CODES_RC.note] = ''; }
+      r[CODES_RC.last] = ctx.now; r[CODES_RC.state] = CODES_PRESENT; r[CODES_RC.print] = print; r[CODES_RC.eng] = String(row[col.engineer]).trim();
+      codes[idx] = r[CODES_RC.code];
       res.kept++;
     } else {
       fresh.push({ idx: idx, ec: ec, id: id, print: print, ms: codesMs_(row[col.entry]) });
@@ -214,7 +214,7 @@ function codesAssign_(ctx) {
     maxSeq[f.ec] = (maxSeq[f.ec] || 0) + 1;
     var code = f.ec + '-' + codesPad_(maxSeq[f.ec], CODES.SEQ_DIGITS);
     var row = ctx.rows[f.idx];
-    ctx.regData.push([code, f.ec, String(row[col.engineer]).trim(), f.id, f.print, ctx.now, ctx.now, PRESENT, f.id ? '' : 'بلا تاريخ إدخال']);
+    ctx.regData.push([code, f.ec, String(row[col.engineer]).trim(), f.id, f.print, ctx.now, ctx.now, CODES_PRESENT, f.id ? '' : 'بلا تاريخ إدخال']);
     claimed[ctx.regData.length - 1] = true;
     codes[f.idx] = code;
     res.added.push(code);
@@ -222,7 +222,7 @@ function codesAssign_(ctx) {
 
   // ما اختفى من المصدر في هذا التشغيل
   ctx.regData.forEach(function (r, i) {
-    if (!claimed[i] && r[R.state] === PRESENT) { r[R.state] = MISSING; r[R.note] = 'اختفت ' + Utilities.formatDate(ctx.now, tz, 'yyyy-MM-dd HH:mm'); res.missing.push(r[R.code]); }
+    if (!claimed[i] && r[CODES_RC.state] === CODES_PRESENT) { r[CODES_RC.state] = CODES_MISSING; r[CODES_RC.note] = 'اختفت ' + Utilities.formatDate(ctx.now, tz, 'yyyy-MM-dd HH:mm'); res.missing.push(r[CODES_RC.code]); }
   });
 
   ctx.codes = codes;
@@ -258,7 +258,7 @@ function codesWriteReport_(ctx, res) {
 }
 
 function codesSaveRegistry_(ctx) {
-  if (ctx.regData.length) ctx.reg.getRange(2, 1, ctx.regData.length, REG_HEAD.length).setValues(ctx.regData);
+  if (ctx.regData.length) ctx.reg.getRange(2, 1, ctx.regData.length, CODES_REG_HEAD.length).setValues(ctx.regData);
   if (ctx.engData.length) ctx.engSh.getRange(2, 1, ctx.engData.length, 2).setValues(ctx.engData);
 }
 
