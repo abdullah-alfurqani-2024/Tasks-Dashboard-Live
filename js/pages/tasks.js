@@ -29,6 +29,8 @@ const QUICK = [
   { key: 'review', label: 'تحتاج مراجعة', color: 'var(--warn)', set: { review: '1' }, count: (s, rows) => rows.filter((t) => t.reviewReasons?.length).length },
 ];
 const QUICK_KEYS = ['status', 'priority', 'review'];
+/** رمز مهمة كامل في البحث (بعد normalizeAr: حروف صغيرة): a08-0177 أو a08-s0001 أو s-00001 */
+const CODE_RE = /^([a-z]+\d+-s?\d+|s-\d+)$/;
 const quickOf = (F) => QUICK.find((c) => QUICK_KEYS.every((k) => (F[k] || '') === (c.set[k] || '')));
 
 export default async function tasksPage(ctx, main) {
@@ -73,7 +75,7 @@ export default async function tasksPage(ctx, main) {
         <select class="input" id="f-prio" name="priority">${options([['urgent', 'العاجلة فقط']], F.priority, 'الكل')}</select></div>
       <div class="field"><label for="f-review">المراجعة</label>
         <select class="input" id="f-review" name="review">${options([['1', 'تحتاج مراجعة فقط']], F.review, 'الكل')}</select></div>
-      <div class="field wide"><label for="f-q">بحث</label>${searchBox(F.q, 'الموضوع، الجهة، الموظف، رقم القيد…', 'f-q')}</div>
+      <div class="field wide"><label for="f-q">بحث</label>${searchBox(F.q, 'الرمز، الموضوع، الجهة، الموظف، رقم القيد…', 'f-q')}</div>
       <div class="btns"><button type="button" class="btn btn-ghost" data-act="reset" title="مسح الفلاتر">${icon('x')}مسح</button></div>
     </form>
     <div class="chips" id="chips" style="margin:14px 0"></div>
@@ -84,7 +86,8 @@ export default async function tasksPage(ctx, main) {
   let table = null;
 
   const columns = [
-    { key: 'id', label: '#', cls: 'num muted', sort: (r) => r.id },
+    { key: 'taskCode', label: 'الرمز', cls: 'num nowrap muted', sort: (r) => r.taskCode || `~${String(r.id).padStart(9, '0')}`,
+      render: (r) => html`<span title="#${r.id}">${r.taskCode || `#${r.id}`}</span>` },
     { key: 'receivedDate', label: 'الاستقبال', cls: 'nowrap num', render: (r) => fmtDate(r.receivedDate) },
     ...(viewAll ? [{ key: 'engineerName', label: 'المهندس', cls: 'nowrap', render: (r) => r.engineerShort || r.engineerName }] : []),
     { key: 'subject', label: 'الموضوع', cls: 'subject', render: (r) => html`<div class="clip">${r.priority === 'urgent' ? html`<span class="badge bad">عاجلة</span> ` : ''}${r.reviewReasons?.length ? html`<span class="badge warn" title="${r.reviewReasons.join(' | ')}">تحتاج مراجعة</span> ` : ''}${r.subject}</div>${F.review && r.reviewReasons?.length ? html`<div class="small" style="color:var(--warn)">${r.reviewReasons.join(' · ')}</div>` : ''}${r.requester || r.employeeName ? html`<div class="small muted">${[r.requester, r.employeeName].filter(Boolean).join(' · ')}</div>` : ''}` },
@@ -113,8 +116,9 @@ export default async function tasksPage(ctx, main) {
       if (F.review && !t.reviewReasons?.length) return false;
       if (F.priority === 'urgent' && t.priority !== 'urgent') return false;
       if (/^#\d+$/.test(q)) { if (t.id !== Number(q.slice(1))) return false; }
+      else if (CODE_RE.test(q)) { if ((t.taskCode || '').toLowerCase() !== q) return false; }   // رمز كامل: تطابق تام
       else if (q) {
-        const hay = normalizeAr([t.subject, t.requester, t.employeeName, t.refNo, t.notes, t.engineerName, `#${t.id}`].join(' '));
+        const hay = normalizeAr([t.taskCode, t.subject, t.requester, t.employeeName, t.refNo, t.notes, t.engineerName, `#${t.id}`].join(' '));
         if (!q.split(' ').every((w) => hay.includes(w))) return false;
       }
       return true;

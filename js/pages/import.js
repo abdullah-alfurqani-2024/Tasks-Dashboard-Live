@@ -5,11 +5,16 @@
  * لا يُفقد أي صف فيه بيانات، ولا يُغيَّر شيء من قيمه: الصف الذي فيه مشكلة (تاريخ فارغ أو غير مفهوم،
  * موضوع فارغ، مكرر محتمل…) يُستورد كما هو في الملف مع «أسباب المراجعة»، ليصلحه المهندس لاحقاً.
  * لا يمنع الاستيراد إلا اسم مهندس لا يطابق أي حساب، وعلى المدير اختيار الحساب المقابل له.
+ *
+ * رمز المهمة (عمود «رمز المهمة» من ملف الاستيراد في Google Sheets): المهمة تُعرف برمزها:
+ *   رمز جديد ← تُضاف · موجود بلا تغيير ← لا شيء · موجود وتغيّر ← تُحدَّث من الملف (إلا المعدّلة في النظام بعد
+ *   آخر استيراد إذا اختير حمايتها) · مهمته محذوفة ← لا تُستورد · مكرر في الملف ← أول صف فقط ·
+ *   صف بلا رمز ← كالسابق + «بدون رمز في الملف» (ويأخذ رمز نظام). و«تاريخ الإدخال» من الملف يُحفظ معها.
  */
 import { db } from '../data/index.js';
 import { html, mount, $, on } from '../core/dom.js';
 import { state, engineers, loadReference, refreshReviewCount } from '../core/store.js';
-import { parseDate, normalizeAr, fmtDate, num, today } from '../core/format.js';
+import { parseDate, parseDateTime, normalizeAr, latinDigits, fmtDate, fmtDateTime, num, today } from '../core/format.js';
 import { parsePriority } from '../core/fields.js';
 import { setTitle } from '../core/session.js';
 import { readXlsx } from '../lib/xlsx.js';
@@ -34,7 +39,11 @@ const TARGETS = [
   { key: 'status', label: 'الحالة', aliases: ['الحالة', 'حالة المهمة'] },
   { key: 'priority', label: 'الأولوية', aliases: ['الأولوية', 'الاولوية', 'الأهمية', 'الاهمية', 'درجة الأهمية'] },
   { key: 'delayReason', label: 'سبب التأخير', aliases: ['سبب تأخير إنجاز المهمة', 'سبب التأخير'] },
+  { key: 'enteredAt', label: 'تاريخ الإدخال', aliases: ['تاريخ الإدخال'] },
+  { key: 'taskCode', label: 'رمز المهمة', aliases: ['رمز المهمة'] },
 ];
+/** رمز من Sheets (A08-0177)، لا رمز نظام (A08-S0001، S-00001) */
+const SHEETS_CODE = /^[A-Z]+[0-9]+-[0-9]+$/;
 const LOOKUP_KEYS = { taskType: 'taskTypes', correspondenceType: 'correspondenceTypes', status: 'statuses' };
 
 /** يحدد صف العناوين (أكثر صف فيه أسماء أعمدة معروفة ضمن أول 20 صفاً) */
@@ -65,10 +74,12 @@ function autoMap(header) {
 }
 
 const cellText = (v) => (v == null ? '' : typeof v === 'number' ? String(v) : String(v).trim());
+/** رمز المهمة كما في الملف: أرقام لاتينية وحروف كبيرة بلا مسافات */
+const latinCode = (v) => latinDigits(cellText(v)).toUpperCase().replace(/\s+/g, '');
 
 export default async function importPage(ctx, main) {
   setTitle('الاستيراد');
-  const S = { step: 1, fileName: '', sheets: [], sheetIdx: 0, headerRow: -1, map: {}, engineerMode: 'column', fixedEngineer: '', createMissing: true, skipDup: true, blankEngineer: '', parsed: null, alias: {}, existing: null };
+  const S = { step: 1, fileName: '', sheets: [], sheetIdx: 0, headerRow: -1, map: {}, engineerMode: 'column', fixedEngineer: '', createMissing: true, skipDup: true, protectEdited: true, blankEngineer: '', parsed: null, alias: {}, allTasks: null };
   const root = newPage(main);
   mount(root, html`
     ${pageHead({ title: 'استيراد المهام', sub: 'من ملف Excel (xlsx) أو CSV — مثل ملفات المهندسين أو الملف الرئيسي في Google Sheets بعد تنزيله.',
@@ -103,7 +114,7 @@ export default async function importPage(ctx, main) {
     try {
       if (file.size > 30 * 1024 * 1024) throw new Error('الملف كبير جداً (أكثر من 30 ميغابايت).');
       S.fileName = file.name;
-      S.alias = {}; S.existing = null;
+      S.alias = {}; S.allTasks = null;
       if (/\.csv$/i.test(file.name) || file.type === 'text/csv') {
         S.sheets = [{ name: 'CSV', rows: parseCsv(await file.text()) }];
       } else if (/\.xlsx$/i.test(file.name)) {
@@ -161,6 +172,10 @@ export default async function importPage(ctx, main) {
           <label class="check"><input type="checkbox" data-k="createMissing" ${S.createMissing ? 'checked' : ''}> إضافة قيم القوائم غير الموجودة (نوع المهمة، نوع المراسلة، الحالة) تلقائياً</label>
           <label class="check"><input type="checkbox" data-k="skipDup" ${S.skipDup ? 'checked' : ''}> عدم تكرار المهام الموجودة في النظام مسبقاً (نفس المهندس + تاريخ الاستقبال + الموضوع).
             إذا كانت المهمة موجودة مرة واحدة وتكررت في الملف مرتين، يُستورد الصف الثاني.</label>
+          ${S.map.taskCode != null ? html`<div class="alert small">
+            <b>الملف فيه «رمز المهمة»:</b> المهمة الموجودة برمزها <b>تُحدَّث من الملف</b> إذا تغيّر فيها شيء، والجديدة تُضاف، ولا تتكرر مهمة.
+            <label class="check" style="margin-top:6px"><input type="checkbox" data-k="protectEdited" ${S.protectEdited ? 'checked' : ''}>
+              حماية المهام التي عُدّلت في النظام بعد آخر استيراد: لا تُحدَّث، وتُذكر في المعاينة والتقرير لتقرر فيها.</label></div>` : ''}
           ${S.engineerMode === 'column' ? html`<div class="field" style="max-width:420px"><label for="i-blank">المهمة التي لا يوجد فيها اسم مهندس تُسند إلى</label>
             <select class="input" id="i-blank" data-k="blankEngineer">${options(engs.map((e) => ({ id: e.id, name: e.fullName, isActive: e.isActive })), S.blankEngineer, '— اختر (عند الحاجة) —')}</select>
             <span class="hint">وتظهر في «تحتاج مراجعة» ليُسندها رئيس القسم أو المدير للمهندس الصحيح.</span></div>` : ''}
@@ -178,7 +193,7 @@ export default async function importPage(ctx, main) {
   });
 
   on(root, 'change', '[data-k], [data-map], [name="engMode"]', (e, el) => {
-    if (el.dataset.map) { S.map[el.dataset.map] = el.value === '' ? undefined : Number(el.value); return; }
+    if (el.dataset.map) { S.map[el.dataset.map] = el.value === '' ? undefined : Number(el.value); if (el.dataset.map === 'taskCode') step2(); return; }
     if (el.name === 'engMode') { S.engineerMode = el.value; step2(); return; }
     const k = el.dataset.k;
     if (k === 'sheet') { S.sheetIdx = Number(el.value); prepareSheet(); step2(); }
@@ -235,16 +250,17 @@ export default async function importPage(ctx, main) {
     const defOpen = L.statuses.find((s) => s.isActive && s.kind === 'open');
     const defDone = L.statuses.find((s) => s.isActive && s.kind === 'done');
 
+    const codeCol = S.map.taskCode != null;
+    if ((S.skipDup || codeCol) && !S.allTasks) S.allTasks = await db.tasks.list({ deleted: 'include' });
     // المهام الموجودة في النظام: كم مرة توجد كل مهمة (لا نكرر الموجود، ونستورد الزائد عليه)
-    let existing = new Map();
-    if (S.skipDup) {
-      if (!S.existing) {
-        const all = await db.tasks.list({ deleted: 'include' });
-        S.existing = new Map();
-        for (const t of all) { const k = `${t.engineerId}|${t.receivedDate}|${normalizeAr(t.subject)}`; S.existing.set(k, (S.existing.get(k) || 0) + 1); }
-      }
-      existing = new Map(S.existing);
-    }
+    // existing: لكل الصفوف بلا رمز. bare: للصف الذي رمزه جديد، مقابل مهام النظام التي بلا رمز
+    // (مهام قديمة قبل الرموز: لا تتكرر، والأصل حذفها وإعادة الاستيراد)
+    const keyOf = (t) => `${t.engineerId}|${t.receivedDate}|${normalizeAr(t.subject)}`;
+    const count = (list) => { const m = new Map(); for (const t of list) m.set(keyOf(t), (m.get(keyOf(t)) || 0) + 1); return m; };
+    const existing = S.skipDup ? count(S.allTasks) : new Map();
+    const bare = S.skipDup && codeCol ? count(S.allTasks.filter((t) => !t.taskCode)) : new Map();
+    const byCode = new Map(codeCol ? S.allTasks.filter((t) => t.taskCode).map((t) => [t.taskCode.toUpperCase(), t]) : []);
+    const seenCode = new Map();   // الرمز ← سطره الأول في الملف
     const missing = { taskTypes: new Set(), correspondenceTypes: new Set(), statuses: new Set() };
     const out = [];
     const blank = [];      // صفوف فيها خلايا لكن بلا أي بيانات مهمة (مثل اسم مهندس وحده)
@@ -305,60 +321,164 @@ export default async function importPage(ctx, main) {
       let priority = parsePriority(prioRaw);
       if (!priority) { priority = 'normal'; reasons.push(`الأولوية «${prioRaw}» غير معروفة، ووُضعت «عادية»`); }
 
+      // رمز المهمة وتاريخ الإدخال من الملف
+      const code = codeCol ? latinCode(g(r, 'taskCode')) : '';
+      if (codeCol && !code) reasons.push('بدون رمز في الملف');
+      const enteredRaw = g(r, 'enteredAt');
+      const enteredAt = parseDateTime(enteredRaw);
+      if (cellText(enteredRaw) && !enteredAt) reasons.push(`تاريخ الإدخال غير مفهوم «${cellText(enteredRaw)}»`);
+
       const task = {
         engineerId: eng?.id, priority, refNo: cellText(g(r, 'refNo')), requester: cellText(g(r, 'requester')), employeeName: cellText(g(r, 'employeeName')),
         subject: subjectV, receivedDate, completedDate: completedV, notes: cellText(g(r, 'notes')), delayReason: cellText(g(r, 'delayReason')),
-        _ref: { ...ref, status },
+        taskCode: code, enteredAt, _ref: { ...ref, status },
       };
-      let exists = false;
+      const row = { line, code, task, errors, reasons, exists: false, dup: false, engName: eng?.fullName || engName, statusName: status?.name || status?.pending || '' };
       const key = eng ? `${eng.id}|${receivedDate}|${normalizeAr(subjectV)}` : '';
-      if (key && existing.get(key) > 0) { existing.set(key, existing.get(key) - 1); exists = true; }
-      out.push({ line, key, task, errors, reasons, exists, dup: false, engName: eng?.fullName || engName, statusName: status?.name || status?.pending || '' });
+      if (code && seenCode.has(code)) {
+        row.dupCode = seenCode.get(code);                    // رمز مكرر في الملف: أول صف فقط
+      } else if (code && byCode.has(code)) {
+        seenCode.set(code, line);
+        const cur = byCode.get(code);
+        if (cur.deletedAt) row.deleted = cur; else row.match = cur;
+      } else {
+        if (code) seenCode.set(code, line);
+        const pool = code ? bare : existing;                 // رمز جديد: يُقارن بمهام النظام التي بلا رمز فقط
+        if (key && !errors.length && pool.get(key) > 0) { pool.set(key, pool.get(key) - 1); row.exists = true; }
+      }
+      row.key = key;
+      out.push(row);
     });
 
     // المكرر المحتمل داخل الملف: يُستورد كله، مع علامة مراجعة على كل صفوف المجموعة
+    // (بالرموز إن وُجدت، فلا يتغير السبب بتغيّر ترتيب الصفوف بين استيراد وآخر)
     const groups = new Map();
-    for (const r of out) if (r.key && !r.exists && !r.errors.length) groups.set(r.key, [...(groups.get(r.key) || []), r]);
+    for (const r of out) if (r.key && !r.exists && !r.errors.length && !r.dupCode && !r.deleted) groups.set(r.key, [...(groups.get(r.key) || []), r]);
     for (const list of groups.values()) {
       if (list.length < 2) continue;
+      const coded = list.every((x) => x.code);
       for (const r of list) {
         r.dup = true;
-        r.reasons.push(`مكررة محتملة: نفس المهندس والتاريخ والموضوع في صفوف الملف ${list.map((x) => x.line).join('، ')}`);
+        r.reasons.push(coded ? `مكررة محتملة: نفس المهندس والتاريخ والموضوع في الرموز ${list.map((x) => x.code).join('، ')}`
+          : `مكررة محتملة: نفس المهندس والتاريخ والموضوع في صفوف الملف ${list.map((x) => x.line).join('، ')}`);
       }
     }
-    return { rows: out, missing, unknown, blank, empty };
+
+    // المهمة الموجودة برمزها: ما الذي تغيّر؟ (الملف يفوز، وأسباب المراجعة تُحسب من الملف)
+    for (const r of out) {
+      if (!r.match || r.errors.length) continue;
+      r.reasons = finalReasons(r);
+      r.diff = diffOf(r.match, r);
+      const cur = r.match;
+      r.edited = !!cur.updatedAt && Date.parse(cur.updatedAt) > Date.parse(cur.importedAt || cur.createdAt);
+      r.mode = !r.diff.length ? 'same' : S.protectEdited && r.edited ? 'protected' : 'update';
+    }
+    // مهام في النظام برموز Sheets وليست في الملف: لا تُمس، وتُذكر في التقرير
+    const inFile = new Set(out.map((r) => r.code).filter(Boolean));
+    const fixed = S.engineerMode === 'fixed' ? S.fixedEngineer : '';
+    const absent = codeCol ? S.allTasks.filter((t) => !t.deletedAt && SHEETS_CODE.test(t.taskCode || '') && !inFile.has(t.taskCode.toUpperCase()) && (!fixed || t.engineerId === fixed)) : [];
+    return { rows: out, missing, unknown, blank, empty, codeCol, absent };
+  }
+
+  /** الأسباب النهائية كما ستُحفظ (نفس «الحماية الأخيرة» في الاستيراد) */
+  function finalReasons(r) {
+    const why = [...r.reasons];
+    const st = r.task._ref.status;
+    const k = st?.kind || (st?.pending ? S.pendingKind[normalizeAr(st.pending)] : null);
+    if (k === 'done' && !r.task.completedDate && !why.some((x) => x.includes('انتهاء'))) why.push('مكتملة بدون تاريخ انتهاء');
+    if (k === 'open' && r.task.completedDate && !why.some((x) => x.includes('ولها تاريخ انتهاء'))) why.push('الحالة غير مكتملة ولها تاريخ انتهاء');
+    return why;
+  }
+
+  /** الفروق بين المهمة في النظام وصفها في الملف ← [{ label, from, to }] */
+  function diffOf(cur, r) {
+    // الأعمدة غير الموجودة في الملف لا تُقارن ولا تُغيَّر
+    const t = r.task, ref = t._ref, out = [];
+    const has = (k) => S.map[k] != null;
+    const nameOf = (x) => x?.name || x?.pending || '';
+    const add = (label, a, b, show = (v) => v || '—') => { if ((a ?? '') !== (b ?? '')) out.push({ label, from: show(a), to: show(b) }); };
+    const eng = engineers({ includeInactive: true });
+    add('المهندس', cur.engineerId, t.engineerId, (id) => eng.find((e) => e.id === id)?.fullName || '—');
+    if (has('refNo')) add('رقم القيد', cur.refNo, t.refNo);
+    if (has('requester')) add('الجهة الطالبة', cur.requester, t.requester);
+    if (has('employeeName')) add('اسم الموظف', cur.employeeName, t.employeeName);
+    add('الموضوع', cur.subject, t.subject);
+    add('تاريخ الاستقبال', cur.receivedDate, t.receivedDate, (v) => fmtDate(v) || '—');
+    if (has('completedDate')) add('تاريخ الانتهاء', cur.completedDate, t.completedDate, (v) => fmtDate(v) || '—');
+    if (has('notes')) add('الملاحظات', cur.notes, t.notes);
+    if (has('taskType')) add('نوع المهمة', cur.taskType, nameOf(ref.taskType));
+    if (has('correspondenceType')) add('نوع المراسلة', cur.correspondenceType, nameOf(ref.correspondenceType));
+    if (has('status')) add('الحالة', cur.status, nameOf(ref.status));
+    if (has('priority')) add('الأولوية', cur.priority, t.priority, (v) => ({ urgent: 'عاجلة', normal: 'عادية' }[v] || '—'));
+    if (has('delayReason')) add('سبب التأخير', cur.delayReason, t.delayReason);
+    if (t.enteredAt) add('تاريخ الإدخال', cur.enteredAt ? new Date(cur.enteredAt).toISOString() : '', new Date(t.enteredAt).toISOString(), (v) => (v ? fmtDateTime(v) : '—'));
+    add('تحتاج مراجعة', (cur.reviewReasons || []).join(' | '), r.reasons.join(' | '));
+    return out;
   }
 
   /* ───── الخطوة 3 ───── */
+  /** تقسيم الصفوف حسب ما سيحدث لكل منها */
+  function groupsOf(rows) {
+    const stop = rows.filter((r) => r.errors.length);
+    const ok = rows.filter((r) => !r.errors.length);
+    const go = ok.filter((r) => !r.exists && !r.match && !r.deleted && !r.dupCode);          // تُضاف
+    return {
+      stop, go,
+      review: go.filter((r) => r.reasons.length), dup: go.filter((r) => r.dup),
+      exists: ok.filter((r) => r.exists),
+      upd: ok.filter((r) => r.mode === 'update'), same: ok.filter((r) => r.mode === 'same'), prot: ok.filter((r) => r.mode === 'protected'),
+      deleted: ok.filter((r) => r.deleted), dupCode: ok.filter((r) => r.dupCode),
+    };
+  }
+  const resultOf = (r) => (r.errors.length ? ['تنتظر اختيار المهندس', 'bad']
+    : r.exists ? [r.code ? 'موجودة في النظام بلا رمز (لا تُستورد)' : 'موجودة في النظام مسبقاً (لا تُستورد)', '']
+    : r.dupCode ? [`رمز مكرر في الملف (الصف ${r.dupCode} يُستورد، وهذا لا)`, 'bad']
+    : r.deleted ? ['مهمتها محذوفة في النظام (لا تُستورد)', '']
+    : r.mode === 'update' ? ['تُحدَّث من الملف', 'info']
+    : r.mode === 'protected' ? ['عُدّلت في النظام بعد آخر استيراد (لا تُحدَّث)', 'warn']
+    : r.mode === 'same' ? ['بلا تغيير', '']
+    : r.reasons.length ? ['تُضاف وتحتاج مراجعة', 'warn'] : ['تُضاف', 'ok']);
+  const diffText = (r) => (r.diff || []).map((d) => `${d.label}: ${d.from} ← ${d.to}`);
+
   async function step3(btn) {
     if (S.map.subject == null || S.map.receivedDate == null) return toastError({ message: 'طابق عمودي «الموضوع» و«تاريخ الاستقبال» على الأقل.' });
     if (S.engineerMode === 'column' && S.map.engineer == null) return toastError({ message: 'طابق عمود «اسم المهندس» أو اختر مهندساً واحداً.' });
     try { S.parsed = await busy(btn, parseRows); } catch (e) { return toastError(e); }
     S.step = 3; drawSteps();
-    const { rows, missing, unknown, blank, empty } = S.parsed;
+    const { rows, missing, unknown, blank, empty, codeCol, absent } = S.parsed;
     const engOpts = engineers({ includeInactive: true }).map((e) => ({ id: e.id, name: e.fullName, isActive: e.isActive }));
-    const go = rows.filter((r) => !r.errors.length && !r.exists);
-    const review = go.filter((r) => r.reasons.length), dup = go.filter((r) => r.dup);
-    const exists = rows.filter((r) => r.exists), stop = rows.filter((r) => r.errors.length);
+    const G = groupsOf(rows);
     const total = rows.length + blank.length;
+    const sum = G.go.length + G.exists.length + blank.length + G.stop.length + G.upd.length + G.same.length + G.prot.length + G.deleted.length + G.dupCode.length;
     const miss = Object.entries(missing).filter(([, v]) => v.size);
-    const show = [...stop, ...review, ...go.filter((r) => !r.reasons.length), ...exists].slice(0, 300);
+    const show = [...G.stop, ...G.upd, ...G.prot, ...G.dupCode, ...G.deleted, ...G.review, ...G.go.filter((r) => !r.reasons.length), ...G.exists, ...G.same].slice(0, 300);
+    const chip = (n, label, color) => (n ? html`<span class="chip"><span class="dot" style="color:${color}"></span>${label} <b>${num(n)}</b></span>` : '');
+    const work = G.go.length + G.upd.length;
     mount(stepBox, html`
       <div class="card">
         <div class="card-head"><h2>المعاينة</h2><div class="actions"><button class="btn btn-sm" data-act="back">رجوع</button></div></div>
         <div class="card-pad stack">
           <div class="chips">
             <span class="chip">صفوف فيها بيانات <b>${num(total)}</b></span>
-            <span class="chip"><span class="dot" style="color:var(--ok)"></span>ستُستورد <b>${num(go.length)}</b></span>
-            <span class="chip"><span class="dot" style="color:var(--warn)"></span>منها تحتاج مراجعة <b>${num(review.length)}</b></span>
-            ${dup.length ? html`<span class="chip"><span class="dot" style="color:var(--warn)"></span>منها مكررة محتملة <b>${num(dup.length)}</b></span>` : ''}
-            ${exists.length ? html`<span class="chip"><span class="dot" style="color:var(--muted)"></span>موجودة في النظام مسبقاً <b>${num(exists.length)}</b></span>` : ''}
-            ${blank.length ? html`<span class="chip"><span class="dot" style="color:var(--muted)"></span>بلا بيانات مهمة <b>${num(blank.length)}</b></span>` : ''}
-            ${stop.length ? html`<span class="chip"><span class="dot" style="color:var(--bad)"></span>تنتظر اختيار المهندس <b>${num(stop.length)}</b></span>` : ''}
+            <span class="chip"><span class="dot" style="color:var(--ok)"></span>${codeCol ? 'جديدة تُضاف' : 'ستُستورد'} <b>${num(G.go.length)}</b></span>
+            <span class="chip"><span class="dot" style="color:var(--warn)"></span>منها تحتاج مراجعة <b>${num(G.review.length)}</b></span>
+            ${chip(G.dup.length, 'منها مكررة محتملة', 'var(--warn)')}
+            ${codeCol ? html`<span class="chip"><span class="dot" style="color:var(--info)"></span>تُحدَّث من الملف <b>${num(G.upd.length)}</b></span>` : ''}
+            ${chip(G.same.length, 'بلا تغيير', 'var(--muted)')}
+            ${chip(G.prot.length, 'عُدّلت في النظام (لا تُحدَّث)', 'var(--warn)')}
+            ${chip(G.deleted.length, 'مهمتها محذوفة في النظام', 'var(--muted)')}
+            ${chip(G.dupCode.length, 'رمز مكرر في الملف', 'var(--bad)')}
+            ${chip(G.exists.length, 'موجودة في النظام مسبقاً', 'var(--muted)')}
+            ${chip(blank.length, 'بلا بيانات مهمة', 'var(--muted)')}
+            ${chip(G.stop.length, 'تنتظر اختيار المهندس', 'var(--bad)')}
           </div>
-          <div class="small ${go.length + exists.length + blank.length + stop.length === total ? 'muted' : 'bad'}">
-            المطابقة: ${num(go.length)} ستُستورد + ${num(exists.length)} موجودة مسبقاً + ${num(blank.length)} بلا بيانات مهمة + ${num(stop.length)} تنتظر المهندس = <b>${num(total)}</b> صفاً.
+          <div class="small ${sum === total ? 'muted' : 'bad'}">
+            المطابقة: ${num(G.go.length)} ${codeCol ? 'جديدة' : 'ستُستورد'}${codeCol ? ` + ${num(G.upd.length)} تُحدَّث + ${num(G.same.length)} بلا تغيير + ${num(G.prot.length)} محمية + ${num(G.deleted.length)} محذوفة + ${num(G.dupCode.length)} رمز مكرر` : ''}
+            + ${num(G.exists.length)} موجودة مسبقاً + ${num(blank.length)} بلا بيانات مهمة + ${num(G.stop.length)} تنتظر المهندس = <b>${num(total)}</b> صفاً.
             ${empty ? html` (وتجاهلنا ${num(empty)} صفاً فارغاً تماماً)` : ''}</div>
+          ${absent?.length ? html`<div class="alert small">${num(absent.length)} مهمة في النظام برموز من Sheets <b>ليست في هذا الملف</b>، ولا تُمس. قائمتها في «تقرير الصفوف».</div>` : ''}
+          ${G.exists.some((r) => r.code) ? html`<div class="alert warn small">${num(G.exists.filter((r) => r.code).length)} صفاً برموز جديدة تطابق مهاماً في النظام <b>بلا رمز</b> (نفس المهندس والتاريخ والموضوع)، فلا تُستورد حتى لا تتكرر.
+            لربط كل المهام برموزها: احذف كل المهام من «الإعدادات» ثم استورد الملف.</div>` : ''}
           ${blank.length ? html`<div class="alert small"><b>صفوف بلا بيانات مهمة</b> (لا موضوع ولا تواريخ ولا رقم قيد ولا جهة ولا ملاحظات)، لا تُستورد:
             ${blank.slice(0, 15).map((b) => html`<div>الصف ${b.line}: ${b.text || '—'}</div>`)}${blank.length > 15 ? html`<div>… والبقية في «تقرير الصفوف»</div>` : ''}</div>` : ''}
           ${miss.length ? html`<div class="alert warn">ستُضاف هذه القيم إلى القوائم: ${miss.map(([k, v]) => html`<div><b>${{ taskTypes: 'أنواع المهام', correspondenceTypes: 'أنواع المراسلات', statuses: 'الحالات' }[k]}:</b> ${[...v].join('، ')}</div>`)}
@@ -371,37 +491,35 @@ export default async function importPage(ctx, main) {
             </div>
             <div class="row" style="margin-top:8px"><button class="btn btn-sm" data-act="recheck">${icon('restore')}إعادة الفحص</button></div>
           </div>` : ''}
-          ${stop.length && !unknown.size ? html`<div class="alert bad">${num(stop.length)} صفاً بلا اسم مهندس. اختر في «مطابقة الأعمدة» (زر رجوع) لمن تُسند.</div>` : ''}
+          ${G.stop.length && !unknown.size ? html`<div class="alert bad">${num(G.stop.length)} صفاً بلا اسم مهندس. اختر في «مطابقة الأعمدة» (زر رجوع) لمن تُسند.</div>` : ''}
           <div class="row">
-            <button class="btn btn-primary" data-act="run" ${go.length && !stop.length ? '' : 'disabled'}>${icon('upload')}استيراد ${num(go.length)} مهمة</button>
+            <button class="btn btn-primary" data-act="run" ${work && !G.stop.length ? '' : 'disabled'}>${icon('upload')}${G.upd.length
+              ? `${G.go.length ? `إضافة ${num(G.go.length)} و` : ''}تحديث ${num(G.upd.length)} مهمة` : `استيراد ${num(G.go.length)} مهمة`}</button>
             <button class="btn" data-act="report">${icon('download')}تقرير الصفوف (CSV)</button>
           </div>
-          ${stop.length ? html`<div class="small muted">الاستيراد ينتظر اختيار المهندس للصفوف أعلاه حتى لا يُترك أي صف.</div>` : ''}
+          ${G.stop.length ? html`<div class="small muted">الاستيراد ينتظر اختيار المهندس للصفوف أعلاه حتى لا يُترك أي صف.</div>` : ''}
         </div>
         <div class="table-wrap" style="max-height:60vh"><table class="table">
-          <thead><tr><th>الصف</th><th>المهندس</th><th>الموضوع</th><th>الاستقبال</th><th>الانتهاء</th><th>الحالة</th><th>النتيجة</th></tr></thead>
-          <tbody>${show.map((r) => html`<tr>
-            <td class="num muted">${r.line}</td><td class="nowrap">${r.engName}</td><td class="subject"><div class="clip">${r.task.subject}</div></td>
+          <thead><tr><th>الصف</th>${codeCol ? html`<th>الرمز</th>` : ''}<th>المهندس</th><th>الموضوع</th><th>الاستقبال</th><th>الانتهاء</th><th>الحالة</th><th>النتيجة</th></tr></thead>
+          <tbody>${show.map((r) => { const [label, cls] = resultOf(r); const why = r.errors.length ? r.errors : r.diff?.length && r.mode !== 'same' ? diffText(r) : !r.match ? r.reasons : []; return html`<tr>
+            <td class="num muted">${r.line}</td>${codeCol ? html`<td class="num nowrap">${r.code}</td>` : ''}<td class="nowrap">${r.engName}</td><td class="subject"><div class="clip">${r.task.subject}</div></td>
             <td class="num nowrap">${fmtDate(r.task.receivedDate)}</td><td class="num nowrap">${fmtDate(r.task.completedDate)}</td><td>${r.statusName}</td>
-            <td>${r.errors.length ? html`<span class="badge bad">تنتظر</span> <span class="small">${r.errors.join('، ')}</span>`
-              : r.exists ? html`<span class="badge">موجودة مسبقاً</span>`
-              : r.reasons.length ? html`<span class="badge warn">تحتاج مراجعة</span> <span class="small">${r.reasons.join('، ')}</span>`
-              : html`<span class="badge ok">جاهزة</span>`}</td></tr>`)}</tbody>
+            <td><span class="badge ${cls}">${label}</span>${why.length ? html` <span class="small">${why.join('، ')}</span>` : ''}</td></tr>`; })}</tbody>
         </table></div>
         ${rows.length > show.length ? html`<div class="table-foot">تُعرض أول ${num(show.length)} من ${num(rows.length)} صف. التفاصيل كاملة في «تقرير الصفوف».</div>` : ''}
       </div>`);
   }
-  const completedHint = () => 'مكتملة إذا كان لها تاريخ انتهاء، وإلا مفتوحة';
 
   /* ───── الخطوة 4 ───── */
   async function step4() {
-    const { rows, missing, unknown } = S.parsed;
-    const engOpts = engineers({ includeInactive: true }).map((e) => ({ id: e.id, name: e.fullName, isActive: e.isActive }));
-    const ok = rows.filter((r) => !r.errors.length && !r.exists);
+    const { rows, missing, codeCol } = S.parsed;
+    const G = groupsOf(rows);
     S.step = 4; drawSteps();
-    S.existing = null; // بعد الإدخال تتغير قائمة المكرر
+    S.allTasks = null; // بعد الكتابة تتغير المهام الموجودة
     mount(stepBox, html`<div class="card card-pad stack"><h2>جارٍ الاستيراد…</h2><div class="progress"><div id="bar"></div></div><div class="small muted" id="msg">تجهيز القوائم…</div></div>`);
     const bar = $('#bar', stepBox), msg = $('#msg', stepBox);
+    const progress = (label) => (d, total) => { bar.style.width = `${Math.round((d / total) * 100)}%`; msg.textContent = `${label}: ${num(d)} من ${num(total)}`; };
+    let n = 0, u = 0;
     try {
       // 1) إضافة القيم الناقصة في القوائم
       const L = state.lookups;
@@ -412,29 +530,47 @@ export default async function importPage(ctx, main) {
       }
       if (Object.values(missing).some((s) => s.size)) await loadReference({ force: true });
       const idOf = (kind, item) => (item?.pending ? state.lookups[kind].find((x) => normalizeAr(x.name) === normalizeAr(item.pending))?.id : item?.id) || null;
-      const list = ok.map(({ task, reasons }) => {
-        const { _ref, ...t } = task;
-        const why = [...reasons];
-        const statusId = idOf('statuses', _ref.status);
-        // حماية أخيرة: ما يخالف قواعد الإدخال لا يُغيَّر، بل يُعلَّم للمراجعة (قاعدة البيانات تقبله فقط مع أسباب المراجعة)
-        const k = state.lookups.statuses.find((x) => x.id === statusId)?.kind;
-        const completedDate = t.completedDate;
-        if (k === 'done' && !completedDate && !why.some((x) => x.includes('انتهاء'))) why.push('مكتملة بدون تاريخ انتهاء');
-        if (k === 'open' && completedDate && !why.some((x) => x.includes('ولها تاريخ انتهاء'))) why.push('الحالة غير مكتملة ولها تاريخ انتهاء');
-        return { ...t, createdBy: t.engineerId, completedDate, reviewReasons: why, taskTypeId: idOf('taskTypes', _ref.taskType), correspondenceTypeId: idOf('correspondenceTypes', _ref.correspondenceType), statusId };
+      const fromFile = (r) => {
+        const { _ref, taskCode, enteredAt, ...t } = r.task;
+        return { ...t, reviewReasons: finalReasons(r), taskTypeId: idOf('taskTypes', _ref.taskType), correspondenceTypeId: idOf('correspondenceTypes', _ref.correspondenceType), statusId: idOf('statuses', _ref.status),
+          ...(enteredAt ? { enteredAt } : {}), imported: true };
+      };
+      // 2) الجديدة على دفعات
+      const list = G.go.map((r) => ({ ...fromFile(r), createdBy: r.task.engineerId, ...(r.code ? { taskCode: r.code } : {}) }));
+      if (list.length) n = await db.tasks.bulkCreate(list, progress('الإضافة'));
+      // 3) التحديث: الأعمدة الموجودة في الملف تفوز، وغيرها يبقى كما في النظام
+      const has = (k) => S.map[k] != null;
+      const upd = G.upd.map((r) => {
+        const cur = r.match, f = fromFile(r);
+        return {
+          id: cur.id, taskCode: cur.taskCode, engineerId: f.engineerId, subject: f.subject, receivedDate: f.receivedDate,
+          refNo: has('refNo') ? f.refNo : cur.refNo, requester: has('requester') ? f.requester : cur.requester, employeeName: has('employeeName') ? f.employeeName : cur.employeeName,
+          completedDate: has('completedDate') ? f.completedDate : cur.completedDate, notes: has('notes') ? f.notes : cur.notes,
+          taskTypeId: has('taskType') ? f.taskTypeId : cur.taskTypeId, correspondenceTypeId: has('correspondenceType') ? f.correspondenceTypeId : cur.correspondenceTypeId,
+          statusId: has('status') ? f.statusId : cur.statusId, priority: has('priority') ? f.priority : cur.priority, delayReason: has('delayReason') ? f.delayReason : cur.delayReason,
+          reviewReasons: f.reviewReasons, ...(f.enteredAt ? { enteredAt: f.enteredAt } : {}), imported: true,
+        };
       });
-      // 2) إدخال المهام على دفعات
-      const n = await db.tasks.bulkCreate(list, (d, total) => { bar.style.width = `${Math.round((d / total) * 100)}%`; msg.textContent = `${num(d)} من ${num(total)}`; });
-      toast(`تم استيراد ${num(n)} مهمة.`, 'ok');
+      if (upd.length) u = await db.tasks.bulkUpdate(upd, progress('التحديث'));
+      // 4) رموز المهندسين من رموز مهامهم (لمن ليس له رمز)
+      let learned = 0;
+      if (codeCol) { try { learned = await db.users.learnEngineerCodes(); } catch { /* اختياري */ } }
+      await loadReference({ force: true });
       const nReview = list.filter((t) => t.reviewReasons.length).length;
+      toast(u && n ? `أُضيفت ${num(n)} وحُدِّثت ${num(u)} مهمة.` : u ? `حُدِّثت ${num(u)} مهمة.` : `تم استيراد ${num(n)} مهمة.`, 'ok');
       await refreshReviewCount();
-      mount(stepBox, html`<div class="card card-pad stack"><div class="alert ok">تم استيراد <b>${num(n)}</b> مهمة من «${S.fileName}»${nReview ? html`، منها <b>${num(nReview)}</b> تحتاج مراجعة` : ''}.</div>
+      mount(stepBox, html`<div class="card card-pad stack"><div class="alert ok">${u || codeCol
+        ? html`من «${S.fileName}»: أُضيفت <b>${num(n)}</b> مهمة${nReview ? html` (منها <b>${num(nReview)}</b> تحتاج مراجعة)` : ''}، وحُدِّثت <b>${num(u)}</b>.`
+        : html`تم استيراد <b>${num(n)}</b> مهمة من «${S.fileName}»${nReview ? html`، منها <b>${num(nReview)}</b> تحتاج مراجعة` : ''}.`}
+        ${learned ? html`<div class="small">وعُرف رمز ${num(learned)} مهندس من رموز مهامه (صفحة المستخدمين).</div>` : ''}</div>
         <div class="row"><a class="btn btn-primary" href="#/tasks?period=all">عرض المهام</a>
           ${nReview ? html`<a class="btn" href="#/tasks?period=all&review=1">${icon('eye')}المهام التي تحتاج مراجعة</a>` : ''}
           <button class="btn" data-act="restart">استيراد ملف آخر</button></div></div>`);
     } catch (e) {
       mount(stepBox, html`<div class="card card-pad stack"><div class="alert bad">توقف الاستيراد: ${e.message}</div>
-        <div class="small muted">الدفعات التي اكتملت قبل الخطأ حُفظت. أعد المعاينة مع خيار «عدم تكرار المهام الموجودة» لإكمال الباقي دون تكرار.</div>
+        <div class="small muted">${n || u ? `اكتمل قبل الخطأ: ${num(n)} إضافة و${num(u)} تحديث، وحُفظت. ` : ''}${codeCol
+          ? 'أعد المعاينة واستورد الملف نفسه لإكمال الباقي: المهام تُعرف برموزها فلا تتكرر.'
+          : 'الدفعات التي اكتملت قبل الخطأ حُفظت. أعد المعاينة مع خيار «عدم تكرار المهام الموجودة» لإكمال الباقي دون تكرار.'}</div>
         <div class="row"><button class="btn" data-act="back">رجوع للمطابقة</button></div></div>`);
     }
   }
@@ -448,16 +584,18 @@ export default async function importPage(ctx, main) {
     else if (a === 'run') step4();
     else if (a === 'report') {
       // كل صف في الملف ونتيجته: للتأكد أن لا شيء ضاع
-      const { rows, blank } = S.parsed;
-      const res = (r) => (r.errors.length ? 'تنتظر اختيار المهندس' : r.exists ? 'موجودة في النظام مسبقاً (لا تُستورد)' : r.reasons.length ? 'تُستورد وتحتاج مراجعة' : 'تُستورد');
+      const { rows, blank, absent = [] } = S.parsed;
+      const detail = (r) => [...r.errors, ...(r.match ? diffText(r) : r.reasons)].join(' | ');
       const all = [
-        ...rows.map((r) => [r.line, res(r), r.engName, r.task.subject, fmtDate(r.task.receivedDate), fmtDate(r.task.completedDate), [...r.errors, ...r.reasons].join(' | ')]),
-        ...blank.map((b) => [b.line, 'بلا بيانات مهمة (لا تُستورد)', '', '', '', '', b.text]),
+        ...rows.map((r) => [r.line, r.code, resultOf(r)[0], r.engName, r.task.subject, fmtDate(r.task.receivedDate), fmtDate(r.task.completedDate), detail(r)]),
+        ...blank.map((b) => [b.line, '', 'بلا بيانات مهمة (لا تُستورد)', '', '', '', '', b.text]),
       ].sort((x, y) => x[0] - y[0]);
-      downloadBlob(toCsv([['الصف', 'النتيجة', 'المهندس', 'الموضوع', 'الاستقبال', 'الانتهاء', 'التفاصيل'], ...all]), `import-report_${today()}.csv`);
+      const out = absent.map((t) => ['', t.taskCode, 'في النظام وليست في الملف (لا تُمس)', t.engineerName, t.subject, fmtDate(t.receivedDate), fmtDate(t.completedDate), '']);
+      downloadBlob(toCsv([['الصف', 'رمز المهمة', 'النتيجة', 'المهندس', 'الموضوع', 'الاستقبال', 'الانتهاء', 'التفاصيل'], ...all, ...out]), `import-report_${today()}.csv`);
     } else if (a === 'template') {
       const { writeXlsx } = await import('../lib/xlsx.js');
-      const cols = TARGETS.map((t) => ({ label: t.label, width: t.key === 'subject' ? 40 : 18, type: /Date$/.test(t.key) ? 'date' : 'text' }));
+      // الرمز وتاريخ الإدخال يأتيان من ملف الاستيراد في Google Sheets، لا من الملف النموذجي (النظام يعطيهما)
+      const cols = TARGETS.filter((t) => t.key !== 'taskCode' && t.key !== 'enteredAt').map((t) => ({ label: t.label, width: t.key === 'subject' ? 40 : 18, type: /Date$/.test(t.key) ? 'date' : 'text' }));
       const L = state.lookups;
       const sample = [state.user.fullName, '1234', 'دائرة الموارد البشرية', 'محمد بن سعيد', 'إصلاح طابعة الشبكة', today(), today(), '', L.taskTypes[0]?.name || '', L.correspondenceTypes[0]?.name || '', L.statuses.find((s) => s.kind === 'done')?.name || '', 'عادية', ''];
       downloadBlob(writeXlsx([{ name: 'المهام', columns: cols, rows: [sample] }]), 'tasks-import-template.xlsx');

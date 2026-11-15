@@ -39,3 +39,14 @@ python3 supabase/tests/run_tests.py
 - إضافة الرقم وتغييره؛
 - البريد الداخلي؛
 - رفض التكرار.
+
+## اختبارات الفرع dev
+`run_dev_tests.py` يختبر تعديلات `supabase/dev/sql` على سكيما التطوير (رمز المهمة، رمز المهندس، الاستيراد، نسخة الإنتاج):
+
+```bash
+$P -c "create database td"
+$P -d td -f supabase/tests/00_supabase_stub.sql
+$P -d td -f supabase/dev/setup_dev.sql
+TEST_DB=td python3 supabase/tests/run_dev_tests.py
+```
+

@@ -45,7 +45,8 @@ export function openTaskForm({ task = null, copyOf = null, requesters = [], onSa
   const dis = editable ? '' : 'disabled';
   const delayDays = state.settings?.delayThresholdDays || 7;
 
-  const title = copyOf ? `مهمة جديدة (نسخة من #${copyOf.id})` : isNew ? 'مهمة جديدة' : editable ? `تعديل المهمة #${t.id}` : `المهمة #${t.id}`;
+  const ref = (x) => x.taskCode || `#${x.id}`;   // رمز المهمة، أو رقمها إن لم يكن لها رمز
+  const title = copyOf ? `مهمة جديدة (نسخة من ${ref(copyOf)})` : isNew ? 'مهمة جديدة' : editable ? `تعديل المهمة ${ref(t)}` : `المهمة ${ref(t)}`;
   const body = html`
     ${locked ? html`<div class="alert warn" style="margin-bottom:14px">${icon('lock')} هذه المهمة مقفلة: مضى على إنجازها أكثر من ${daysAr(state.settings.editLockDays)}. اطلب من مدير النظام أو رئيس القسم تعديلها.</div>` : ''}
     ${t.deletedAt ? html`<div class="alert bad" style="margin-bottom:14px">هذه المهمة محذوفة (${fmtDateTime(t.deletedAt)}).</div>` : ''}
@@ -93,7 +94,7 @@ export function openTaskForm({ task = null, copyOf = null, requesters = [], onSa
         <textarea class="input" id="t-notes" name="notes" rows="2" maxlength="4000" ${dis}>${t.notes || ''}</textarea></div>
       <div class="alert bad span-2" id="t-err" role="alert" hidden></div>
       ${!isNew ? html`<div class="span-2 small muted">
-        أُدخلت ${fmtDateTime(t.createdAt)} بواسطة ${userName(t.createdBy)}${t.updatedAt && t.updatedAt !== t.createdAt ? html` · آخر تعديل ${fmtDateTime(t.updatedAt)} بواسطة ${userName(t.updatedBy)}` : ''}</div>` : ''}
+        ${t.taskCode ? html`${LABEL.taskCode} <b class="num">${t.taskCode}</b> · ` : ''}أُدخلت ${fmtDateTime(t.enteredAt || t.createdAt)} بواسطة ${userName(t.createdBy)}${t.importedAt ? html` · من Google Sheets (آخر استيراد ${fmtDateTime(t.importedAt)})` : ''}${t.updatedAt && t.updatedAt !== t.createdAt && t.updatedAt !== t.importedAt ? html` · آخر تعديل ${fmtDateTime(t.updatedAt)} بواسطة ${userName(t.updatedBy)}` : ''}</div>` : ''}
     </form>`;
 
   const footer = html`
