@@ -18,6 +18,8 @@ export const FIELDS = [
   { key: 'deletedAt',            col: 'deleted_at',             label: 'الحذف' },
   { key: 'reviewReasons',        col: 'review_reasons',         label: 'تحتاج مراجعة' },
   { key: 'priority',             col: 'priority',               label: 'الأولوية' },
+  { key: 'taskCode',             col: 'task_code',              label: 'رمز المهمة' },
+  { key: 'enteredAt',            col: 'entered_at',             label: 'تاريخ الإدخال' },
 ];
 
 /** أولوية المهمة */

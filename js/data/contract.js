@@ -5,7 +5,7 @@
  * ───────────── أشكال البيانات (camelCase) ─────────────
  *
  * User    { id, loginNo, email, fullName, shortName, role: 'admin'|'head'|'engineer'|'viewer',
- *           isActive, mustChangePassword }
+ *           isActive, mustChangePassword, engineerCode }   engineerCode: رمز المهندس (A08) أو ''
  *
  * Task    { id, engineerId, engineerName, engineerShort,
  *           refNo, requester, employeeName, subject,
@@ -13,11 +13,15 @@
  *           taskTypeId, taskType, correspondenceTypeId, correspondenceType,
  *           statusId, status, statusKind: 'open'|'done'|'cancelled',
  *           delayReason, durationDays: number|null,
- *           createdAt, createdBy, updatedAt, updatedBy, deletedAt, deletedBy }
+ *           createdAt, createdBy, updatedAt, updatedBy, deletedAt, deletedBy, reviewReasons: string[], priority,
+ *           taskCode, enteredAt, importedAt }
+ *           taskCode: رمز ثابت لا يتكرر (A08-0177 من Sheets، A08-S0001 من النظام)؛ enteredAt: تاريخ الإدخال
+ *           (من Sheets للمستوردة، وإلا = createdAt)؛ importedAt: آخر كتابة من الاستيراد أو null
  *
  * TaskInput  الحقول القابلة للكتابة فقط:
  *           { engineerId?, refNo, requester, employeeName, subject, receivedDate, completedDate,
- *             notes, taskTypeId, correspondenceTypeId, statusId, delayReason }
+ *             notes, taskTypeId, correspondenceTypeId, statusId, delayReason, priority?, reviewReasons?,
+ *             taskCode?, enteredAt?, imported? }   (الثلاثة الأخيرة للاستيراد فقط؛ الرمز يُعطى تلقائياً إن لم يُرسل)
  *
  * LookupItem { id, name, sortOrder, isActive, kind? }   (kind للحالات فقط)
  * Lookups    { taskTypes: LookupItem[], correspondenceTypes: LookupItem[], statuses: LookupItem[] }
@@ -44,6 +48,7 @@
  * tasks.remove(id)               → void           حذف ناعم (المدير فقط)
  * tasks.restore(id)              → void
  * tasks.bulkCreate(TaskInput[], onProgress(done,total)) → number
+ * tasks.bulkUpdate([{ id, ...TaskInput }], onProgress(done,total)) → number   (تحديث الاستيراد)
  *
  * lookups.load()                 → Lookups
  * lookups.save(kind, item)       → LookupItem     kind: 'taskTypes'|'correspondenceTypes'|'statuses'
@@ -52,6 +57,8 @@
  * users.list()                   → User[]
  * users.create({ loginNo, email?, password, fullName, shortName, role }) → User   (الرقم أو البريد على الأقل)
  * users.update(id, { loginNo?, email?, fullName?, shortName?, role?, isActive? }) → User
+ * users.setEngineerCode(id, code) → code|null    (المدير؛ الفارغ يمسح)
+ * users.learnEngineerCodes()     → number         (المدير، بعد الاستيراد: من ليس له رمز يأخذه من رموز مهامه)
  * users.resetPassword(id, password) → void
  * users.resetAll({ mode: 'same'|'loginNo', password?, force, includeInactive }) → { reset, skipped: [{ name, reason }] }
  *        كل المستخدمين عدا المنفّذ

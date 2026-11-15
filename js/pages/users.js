@@ -68,6 +68,7 @@ export default async function users(ctx, main) {
   const columns = [
     { key: 'fullName', label: 'الاسم', render: (u) => html`<b>${u.fullName}</b>${u.id === state.user.id ? html` <span class="badge info">أنت</span>` : ''}${u.id === syncId() ? html` <span class="badge warn" title="يُستثنى من «كلمات المرور للكل»">مزامنة التجربة</span>` : ''}${u.shortName ? html`<div class="small muted">${u.shortName}</div>` : ''}` },
     { key: 'loginNo', label: 'الرقم', cls: 'num', render: (u) => (u.loginNo ? html`<span class="ltr">${u.loginNo}</span>` : html`<span class="badge bad">بلا رقم</span>`) },
+    { key: 'engineerCode', label: 'رمز المهندس', cls: 'num', render: (u) => html`<span class="ltr">${u.engineerCode || ''}</span>` },
     { key: 'email', label: 'البريد', render: (u) => html`<span class="ltr">${u.email || ''}</span>` },
     { key: 'role', label: 'الدور', render: (u) => html`<span class="badge ${ROLE_BADGE[u.role]}">${ROLE_LABELS[u.role]}</span>` },
     { key: 'isActive', label: 'الحالة', render: (u) => (u.isActive ? html`<span class="badge ok">نشط</span>` : html`<span class="badge">معطّل</span>`) },
@@ -77,7 +78,7 @@ export default async function users(ctx, main) {
       <button class="btn btn-sm" data-reset="${u.id}" title="إعادة تعيين كلمة المرور">${icon('key')}</button>
       ${canActAs && u.id !== state.user.id && u.isActive ? html`<button class="btn btn-sm" data-as="${u.id}" title="الدخول بحسابه دون كلمة مروره">${icon('eye')}الدخول بحسابه</button>` : ''}</div>` },
   ];
-  const view = () => list.filter((u) => !q || normalizeAr(`${u.fullName} ${u.shortName} ${u.email} ${u.loginNo}`).includes(q));
+  const view = () => list.filter((u) => !q || normalizeAr(`${u.fullName} ${u.shortName} ${u.email} ${u.loginNo} ${u.engineerCode || ''}`).includes(q));
   let table;
   async function load() {
     try {
@@ -113,6 +114,9 @@ export default async function users(ctx, main) {
         <div class="field"><label for="u-email">البريد الإلكتروني (اختياري)</label>
           <input class="input ltr" style="display:block;text-align:left" id="u-email" name="email" type="email" value="${u?.email || ''}">
           <span class="hint">${isNew ? 'يمكن الدخول به أيضاً.' : 'تغييره يغيّر بريد الدخول فوراً، وتبقى كلمة المرور كما هي.'}</span></div>
+        <div class="field"><label for="u-code">رمز المهندس</label>
+          <input class="input ltr" style="display:block;text-align:left" id="u-code" name="engineerCode" maxlength="10" placeholder="A08" value="${u?.engineerCode || ''}">
+          <span class="hint">كما في Google Sheets، ويُعرف تلقائياً بعد الاستيراد. مهامه الجديدة في النظام: الرمز + S + تسلسل (A08-S0001).</span></div>
         <div class="field"><label for="u-role">الدور <span class="req">*</span></label>
           <select class="input" id="u-role" name="role" ${self ? 'disabled' : ''}>${options(Object.entries(ROLE_LABELS), u?.role || 'engineer')}</select>
           <span class="hint" id="u-role-help">${ROLE_HELP[u?.role || 'engineer']}</span></div>
@@ -159,13 +163,16 @@ export default async function users(ctx, main) {
       if (!loginNo) return fail('الرقم المدني أو الوظيفي مطلوب.');
       if (!/^[0-9]{1,20}$/.test(loginNo)) return fail('الرقم أرقام فقط (حتى 20 خانة).');
       if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail('البريد الإلكتروني غير صحيح.');
+      const code = latinDigits(v.engineerCode || '').replace(/\s+/g, '').toUpperCase();
+      if (code && !/^[A-Z]+[0-9]+$/.test(code)) return fail('رمز المهندس حروف إنجليزية ثم أرقام، مثل A08.');
       if (isNew && (v.password || '').length < min) return fail(`كلمة المرور ${min} أحرف على الأقل.`);
       if (!isNew && !self && u.isActive && v.isActive === false
         && !(await confirmBox({ title: 'تعطيل الحساب', message: `تعطيل حساب ${u.fullName}؟ لن يستطيع الدخول، وتبقى مهامه محفوظة.`, okText: 'تعطيل', danger: true }))) return;
       await busy($('[data-save]', m.el), async () => {
         try {
           if (isNew) {
-            await db.users.create({ loginNo, email, password: v.password, fullName: v.fullName.trim(), shortName: v.shortName?.trim(), role: v.role });
+            const created = await db.users.create({ loginNo, email, password: v.password, fullName: v.fullName.trim(), shortName: v.shortName?.trim(), role: v.role });
+            if (code) await db.users.setEngineerCode(created.id, code);
             m.close();
             showCredentials('تمت إضافة المستخدم', { loginNo, email }, v.password);
           } else {
@@ -174,6 +181,7 @@ export default async function users(ctx, main) {
             if (loginNo !== (u.loginNo || '')) patch.loginNo = loginNo;
             if (!self) { patch.role = v.role; patch.isActive = v.isActive; }
             const saved = await db.users.update(u.id, patch);
+            if (code !== (u.engineerCode || '')) await db.users.setEngineerCode(u.id, code);
             if (f.elements.isSync) {
               const want = f.elements.isSync.checked && saved.role === 'viewer';
               const was = u.id === syncId();
