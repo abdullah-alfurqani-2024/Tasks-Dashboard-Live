@@ -145,7 +145,8 @@ async function refresh(body: Record<string, unknown>, callerId: string) {
   const p = prodConfig();
   const sess = await prodSignIn(p);
   const [users, tt, ct, st, settings, tasks] = await Promise.all([
-    prodAll(p, sess.token, "profiles", "select=id,email,login_no,full_name,short_name,role,is_active&order=full_name.asc"),
+    // select=*: رمز المهندس (engineer_code، من 2.0.0) يُنقل إن وُجد في الإنتاج، ولا يتوقف النسخ إن لم يوجد بعد
+    prodAll(p, sess.token, "profiles", "select=*&order=full_name.asc"),
     prodAll(p, sess.token, "task_types", "select=id,name,sort_order,is_active"),
     prodAll(p, sess.token, "correspondence_types", "select=id,name,sort_order,is_active"),
     prodAll(p, sess.token, "task_statuses", "select=id,name,kind,sort_order,is_active"),
@@ -200,7 +201,8 @@ async function refresh(body: Record<string, unknown>, callerId: string) {
           id = user.id;
           created++;
         }
-        out.push({ id, source_id: u.id, email: finalEmail, login_no: u.login_no, full_name: u.full_name, short_name: u.short_name, role: u.role, is_active: u.is_active });
+        out.push({ id, source_id: u.id, email: finalEmail, login_no: u.login_no, full_name: u.full_name, short_name: u.short_name, role: u.role, is_active: u.is_active,
+          engineer_code: u.engineer_code ?? null });
       } catch (e) {
         notes.push({ name: u.full_name, note: `لم يُنسخ: ${e instanceof AppError ? e.message : "خطأ غير متوقع"}` });
       }

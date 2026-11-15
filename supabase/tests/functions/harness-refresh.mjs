@@ -12,7 +12,7 @@ const J = (body, status = 200) => new Response(JSON.stringify(body), { status, h
 const prod = {
   users: [
     { id: 'p-admin', email: 'boss@x.om', login_no: '1001', full_name: 'المدير', short_name: '', role: 'admin', is_active: true },
-    { id: 'p-eng', email: 'n1003@tasks.internal', login_no: '1003000', full_name: 'مهندس قديم', short_name: '', role: 'engineer', is_active: true },
+    { id: 'p-eng', email: 'n1003@tasks.internal', login_no: '1003000', full_name: 'مهندس قديم', short_name: '', role: 'engineer', is_active: true, engineer_code: 'A03' },
     { id: 'p-new', email: 'new@x.om', login_no: '7777777', full_name: 'مهندس جديد', short_name: '', role: 'engineer', is_active: true },
     { id: 'p-short', email: 'n12@tasks.internal', login_no: '12', full_name: 'رقم قصير', short_name: '', role: 'engineer', is_active: true },
     { id: 'p-sync', email: 'n5000@tasks.internal', login_no: '5000', full_name: 'مزامنة التجربة', short_name: '', role: 'viewer', is_active: true },
@@ -99,6 +99,7 @@ ok('مستخدم جديد: بريده مستخدم في التجربة ← بر�
 ok('مستخدم جديد: كلمة مروره = رقمه', stgAuth.get(nu.id).password === '7777777');
 const sh = snapshot.users.find((x) => x.source_id === 'p-short');
 ok('رقم قصير: الكلمة الموحدة بدلاً منه', stgAuth.get(sh.id).password === 'Shared2026');
+ok('رمز المهندس يُنقل إن وُجد في الإنتاج، وإلا null', snapshot.users.find((x) => x.source_id === 'p-eng')?.engineer_code === 'A03' && snapshot.users.find((x) => x.source_id === 'p-new')?.engineer_code === null);
 ok('المنفّذ في keep، والإلزام كما طُلب', snapshot.keep[0] === 's-admin' && snapshot.force === false);
 ok('القوائم والإعدادات تُرسل', snapshot.lookups.task_statuses.length === 1 && snapshot.settings.length === 1);
 ok('لا كتابة في الإنتاج إطلاقاً', prod.writes === 0, prod.writes);

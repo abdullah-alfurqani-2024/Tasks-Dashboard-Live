@@ -40,13 +40,16 @@ python3 supabase/tests/run_tests.py
 - البريد الداخلي؛
 - رفض التكرار.
 
-## اختبارات الفرع dev
-`run_dev_tests.py` يختبر تعديلات `supabase/dev/sql` على سكيما التطوير (رمز المهمة، رمز المهندس، الاستيراد، نسخة الإنتاج):
+## اختبارات رمز المهمة والدمج (2.0.0)
+`run_dev_tests.py` يختبر `16_task_code.sql` و`17_import_merge.sql` (رمز المهمة، رمز المهندس، الاستيراد، المرجع، نسخة الإنتاج) لكل سكيما:
 
 ```bash
 $P -c "create database td"
 $P -d td -f supabase/tests/00_supabase_stub.sql
+$P -d td -f supabase/staging/setup_staging.sql
 $P -d td -f supabase/dev/setup_dev.sql
-TEST_DB=td python3 supabase/tests/run_dev_tests.py
+for s in support_tasks_staging support_tasks_dev; do TEST_DB=td TEST_SCHEMA=$s python3 supabase/tests/run_dev_tests.py; done
+# والإنتاج: على قاعدة الاختبارات الأساسية t بعد run_tests.py
+TEST_DB=t TEST_SCHEMA=support_tasks python3 supabase/tests/run_dev_tests.py
 ```
 

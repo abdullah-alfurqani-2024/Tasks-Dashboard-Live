@@ -21,7 +21,7 @@ drop function if exists support_tasks_staging.refresh_from_production();
   p: {
     keep:     [uuid]                -- حساب من ينفّذ النسخ: لا يتغير دوره ولا تفعيله ولا إلزام تغيير كلمة مروره
     force:    boolean               -- إلزام تغيير كلمة المرور عند أول دخول للتجربة
-    users:    [{ id, source_id, email, login_no, full_name, short_name, role, is_active }]   (id = حساب التجربة)
+    users:    [{ id, source_id, email, login_no, full_name, short_name, role, is_active, engineer_code? }]   (id = حساب التجربة)
     lookups:  { task_types: [...], correspondence_types: [...], task_statuses: [...] }       (بأرقام الإنتاج)
     settings: [{ key, value }]
     tasks:    [ صفوف جدول المهام في الإنتاج كما هي ]
@@ -43,13 +43,15 @@ begin
 
   -- المستخدمون: الأرقام تُمسح أولاً ثم تُكتب، حتى لا يتعارض رقم مع مستخدم آخر أثناء النسخ
   update support_tasks_staging.profiles set login_no = null where login_no is not null;
-  insert into support_tasks_staging.profiles (id, source_id, email, login_no, full_name, short_name, role, is_active, must_change_password)
+  -- رمز المهندس: من الإنتاج إن وُجد فيه، وإلا يبقى رمز التطوير
+  insert into support_tasks_staging.profiles (id, source_id, email, login_no, full_name, short_name, role, is_active, must_change_password, engineer_code)
   select u.id, u.source_id, u.email, nullif(u.login_no, ''), u.full_name, nullif(u.short_name, ''), u.role::support_tasks_staging.user_role,
-         coalesce(u.is_active, true), v_force
-  from jsonb_to_recordset(p -> 'users') as u(id uuid, source_id uuid, email text, login_no text, full_name text, short_name text, role text, is_active boolean)
+         coalesce(u.is_active, true), v_force, nullif(u.engineer_code, '')
+  from jsonb_to_recordset(p -> 'users') as u(id uuid, source_id uuid, email text, login_no text, full_name text, short_name text, role text, is_active boolean, engineer_code text)
   on conflict (id) do update set
     source_id = excluded.source_id, email = excluded.email, login_no = excluded.login_no,
     full_name = excluded.full_name, short_name = excluded.short_name,
+    engineer_code = coalesce(excluded.engineer_code, profiles.engineer_code),
     role      = case when profiles.id = any(v_keep) then profiles.role else excluded.role end,
     is_active = case when profiles.id = any(v_keep) then true else excluded.is_active end,
     must_change_password = case when profiles.id = any(v_keep) then profiles.must_change_password else v_force end;
@@ -94,10 +96,12 @@ begin
       id bigint, engineer_id uuid, ref_no text, requester text, employee_name text, subject text,
       received_date date, completed_date date, notes text, task_type_id int, correspondence_type_id int, status_id int,
       delay_reason text, created_at timestamptz, created_by uuid, updated_at timestamptz, updated_by uuid,
-      deleted_at timestamptz, deleted_by uuid, review_reasons text[], priority text)
+      deleted_at timestamptz, deleted_by uuid, review_reasons text[], priority text,
+      task_code text, entered_at timestamptz, imported_at timestamptz, imported_data jsonb)
   )
   insert into support_tasks_staging.tasks (id, engineer_id, ref_no, requester, employee_name, subject, received_date, completed_date, notes,
-    task_type_id, correspondence_type_id, status_id, delay_reason, created_at, created_by, updated_at, updated_by, deleted_at, deleted_by, review_reasons, priority)
+    task_type_id, correspondence_type_id, status_id, delay_reason, created_at, created_by, updated_at, updated_by, deleted_at, deleted_by, review_reasons, priority,
+    task_code, entered_at, imported_at, imported_data)
   overriding system value
   select t.id, e.id, t.ref_no, t.requester, t.employee_name, coalesce(t.subject, ''), t.received_date, t.completed_date, t.notes,
     (select sid from lk where k = 'tt' and pid = t.task_type_id),
@@ -110,7 +114,8 @@ begin
     t.deleted_at,
     (select id from support_tasks_staging.profiles where source_id = t.deleted_by),
     nullif(t.review_reasons, '{}'),
-    case when t.priority = 'urgent' then 'urgent' else 'normal' end
+    case when t.priority = 'urgent' then 'urgent' else 'normal' end,
+    nullif(t.task_code, ''), coalesce(t.entered_at, t.created_at), t.imported_at, t.imported_data
   from t
   join support_tasks_staging.profiles e on e.source_id = t.engineer_id
   where (select sid from lk where k = 'st' and pid = t.status_id) is not null;

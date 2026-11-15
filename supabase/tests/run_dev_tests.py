@@ -1,18 +1,22 @@
-"""اختبار تعديلات الفرع dev (supabase/dev/sql) على سكيما التطوير، PostgreSQL محلي مع محاكاة Supabase.
-التجهيز (قاعدة مستقلة td):
+"""اختبار رمز المهمة ودمج الاستيراد (16_task_code.sql و17_import_merge.sql) على PostgreSQL محلي مع محاكاة Supabase.
+التجهيز (قاعدة مستقلة td، مثل مشروع Tasks-Test):
   $P -c "create database td"
   $P -d td -f supabase/tests/00_supabase_stub.sql
+  $P -d td -f supabase/staging/setup_staging.sql
   $P -d td -f supabase/dev/setup_dev.sql
-التشغيل: TEST_DB=td python3 supabase/tests/run_dev_tests.py"""
+التشغيل (لكل سكيما): TEST_DB=td TEST_SCHEMA=support_tasks_dev python3 supabase/tests/run_dev_tests.py
+  TEST_SCHEMA: support_tasks_dev (الافتراضي) أو support_tasks_staging أو support_tasks
+  (الإنتاج بلا استقبال نسخة الإنتاج، فتُتخطى اختباراته)"""
 import os, subprocess, sys, uuid
 
 PSQL = ['psql', '-h', '/var/tmp/pgtest', '-p', '5544', '-U', 'postgres', '-d', os.environ.get('TEST_DB', 'td'), '-X', '-q', '-t', '-A', '-v', 'ON_ERROR_STOP=1']
+SCHEMA = os.environ.get('TEST_SCHEMA', 'support_tasks_dev')
 U = {k: str(uuid.uuid4()) for k in ('admin', 'head', 'eng1', 'eng2', 'eng3')}
 passed = failed = 0
 
 
 def sql(q, who=None):
-    pre = "set search_path = support_tasks_dev, public;\n"
+    pre = f"set search_path = {SCHEMA}, public;\n"
     if who:
         pre += f"set role authenticated; set request.jwt.claim.sub = '{U[who]}';\n"
     r = subprocess.run(PSQL, input=pre + q, capture_output=True, text=True)
@@ -31,11 +35,11 @@ def check(name, ok_expected, q, who=None, contains=None, equals=None):
 
 roles = {'admin': 'admin', 'head': 'head', 'eng1': 'engineer', 'eng2': 'engineer', 'eng3': 'engineer'}
 setup = ''.join(
-    f"insert into auth.users (id, email) values ('{U[k]}', '{k}@x.om');"
+    f"insert into auth.users (id, email) values ('{U[k]}', '{k}.{U[k][:8]}@x.om');"
     f"insert into profiles (id, email, full_name, role) values ('{U[k]}', '{k}@x.om', 'اسم {k}', '{r}');"
     for k, r in roles.items())
 ok, out = sql("truncate task_audit, tasks restart identity cascade; truncate task_code_seq; update app_settings set updated_by = null;"
-              "delete from profiles; delete from auth.users;" + setup)
+              "delete from profiles;" + setup)   # حسابات auth.users تبقى: قد تخص سكيما أخرى في القاعدة نفسها
 assert ok, out
 
 OPEN = "(select id from task_statuses where kind = 'open' order by id limit 1)"
@@ -113,6 +117,7 @@ check('التالي بعدها A01-S0041', True,
       f"insert into tasks (subject, received_date, status_id) values ('بعدها', '2026-10-07', {OPEN}) returning task_code", 'eng1', equals='A01-S0041')
 
 # ---------- نسخة الإنتاج ----------
+HAS_SNAP = sql("select to_regprocedure('apply_production_snapshot(jsonb)') is not null")[1] == 't'
 snap = ("select apply_production_snapshot(jsonb_build_object("
         f"'keep', jsonb_build_array('{U['admin']}'), 'force', false,"
         f"'users', jsonb_build_array(jsonb_build_object('id', '{U['eng1']}', 'source_id', '{U['eng1']}', 'email', 'eng1@x.om', 'full_name', 'اسم eng1', 'role', 'engineer', 'is_active', true),"
@@ -124,17 +129,20 @@ snap = ("select apply_production_snapshot(jsonb_build_object("
         f"  jsonb_build_object('id', 1, 'engineer_id', '{U['eng1']}', 'subject', 'إنتاج قديم', 'received_date', '2026-01-01', 'status_id', {OPEN}, 'created_at', '2026-01-02T08:00:00Z'),"
         f"  jsonb_build_object('id', 2, 'engineer_id', '{U['eng1']}', 'subject', 'إنتاج مرمّز', 'received_date', '2026-01-01', 'status_id', {OPEN}, 'task_code', 'A01-0100', 'entered_at', '2026-01-01T05:00:00Z', 'imported_at', '2026-11-15T10:00:00Z', 'imported_data', jsonb_build_object('notes', 'م'))"
         "))) ->> 'tasks'")
-check('نسخة الإنتاج: مهمتان (قديمة بلا رمز، ومرمّزة)', True, snap, equals='2')
-check('القديمة: بلا رمز، وتاريخ إدخالها = تاريخ إضافتها؛ والمرمّزة كما هي', True,
-      "select string_agg(coalesce(task_code, '-') || '/' || to_char(entered_at at time zone 'UTC', 'MM-DD HH24') || '/' || coalesce(to_char(imported_at at time zone 'UTC', 'MM-DD'), '-'), ',' order by id) from tasks",
-      equals='-/01-02 08/-,A01-0100/01-01 05/11-15')
-check('النسخة لا تمسح رمز المهندس في التطوير', True, f"select engineer_code from profiles where id = '{U['eng1']}'", equals='A01')
-check('بعد النسخ: مهمة جديدة A01-S0042 (العدّاد لا يرجع)', True,
-      f"insert into tasks (subject, received_date, status_id) values ('بعد النسخ', '2026-11-16', {OPEN}) returning task_code", 'eng1', equals='A01-S0042')
-check('النسخة تنقل مرجع الاستيراد', True, "select imported_data ->> 'notes' from tasks where id = 2", equals='م')
-check('ربط مهمة بلا رمز برمز (المدير، مرة واحدة)', True,
-      "update tasks set task_code = 'a01-0050' where id = 1 returning task_code", 'admin', equals='A01-0050')
-check('ثم لا يتغير', True, "update tasks set task_code = 'A01-0051' where id = 1 returning task_code", 'admin', equals='A01-0050')
+if HAS_SNAP:
+    check('نسخة الإنتاج: مهمتان (قديمة بلا رمز، ومرمّزة)', True, snap, equals='2')
+    check('القديمة: بلا رمز، وتاريخ إدخالها = تاريخ إضافتها؛ والمرمّزة كما هي', True,
+          "select string_agg(coalesce(task_code, '-') || '/' || to_char(entered_at at time zone 'UTC', 'MM-DD HH24') || '/' || coalesce(to_char(imported_at at time zone 'UTC', 'MM-DD'), '-'), ',' order by id) from tasks",
+          equals='-/01-02 08/-,A01-0100/01-01 05/11-15')
+    check('النسخة لا تمسح رمز المهندس في التطوير', True, f"select engineer_code from profiles where id = '{U['eng1']}'", equals='A01')
+    check('بعد النسخ: مهمة جديدة A01-S0042 (العدّاد لا يرجع)', True,
+          f"insert into tasks (subject, received_date, status_id) values ('بعد النسخ', '2026-11-16', {OPEN}) returning task_code", 'eng1', equals='A01-S0042')
+    check('النسخة تنقل مرجع الاستيراد', True, "select imported_data ->> 'notes' from tasks where id = 2", equals='م')
+    check('ربط مهمة بلا رمز برمز (المدير، مرة واحدة)', True,
+          "update tasks set task_code = 'a01-0050' where id = 1 returning task_code", 'admin', equals='A01-0050')
+    check('ثم لا يتغير', True, "update tasks set task_code = 'A01-0051' where id = 1 returning task_code", 'admin', equals='A01-0050')
+else:
+    print('— لا استقبال لنسخة الإنتاج في هذه السكيما: تُتخطى اختباراته')
 
 # ---------- 17: مرجع الاستيراد (الدمج حسب الحقل) ----------
 BASE = "'{\"notes\": \"من الملف\", \"status\": \"x\"}'::jsonb"
@@ -149,9 +157,9 @@ check('السجل لا يحمل المرجع', True,
       "select count(*) from task_audit where new_data ? 'imported_data' or 'imported_data' = any(coalesce(changed_fields, '{}'))", 'admin', equals='0')
 before = check('آخر تعديل قبل حفظ المرجع', True, "select updated_at::text || '|' || coalesce(imported_at::text, '-') from tasks where task_code = 'A01-0900'", 'admin')
 check('المهندس لا يحفظ مراجع', False, "select save_import_base('[]'::jsonb)", 'eng1')
-check('حفظ المراجع دفعة واحدة: المتغيّر فقط', True,
-      "select save_import_base(jsonb_build_array(jsonb_build_object('id', (select id from tasks where task_code = 'A01-0900'), 'data', jsonb_build_object('notes', 'جديد')),"
-      "                                          jsonb_build_object('id', 2, 'data', jsonb_build_object('notes', 'م'))))", 'admin', equals='1')
+SAVE = "select save_import_base(jsonb_build_array(jsonb_build_object('id', (select id from tasks where task_code = 'A01-0900'), 'data', jsonb_build_object('notes', 'جديد'))))"
+check('حفظ المراجع دفعة واحدة', True, SAVE, 'admin', equals='1')
+check('المرجع نفسه مرة ثانية: لا شيء يتغير', True, SAVE, 'admin', equals='0')
 check('حفظ المرجع وحده لا يغيّر آخر تعديل ولا آخر استيراد', True,
       "select updated_at::text || '|' || coalesce(imported_at::text, '-') from tasks where task_code = 'A01-0900'", 'admin', equals=before)
 check('ولا يُكتب في السجل', True,

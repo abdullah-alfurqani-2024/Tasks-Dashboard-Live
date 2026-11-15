@@ -1131,176 +1131,9 @@ end $f$;
 select * from pg_temp.check_announcement_type();
 
 
+-- ===================== 16_task_code.sql =====================
 -- =====================================================================
---  نسخة التجربة: دالة «حذف كل المهام» (زر في صفحة الإعدادات)
---  تُنفَّذ مرة واحدة في SQL Editor (وهي ضمن setup_staging.sql أيضاً)
---
---  تحذف نهائياً كل مهام التجربة وسجل تعديلاتها، لإعادة الاستيراد من جديد.
---  لا تمس المستخدمين ولا القوائم ولا الإعدادات، ولا تمس الإنتاج أبداً.
---  لا توجد نسخة من هذه الدالة في سكيما الإنتاج.
--- =====================================================================
-
-create or replace function support_tasks_dev.purge_all_tasks()
-returns jsonb
-language plpgsql
-security definer
-set search_path = support_tasks_dev
-as $$
-declare
-  v_tasks int;
-begin
-  if support_tasks_dev.app_role() is distinct from 'admin' then
-    perform support_tasks_dev.app_error('حذف كل المهام لمدير النظام فقط.');
-  end if;
-  select count(*) into v_tasks from support_tasks_dev.tasks;
-  -- TRUNCATE وليس DELETE: Supabase يمنع DELETE بلا شرط، وهو أسرع، ويعيد ترقيم المهام من 1
-  truncate support_tasks_dev.task_audit, support_tasks_dev.tasks restart identity;
-  return jsonb_build_object('tasks', v_tasks, 'at', now());
-end $$;
-
-revoke all on function support_tasks_dev.purge_all_tasks() from public, anon;
-grant execute on function support_tasks_dev.purge_all_tasks() to authenticated;
-
-
--- =====================================================================
---  نسخة التجربة (مشروع Supabase مستقل عن الإنتاج): استقبال نسخة بيانات الإنتاج
---
---  بعد فصل الإنتاج في مشروع مستقل، لا تستطيع قاعدة التجربة قراءة الإنتاج بـ SQL.
---  فالنسخ تقوم به دالة refresh-staging (Edge Function في مشروع التجربة):
---    1) تقرأ من الإنتاج بحساب «مشاهد» (قراءة فقط)
---    2) تنشئ/تحدّث حسابات دخول التجربة (كلمات مرور التجربة مستقلة عن الإنتاج)
---    3) تستدعي apply_production_snapshot أدناه لتكتب البيانات في التجربة دفعة واحدة
---
---  يُنفَّذ مرة واحدة في SQL Editor في مشروع التجربة (pfarespmmaphtlscgmar). يمكن إعادة تنفيذه بلا ضرر.
--- =====================================================================
-
--- ربط كل مستخدم في التجربة بنظيره في الإنتاج
-alter table support_tasks_dev.profiles add column if not exists source_id uuid;
-create unique index if not exists profiles_source_id_key on support_tasks_dev.profiles (source_id) where source_id is not null;
-
--- دالة النسخ القديمة كانت تقرأ من سكيما الإنتاج في نفس المشروع؛ لم تعد صالحة بعد الفصل
-drop function if exists support_tasks_dev.refresh_from_production();
-
-/*
-  p: {
-    keep:     [uuid]                -- حساب من ينفّذ النسخ: لا يتغير دوره ولا تفعيله ولا إلزام تغيير كلمة مروره
-    force:    boolean               -- إلزام تغيير كلمة المرور عند أول دخول للتجربة
-    users:    [{ id, source_id, email, login_no, full_name, short_name, role, is_active }]   (id = حساب التجربة)
-    lookups:  { task_types: [...], correspondence_types: [...], task_statuses: [...] }       (بأرقام الإنتاج)
-    settings: [{ key, value }]
-    tasks:    [ صفوف جدول المهام في الإنتاج كما هي ]
-  }
-*/
-create or replace function support_tasks_dev.apply_production_snapshot(p jsonb)
-returns jsonb
-language plpgsql
-security definer
-set search_path = support_tasks_dev
-as $$
-declare
-  v_keep uuid[] := coalesce((select array_agg(x::uuid) from jsonb_array_elements_text(p -> 'keep') x), '{}');
-  v_force boolean := coalesce((p ->> 'force')::boolean, true);
-  v_users int; v_tasks int; v_skipped int; v_off int;
-begin
-  alter table support_tasks_dev.profiles disable trigger user;
-  alter table support_tasks_dev.tasks disable trigger user;
-
-  -- المستخدمون: الأرقام تُمسح أولاً ثم تُكتب، حتى لا يتعارض رقم مع مستخدم آخر أثناء النسخ
-  update support_tasks_dev.profiles set login_no = null where login_no is not null;
-  insert into support_tasks_dev.profiles (id, source_id, email, login_no, full_name, short_name, role, is_active, must_change_password)
-  select u.id, u.source_id, u.email, nullif(u.login_no, ''), u.full_name, nullif(u.short_name, ''), u.role::support_tasks_dev.user_role,
-         coalesce(u.is_active, true), v_force
-  from jsonb_to_recordset(p -> 'users') as u(id uuid, source_id uuid, email text, login_no text, full_name text, short_name text, role text, is_active boolean)
-  on conflict (id) do update set
-    source_id = excluded.source_id, email = excluded.email, login_no = excluded.login_no,
-    full_name = excluded.full_name, short_name = excluded.short_name,
-    role      = case when profiles.id = any(v_keep) then profiles.role else excluded.role end,
-    is_active = case when profiles.id = any(v_keep) then true else excluded.is_active end,
-    must_change_password = case when profiles.id = any(v_keep) then profiles.must_change_password else v_force end;
-  get diagnostics v_users = row_count;
-
-  -- مستخدمو التجربة الذين لا نظير لهم في الإنتاج (عدا من ينفّذ): يُعطَّلون ولا يُحذفون
-  update support_tasks_dev.profiles set is_active = false
-  where is_active and not (id = any(v_keep))
-    and id not in (select (x ->> 'id')::uuid from jsonb_array_elements(p -> 'users') x);
-  get diagnostics v_off = row_count;
-
-  -- القوائم بالاسم
-  insert into support_tasks_dev.task_types (name, sort_order, is_active)
-  select name, sort_order, is_active from jsonb_to_recordset(p -> 'lookups' -> 'task_types') as x(name text, sort_order int, is_active boolean)
-  on conflict (name) do update set sort_order = excluded.sort_order, is_active = excluded.is_active;
-  insert into support_tasks_dev.correspondence_types (name, sort_order, is_active)
-  select name, sort_order, is_active from jsonb_to_recordset(p -> 'lookups' -> 'correspondence_types') as x(name text, sort_order int, is_active boolean)
-  on conflict (name) do update set sort_order = excluded.sort_order, is_active = excluded.is_active;
-  insert into support_tasks_dev.task_statuses (name, kind, sort_order, is_active)
-  select name, kind::support_tasks_dev.status_kind, sort_order, is_active
-  from jsonb_to_recordset(p -> 'lookups' -> 'task_statuses') as x(name text, kind text, sort_order int, is_active boolean)
-  on conflict (name) do update set kind = excluded.kind, sort_order = excluded.sort_order, is_active = excluded.is_active;
-
-  -- الإعدادات
-  insert into support_tasks_dev.app_settings (key, value)
-  select x ->> 'key', x -> 'value' from jsonb_array_elements(p -> 'settings') x
-  on conflict (key) do update set value = excluded.value;
-
-  -- المهام: نسخة كاملة بنفس الأرقام، مع ربط المهندس والقوائم بنظائرها في التجربة
-  truncate support_tasks_dev.task_audit, support_tasks_dev.tasks;
-  with lk as (
-    select 'tt' as k, (x ->> 'id')::int as pid, s.id as sid
-      from jsonb_array_elements(p -> 'lookups' -> 'task_types') x join support_tasks_dev.task_types s on s.name = x ->> 'name'
-    union all
-    select 'ct', (x ->> 'id')::int, s.id
-      from jsonb_array_elements(p -> 'lookups' -> 'correspondence_types') x join support_tasks_dev.correspondence_types s on s.name = x ->> 'name'
-    union all
-    select 'st', (x ->> 'id')::int, s.id
-      from jsonb_array_elements(p -> 'lookups' -> 'task_statuses') x join support_tasks_dev.task_statuses s on s.name = x ->> 'name'
-  ), t as (
-    select * from jsonb_to_recordset(p -> 'tasks') as t(
-      id bigint, engineer_id uuid, ref_no text, requester text, employee_name text, subject text,
-      received_date date, completed_date date, notes text, task_type_id int, correspondence_type_id int, status_id int,
-      delay_reason text, created_at timestamptz, created_by uuid, updated_at timestamptz, updated_by uuid,
-      deleted_at timestamptz, deleted_by uuid, review_reasons text[], priority text)
-  )
-  insert into support_tasks_dev.tasks (id, engineer_id, ref_no, requester, employee_name, subject, received_date, completed_date, notes,
-    task_type_id, correspondence_type_id, status_id, delay_reason, created_at, created_by, updated_at, updated_by, deleted_at, deleted_by, review_reasons, priority)
-  overriding system value
-  select t.id, e.id, t.ref_no, t.requester, t.employee_name, coalesce(t.subject, ''), t.received_date, t.completed_date, t.notes,
-    (select sid from lk where k = 'tt' and pid = t.task_type_id),
-    (select sid from lk where k = 'ct' and pid = t.correspondence_type_id),
-    (select sid from lk where k = 'st' and pid = t.status_id),
-    t.delay_reason, coalesce(t.created_at, now()),
-    (select id from support_tasks_dev.profiles where source_id = t.created_by),
-    coalesce(t.updated_at, now()),
-    (select id from support_tasks_dev.profiles where source_id = t.updated_by),
-    t.deleted_at,
-    (select id from support_tasks_dev.profiles where source_id = t.deleted_by),
-    nullif(t.review_reasons, '{}'),
-    case when t.priority = 'urgent' then 'urgent' else 'normal' end
-  from t
-  join support_tasks_dev.profiles e on e.source_id = t.engineer_id
-  where (select sid from lk where k = 'st' and pid = t.status_id) is not null;
-  get diagnostics v_tasks = row_count;
-  v_skipped := jsonb_array_length(coalesce(p -> 'tasks', '[]')) - v_tasks;
-
-  perform setval(pg_get_serial_sequence('support_tasks_dev.tasks', 'id'),
-                 coalesce((select max(id) from support_tasks_dev.tasks), 0) + 1, false);
-
-  alter table support_tasks_dev.tasks enable trigger user;
-  alter table support_tasks_dev.profiles enable trigger user;
-
-  return jsonb_build_object('users', v_users, 'tasks', v_tasks, 'skipped_tasks', v_skipped, 'deactivated', v_off, 'at', now());
-end $$;
-
--- تستدعيها دالة refresh-staging بمفتاح الخادم فقط (لا المتصفح)
-revoke all on function support_tasks_dev.apply_production_snapshot(jsonb) from public, anon, authenticated;
-grant execute on function support_tasks_dev.apply_production_snapshot(jsonb) to service_role;
-
--- التحقق: يجب أن يظهر سطر واحد
-select 'جاهز' as الحالة, count(*) as مستخدمو_التجربة from support_tasks_dev.profiles;
-
-
--- ===================== dev/sql/16_task_code.sql (قيد التطوير) =====================
--- =====================================================================
---  نظام مهام الدعم الفني — 16: رمز المهمة وتاريخ الإدخال (قيد التطوير: سكيما التطوير وحدها)
+--  نظام مهام الدعم الفني — 16: رمز المهمة وتاريخ الإدخال (الإصدار 2.0.0)
 --
 --  لكل مهمة رمز ثابت لا يتكرر (حتى بين المحذوفة)، ولا يتغير بعد إعطائه:
 --    - من Google Sheets عبر الاستيراد: رمز المهندس + تسلسل، مثل A08-0177
@@ -1314,7 +1147,8 @@ select 'جاهز' as الحالة, count(*) as مستخدمو_التجربة fro
 --  imported_at: آخر مرة كتب فيها الاستيراد المهمة (إضافة أو تحديث)، لمعرفة ما عُدّل في النظام بعدها.
 --  الاستيراد الذي يحدّث مهمة يُعلَّم في السجل «عبر الاستيراد» (new_data.via_import).
 --
---  لسكيما التطوير وحدها (supabase/dev/sql)، بعد setup_dev.sql. يمكن إعادة تنفيذه بلا ضرر.
+--  للسكيمات الثلاث (تتخطى غير الموجودة)، بعد 15. يمكن إعادة تنفيذه بلا ضرر (التطوير نُفّذ فيه من قبل).
+--  استقبال نسخة الإنتاج (الأعمدة الجديدة) في supabase/staging/link_production.sql.
 --  التراجع: 16_task_code.undo.sql
 -- =====================================================================
 
@@ -1322,7 +1156,7 @@ do $do$
 declare
   s text;
 begin
-  foreach s in array array['support_tasks_dev'] loop
+  foreach s in array array['support_tasks', 'support_tasks_staging', 'support_tasks_dev'] loop
     if to_regclass(s || '.tasks') is null then continue; end if;
     if not exists (select 1 from information_schema.columns where table_schema = s and table_name = 'tasks' and column_name = 'priority') then
       raise exception 'نفّذ 13_priority.sql أولاً (السكيما %)', s;
@@ -1649,145 +1483,35 @@ end $fn$
   end loop;
 end $do$;
 
--- ───────────── استقبال نسخة الإنتاج: نفس supabase/staging/link_production.sql + الأعمدة الجديدة ─────────────
--- الإنتاج قبل هذا التعديل لا يرسل الرمز ولا تاريخ الإدخال: تُنسخ مهامه بلا رمز، وتاريخ إدخالها = تاريخ إضافتها.
--- (عند النقل إلى التجربة: يُنقل هذا التعديل إلى link_production.sql نفسه)
-/*
-  p: {
-    keep:     [uuid]                -- حساب من ينفّذ النسخ: لا يتغير دوره ولا تفعيله ولا إلزام تغيير كلمة مروره
-    force:    boolean               -- إلزام تغيير كلمة المرور عند أول دخول للتجربة
-    users:    [{ id, source_id, email, login_no, full_name, short_name, role, is_active, engineer_code? }]   (id = حساب التجربة)
-    lookups:  { task_types: [...], correspondence_types: [...], task_statuses: [...] }       (بأرقام الإنتاج)
-    settings: [{ key, value }]
-    tasks:    [ صفوف جدول المهام في الإنتاج كما هي ]
-  }
-*/
-create or replace function support_tasks_dev.apply_production_snapshot(p jsonb)
-returns jsonb
-language plpgsql
-security definer
-set search_path = support_tasks_dev
-as $$
-declare
-  v_keep uuid[] := coalesce((select array_agg(x::uuid) from jsonb_array_elements_text(p -> 'keep') x), '{}');
-  v_force boolean := coalesce((p ->> 'force')::boolean, true);
-  v_users int; v_tasks int; v_skipped int; v_off int;
-begin
-  alter table support_tasks_dev.profiles disable trigger user;
-  alter table support_tasks_dev.tasks disable trigger user;
-
-  -- المستخدمون: الأرقام تُمسح أولاً ثم تُكتب، حتى لا يتعارض رقم مع مستخدم آخر أثناء النسخ
-  update support_tasks_dev.profiles set login_no = null where login_no is not null;
-  -- رمز المهندس: من الإنتاج إن وُجد فيه، وإلا يبقى رمز التطوير
-  insert into support_tasks_dev.profiles (id, source_id, email, login_no, full_name, short_name, role, is_active, must_change_password, engineer_code)
-  select u.id, u.source_id, u.email, nullif(u.login_no, ''), u.full_name, nullif(u.short_name, ''), u.role::support_tasks_dev.user_role,
-         coalesce(u.is_active, true), v_force, nullif(u.engineer_code, '')
-  from jsonb_to_recordset(p -> 'users') as u(id uuid, source_id uuid, email text, login_no text, full_name text, short_name text, role text, is_active boolean, engineer_code text)
-  on conflict (id) do update set
-    source_id = excluded.source_id, email = excluded.email, login_no = excluded.login_no,
-    full_name = excluded.full_name, short_name = excluded.short_name,
-    engineer_code = coalesce(excluded.engineer_code, profiles.engineer_code),
-    role      = case when profiles.id = any(v_keep) then profiles.role else excluded.role end,
-    is_active = case when profiles.id = any(v_keep) then true else excluded.is_active end,
-    must_change_password = case when profiles.id = any(v_keep) then profiles.must_change_password else v_force end;
-  get diagnostics v_users = row_count;
-
-  -- مستخدمو التجربة الذين لا نظير لهم في الإنتاج (عدا من ينفّذ): يُعطَّلون ولا يُحذفون
-  update support_tasks_dev.profiles set is_active = false
-  where is_active and not (id = any(v_keep))
-    and id not in (select (x ->> 'id')::uuid from jsonb_array_elements(p -> 'users') x);
-  get diagnostics v_off = row_count;
-
-  -- القوائم بالاسم
-  insert into support_tasks_dev.task_types (name, sort_order, is_active)
-  select name, sort_order, is_active from jsonb_to_recordset(p -> 'lookups' -> 'task_types') as x(name text, sort_order int, is_active boolean)
-  on conflict (name) do update set sort_order = excluded.sort_order, is_active = excluded.is_active;
-  insert into support_tasks_dev.correspondence_types (name, sort_order, is_active)
-  select name, sort_order, is_active from jsonb_to_recordset(p -> 'lookups' -> 'correspondence_types') as x(name text, sort_order int, is_active boolean)
-  on conflict (name) do update set sort_order = excluded.sort_order, is_active = excluded.is_active;
-  insert into support_tasks_dev.task_statuses (name, kind, sort_order, is_active)
-  select name, kind::support_tasks_dev.status_kind, sort_order, is_active
-  from jsonb_to_recordset(p -> 'lookups' -> 'task_statuses') as x(name text, kind text, sort_order int, is_active boolean)
-  on conflict (name) do update set kind = excluded.kind, sort_order = excluded.sort_order, is_active = excluded.is_active;
-
-  -- الإعدادات
-  insert into support_tasks_dev.app_settings (key, value)
-  select x ->> 'key', x -> 'value' from jsonb_array_elements(p -> 'settings') x
-  on conflict (key) do update set value = excluded.value;
-
-  -- المهام: نسخة كاملة بنفس الأرقام، مع ربط المهندس والقوائم بنظائرها في التجربة
-  truncate support_tasks_dev.task_audit, support_tasks_dev.tasks;
-  with lk as (
-    select 'tt' as k, (x ->> 'id')::int as pid, s.id as sid
-      from jsonb_array_elements(p -> 'lookups' -> 'task_types') x join support_tasks_dev.task_types s on s.name = x ->> 'name'
-    union all
-    select 'ct', (x ->> 'id')::int, s.id
-      from jsonb_array_elements(p -> 'lookups' -> 'correspondence_types') x join support_tasks_dev.correspondence_types s on s.name = x ->> 'name'
-    union all
-    select 'st', (x ->> 'id')::int, s.id
-      from jsonb_array_elements(p -> 'lookups' -> 'task_statuses') x join support_tasks_dev.task_statuses s on s.name = x ->> 'name'
-  ), t as (
-    select * from jsonb_to_recordset(p -> 'tasks') as t(
-      id bigint, engineer_id uuid, ref_no text, requester text, employee_name text, subject text,
-      received_date date, completed_date date, notes text, task_type_id int, correspondence_type_id int, status_id int,
-      delay_reason text, created_at timestamptz, created_by uuid, updated_at timestamptz, updated_by uuid,
-      deleted_at timestamptz, deleted_by uuid, review_reasons text[], priority text,
-      task_code text, entered_at timestamptz, imported_at timestamptz)
-  )
-  insert into support_tasks_dev.tasks (id, engineer_id, ref_no, requester, employee_name, subject, received_date, completed_date, notes,
-    task_type_id, correspondence_type_id, status_id, delay_reason, created_at, created_by, updated_at, updated_by, deleted_at, deleted_by, review_reasons, priority,
-    task_code, entered_at, imported_at)
-  overriding system value
-  select t.id, e.id, t.ref_no, t.requester, t.employee_name, coalesce(t.subject, ''), t.received_date, t.completed_date, t.notes,
-    (select sid from lk where k = 'tt' and pid = t.task_type_id),
-    (select sid from lk where k = 'ct' and pid = t.correspondence_type_id),
-    (select sid from lk where k = 'st' and pid = t.status_id),
-    t.delay_reason, coalesce(t.created_at, now()),
-    (select id from support_tasks_dev.profiles where source_id = t.created_by),
-    coalesce(t.updated_at, now()),
-    (select id from support_tasks_dev.profiles where source_id = t.updated_by),
-    t.deleted_at,
-    (select id from support_tasks_dev.profiles where source_id = t.deleted_by),
-    nullif(t.review_reasons, '{}'),
-    case when t.priority = 'urgent' then 'urgent' else 'normal' end,
-    nullif(t.task_code, ''), coalesce(t.entered_at, t.created_at), t.imported_at
-  from t
-  join support_tasks_dev.profiles e on e.source_id = t.engineer_id
-  where (select sid from lk where k = 'st' and pid = t.status_id) is not null;
-  get diagnostics v_tasks = row_count;
-  v_skipped := jsonb_array_length(coalesce(p -> 'tasks', '[]')) - v_tasks;
-
-  perform setval(pg_get_serial_sequence('support_tasks_dev.tasks', 'id'),
-                 coalesce((select max(id) from support_tasks_dev.tasks), 0) + 1, false);
-
-  alter table support_tasks_dev.tasks enable trigger user;
-  alter table support_tasks_dev.profiles enable trigger user;
-
-  return jsonb_build_object('users', v_users, 'tasks', v_tasks, 'skipped_tasks', v_skipped, 'deactivated', v_off, 'at', now());
-end $$;
-
--- تستدعيها دالة refresh-staging بمفتاح الخادم فقط (لا المتصفح)
-revoke all on function support_tasks_dev.apply_production_snapshot(jsonb) from public, anon, authenticated;
-grant execute on function support_tasks_dev.apply_production_snapshot(jsonb) to service_role;
 
 -- المهام الموجودة قبل هذا التعديل: تاريخ إدخالها = تاريخ إضافتها (بلا مشغّلات، فلا يُكتب في السجل)
-alter table support_tasks_dev.tasks disable trigger user;
-update support_tasks_dev.tasks set entered_at = created_at where entered_at is null;
-alter table support_tasks_dev.tasks enable trigger user;
+do $do$
+declare
+  s text;
+begin
+  foreach s in array array['support_tasks', 'support_tasks_staging', 'support_tasks_dev'] loop
+    if to_regclass(s || '.tasks') is null then continue; end if;
+    if exists (select 1 from information_schema.columns where table_schema = s and table_name = 'tasks' and column_name = 'entered_at') then
+      execute format('alter table %I.tasks disable trigger user', s);
+      execute format('update %I.tasks set entered_at = created_at where entered_at is null', s);
+      execute format('alter table %I.tasks enable trigger user', s);
+    end if;
+  end loop;
+end $do$;
 
--- التحقق: سطر واحد، وكل القيم true
-select
-  exists (select 1 from information_schema.columns where table_schema = 'support_tasks_dev' and table_name = 'v_tasks' and column_name = 'task_code') as عرض_المهام,
-  exists (select 1 from information_schema.columns where table_schema = 'support_tasks_dev' and table_name = 'profiles' and column_name = 'engineer_code') as رمز_المهندس,
-  position('next_task_code' in (select prosrc from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-                                where n.nspname = 'support_tasks_dev' and p.proname = 'tasks_before_write')) > 0 as الإعطاء_التلقائي,
-  position('task_code' in (select prosrc from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-                           where n.nspname = 'support_tasks_dev' and p.proname = 'apply_production_snapshot')) > 0 as النسخ_من_الإنتاج;
+-- التحقق: سطر لكل سكيما في هذا المشروع (الإنتاج: support_tasks، Tasks-Test: التجربة والتطوير)، وكل القيم true
+select n.nspname as السكيما,
+  exists (select 1 from information_schema.columns where table_schema = n.nspname and table_name = 'v_tasks' and column_name = 'task_code') as عرض_المهام,
+  exists (select 1 from information_schema.columns where table_schema = n.nspname and table_name = 'profiles' and column_name = 'engineer_code') as رمز_المهندس,
+  position('next_task_code' in p.prosrc) > 0 as الإعطاء_التلقائي
+from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+where p.proname = 'tasks_before_write' and n.nspname in ('support_tasks', 'support_tasks_staging', 'support_tasks_dev')
+order by 1;
 
 
--- ===================== dev/sql/17_import_merge.sql (قيد التطوير) =====================
+-- ===================== 17_import_merge.sql =====================
 -- =====================================================================
---  نظام مهام الدعم الفني — 17: دمج الاستيراد حسب الحقل (قيد التطوير: سكيما التطوير وحدها)
+--  نظام مهام الدعم الفني — 17: دمج الاستيراد حسب الحقل (الإصدار 2.0.0)
 --
 --  مع كل استيراد تُحفظ قيم الملف للمهمة (imported_data: «مرجع آخر استيراد»).
 --  وفي الاستيراد التالي تُقارن كل خانة بثلاث قيم: المرجع، والنظام الآن، والملف الآن:
@@ -1797,14 +1521,15 @@ select
 --  - المرجع يكتبه الاستيراد (مدير النظام) فقط، ولا يظهر في سجل التعديلات.
 --  - حفظ المرجع وحده لا يغيّر «آخر تعديل» للمهمة (save_import_base).
 --
---  بعد 16_task_code.sql. يمكن إعادة تنفيذه بلا ضرر. التراجع: 17_import_merge.undo.sql
+--  للسكيمات الثلاث (تتخطى غير الموجودة)، بعد 16_task_code.sql. يمكن إعادة تنفيذه بلا ضرر.
+--  استقبال نسخة الإنتاج (العمود الجديد) في supabase/staging/link_production.sql. التراجع: 17_import_merge.undo.sql
 -- =====================================================================
 
 do $do$
 declare
   s text;
 begin
-  foreach s in array array['support_tasks_dev'] loop
+  foreach s in array array['support_tasks', 'support_tasks_staging', 'support_tasks_dev'] loop
     if to_regclass(s || '.tasks') is null then continue; end if;
     if not exists (select 1 from information_schema.columns where table_schema = s and table_name = 'tasks' and column_name = 'task_code') then
       raise exception 'نفّذ 16_task_code.sql أولاً (السكيما %)', s;
@@ -1912,7 +1637,76 @@ end $fn$
   end loop;
 end $do$;
 
--- ───────────── استقبال نسخة الإنتاج: نفس 16 + مرجع الاستيراد ─────────────
+-- التحقق: سطر لكل سكيما في هذا المشروع، وكل القيم true
+select n.nspname as السكيما,
+  exists (select 1 from information_schema.columns where table_schema = n.nspname and table_name = 'tasks' and column_name = 'imported_data') as مرجع_الاستيراد,
+  exists (select 1 from pg_trigger where tgname = 'tasks_z_import_base' and tgrelid = (n.nspname || '.tasks')::regclass) as المشغّل,
+  position('imported_data' in p.prosrc) > 0 as السجل
+from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+where p.proname = 'tasks_audit' and n.nspname in ('support_tasks', 'support_tasks_staging', 'support_tasks_dev')
+order by 1;
+
+
+-- =====================================================================
+--  نسخة التجربة: دالة «حذف كل المهام» (زر في صفحة الإعدادات)
+--  تُنفَّذ مرة واحدة في SQL Editor (وهي ضمن setup_staging.sql أيضاً)
+--
+--  تحذف نهائياً كل مهام التجربة وسجل تعديلاتها، لإعادة الاستيراد من جديد.
+--  لا تمس المستخدمين ولا القوائم ولا الإعدادات، ولا تمس الإنتاج أبداً.
+--  لا توجد نسخة من هذه الدالة في سكيما الإنتاج.
+-- =====================================================================
+
+create or replace function support_tasks_dev.purge_all_tasks()
+returns jsonb
+language plpgsql
+security definer
+set search_path = support_tasks_dev
+as $$
+declare
+  v_tasks int;
+begin
+  if support_tasks_dev.app_role() is distinct from 'admin' then
+    perform support_tasks_dev.app_error('حذف كل المهام لمدير النظام فقط.');
+  end if;
+  select count(*) into v_tasks from support_tasks_dev.tasks;
+  -- TRUNCATE وليس DELETE: Supabase يمنع DELETE بلا شرط، وهو أسرع، ويعيد ترقيم المهام من 1
+  truncate support_tasks_dev.task_audit, support_tasks_dev.tasks restart identity;
+  return jsonb_build_object('tasks', v_tasks, 'at', now());
+end $$;
+
+revoke all on function support_tasks_dev.purge_all_tasks() from public, anon;
+grant execute on function support_tasks_dev.purge_all_tasks() to authenticated;
+
+
+-- =====================================================================
+--  نسخة التجربة (مشروع Supabase مستقل عن الإنتاج): استقبال نسخة بيانات الإنتاج
+--
+--  بعد فصل الإنتاج في مشروع مستقل، لا تستطيع قاعدة التجربة قراءة الإنتاج بـ SQL.
+--  فالنسخ تقوم به دالة refresh-staging (Edge Function في مشروع التجربة):
+--    1) تقرأ من الإنتاج بحساب «مشاهد» (قراءة فقط)
+--    2) تنشئ/تحدّث حسابات دخول التجربة (كلمات مرور التجربة مستقلة عن الإنتاج)
+--    3) تستدعي apply_production_snapshot أدناه لتكتب البيانات في التجربة دفعة واحدة
+--
+--  يُنفَّذ مرة واحدة في SQL Editor في مشروع التجربة (pfarespmmaphtlscgmar). يمكن إعادة تنفيذه بلا ضرر.
+-- =====================================================================
+
+-- ربط كل مستخدم في التجربة بنظيره في الإنتاج
+alter table support_tasks_dev.profiles add column if not exists source_id uuid;
+create unique index if not exists profiles_source_id_key on support_tasks_dev.profiles (source_id) where source_id is not null;
+
+-- دالة النسخ القديمة كانت تقرأ من سكيما الإنتاج في نفس المشروع؛ لم تعد صالحة بعد الفصل
+drop function if exists support_tasks_dev.refresh_from_production();
+
+/*
+  p: {
+    keep:     [uuid]                -- حساب من ينفّذ النسخ: لا يتغير دوره ولا تفعيله ولا إلزام تغيير كلمة مروره
+    force:    boolean               -- إلزام تغيير كلمة المرور عند أول دخول للتجربة
+    users:    [{ id, source_id, email, login_no, full_name, short_name, role, is_active, engineer_code? }]   (id = حساب التجربة)
+    lookups:  { task_types: [...], correspondence_types: [...], task_statuses: [...] }       (بأرقام الإنتاج)
+    settings: [{ key, value }]
+    tasks:    [ صفوف جدول المهام في الإنتاج كما هي ]
+  }
+*/
 create or replace function support_tasks_dev.apply_production_snapshot(p jsonb)
 returns jsonb
 language plpgsql
@@ -2021,12 +1815,6 @@ end $$;
 revoke all on function support_tasks_dev.apply_production_snapshot(jsonb) from public, anon, authenticated;
 grant execute on function support_tasks_dev.apply_production_snapshot(jsonb) to service_role;
 
--- التحقق: سطر واحد، وكل القيم true
-select
-  exists (select 1 from information_schema.columns where table_schema = 'support_tasks_dev' and table_name = 'tasks' and column_name = 'imported_data') as مرجع_الاستيراد,
-  exists (select 1 from pg_trigger where tgname = 'tasks_z_import_base' and tgrelid = 'support_tasks_dev.tasks'::regclass) as المشغّل,
-  position('imported_data' in (select prosrc from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-                               where n.nspname = 'support_tasks_dev' and p.proname = 'tasks_audit')) > 0 as السجل,
-  position('imported_data' in (select prosrc from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-                               where n.nspname = 'support_tasks_dev' and p.proname = 'apply_production_snapshot')) > 0 as النسخ_من_الإنتاج;
+-- التحقق: يجب أن يظهر سطر واحد
+select 'جاهز' as الحالة, count(*) as مستخدمو_التجربة from support_tasks_dev.profiles;
 
