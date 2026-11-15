@@ -17,7 +17,7 @@ function value(col, v) {
   if (col === 'engineer_id') return userName(v);
   if (LOOKUP_OF[col]) return state.lookups[LOOKUP_OF[col]].find((x) => x.id === Number(v))?.name || `#${v}`;
   if (col === 'received_date' || col === 'completed_date') return fmtDate(v);
-  if (col === 'deleted_at') return fmtDateTime(v);
+  if (col === 'deleted_at' || col === 'entered_at') return fmtDateTime(v);
   if (col === 'priority') return PRIORITY_LABELS[v] || v;
   if (Array.isArray(v)) return v.length ? v.join('، ') : '—';
   return String(v);
@@ -34,7 +34,8 @@ function changes(a) {
   const fields = (a.changedFields || []).filter((c) => c !== 'deleted_at' && c !== 'deleted_by');
   if (!fields.length) return html`<span class="muted">—</span>`;
   return html`<div class="diff">${fields.map((c) => html`<div><b>${LABEL_BY_COL[c] || c}:</b>
-    <span class="old">${value(c, a.oldData?.[c])}</span> ← <span class="new">${value(c, a.newData?.[c])}</span></div>`)}</div>`;
+    <span class="old">${value(c, a.oldData?.[c])}</span> ← <span class="new">${value(c, a.newData?.[c])}</span></div>`)}
+    ${a.newData?.via_import ? html`<div class="small muted">عبر الاستيراد</div>` : ''}</div>`;
 }
 
 export default async function audit(ctx, main) {
@@ -59,7 +60,7 @@ export default async function audit(ctx, main) {
     { key: 'changedAt', label: 'الوقت', cls: 'nowrap num', render: (a) => fmtDateTime(a.changedAt) },
     { key: 'changedBy', label: 'بواسطة', cls: 'nowrap', sort: (a) => userName(a.changedBy), render: (a) => userName(a.changedBy) },
     { key: 'action', label: 'العملية', render: (a) => html`<span class="badge ${ACTIONS[a.action][1]}">${ACTIONS[a.action][0]}</span>` },
-    { key: 'taskId', label: 'المهمة', cls: 'num', render: (a) => html`<a href="#/tasks?q=%23${a.taskId}&period=all">#${a.taskId}</a>` },
+    { key: 'taskId', label: 'المهمة', cls: 'num nowrap', render: (a) => html`<a href="#/tasks?q=%23${a.taskId}&period=all" title="#${a.taskId}">${a.taskCode || `#${a.taskId}`}</a>` },
     { key: 'changes', label: 'التغييرات', sort: false, render: changes },
   ];
   const view = () => rows.filter((a) => (!F.userId || a.changedBy === F.userId) && (!F.action || a.action === F.action));

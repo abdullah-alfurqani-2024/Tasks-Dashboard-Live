@@ -9,7 +9,7 @@
 import { normalizeSettings } from '../../core/settings.js';
 import { latinDigits } from '../../core/format.js';
 
-const KEY = 'tsk.demo.v3';
+const KEY = 'tsk.demo.v4';   // v4: رمز المهمة ورمز المهندس
 const PASSWORD = 'demo1234';
 const wait = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 const err = (m) => Object.assign(new Error(m), { status: 400 });
@@ -36,6 +36,7 @@ function seed() {
   const pick = (a) => a[Math.floor(rnd() * a.length)];
   const users = NAMES.map(([fullName, shortName, role], i) => ({
     id: `u${i + 1}`, email: EMAILS[i], loginNo: String(1000 + i + 1), fullName, shortName, role, isActive: true, mustChangePassword: false,
+    engineerCode: role === 'engineer' ? `A${String(i).padStart(2, '0')}` : '',
   }));
   const lookups = {
     taskTypes: ['مراسلة', 'طلب خدمة', 'اتصال', 'طلب مباشر', 'تكليف مباشر', 'أخرى']
@@ -65,6 +66,15 @@ function seed() {
       createdAt: rd + 'T09:00:00Z', createdBy: e.id, updatedAt: rd + 'T09:00:00Z', updatedBy: e.id, deletedAt: null, deletedBy: null,
     });
   }
+  // رموز المهام كما تأتي من Sheets: رمز المهندس + تسلسل بترتيب تاريخ الاستقبال (المدير بلا رمز مهندس: رمز نظام)
+  const seq = {};
+  [...tasks].sort((a, b) => a.receivedDate.localeCompare(b.receivedDate) || a.id - b.id).forEach((t) => {
+    const ec = users.find((u) => u.id === t.engineerId)?.engineerCode;
+    const pre = ec ? `${ec}-` : 'S-';
+    seq[pre] = (seq[pre] || 0) + 1;
+    t.taskCode = pre + String(seq[pre]).padStart(ec ? 4 : 5, '0');
+    t.enteredAt = t.createdAt;
+  });
   return { users, lookups, tasks, audit: [], settings: normalizeSettings({ allowPurgeTasks: true }), seq: { task: tasks.length, audit: 0, lookup: 100, user: users.length } };
 }
 
@@ -91,6 +101,7 @@ export function createAdapter() {
     const st = lk('statuses', t.statusId) || {};
     return {
       ...t, reviewReasons: t.reviewReasons || [], priority: t.priority || 'normal', engineerName: u.fullName, engineerShort: u.shortName,
+      taskCode: t.taskCode || '', enteredAt: t.enteredAt || t.createdAt, importedAt: t.importedAt || null,
       taskType: lk('taskTypes', t.taskTypeId)?.name || '', correspondenceType: lk('correspondenceTypes', t.correspondenceTypeId)?.name || '',
       status: st.name, statusKind: st.kind,
       durationDays: t.completedDate && t.receivedDate ? Math.round((Date.parse(t.completedDate) - Date.parse(t.receivedDate)) / 864e5) : null,
@@ -98,14 +109,14 @@ export function createAdapter() {
   };
 
   const FIELDS = { engineerId: 'engineer_id', refNo: 'ref_no', requester: 'requester', employeeName: 'employee_name', subject: 'subject', receivedDate: 'received_date',
-    completedDate: 'completed_date', notes: 'notes', taskTypeId: 'task_type_id', correspondenceTypeId: 'correspondence_type_id', statusId: 'status_id', delayReason: 'delay_reason', deletedAt: 'deleted_at', reviewReasons: 'review_reasons', priority: 'priority' };
+    completedDate: 'completed_date', notes: 'notes', taskTypeId: 'task_type_id', correspondenceTypeId: 'correspondence_type_id', statusId: 'status_id', delayReason: 'delay_reason', deletedAt: 'deleted_at', reviewReasons: 'review_reasons', priority: 'priority', taskCode: 'task_code', enteredAt: 'entered_at' };
   const snake = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => FIELDS[k]).map(([k, v]) => [FIELDS[k], v ?? null]));
-  function audit(taskId, action, oldT, newT) {
+  function audit(taskId, action, oldT, newT, extra = null) {
     const a = oldT ? snake(oldT) : null, b = snake(newT);
     const fields = a ? Object.keys(b).filter((k) => JSON.stringify(a[k] ?? null) !== JSON.stringify(b[k] ?? null)) : null;
     if (fields && !fields.length) return;
     const pickF = (o) => (fields ? Object.fromEntries(fields.map((k) => [k, o[k] ?? null])) : o);
-    db.audit.unshift({ id: ++db.seq.audit, taskId, action, changedBy: me.id, changedAt: new Date().toISOString(), changedFields: fields, oldData: a ? pickF(a) : null, newData: pickF(b) });
+    db.audit.unshift({ id: ++db.seq.audit, taskId, taskCode: newT.taskCode || '', action, changedBy: me.id, changedAt: new Date().toISOString(), changedFields: fields, oldData: a ? pickF(a) : null, newData: { ...pickF(b), ...extra } });
   }
 
   function validate(t, flagged = false) {
@@ -124,6 +135,16 @@ export function createAdapter() {
     taskTypeId: Number(t.taskTypeId) || null, correspondenceTypeId: Number(t.correspondenceTypeId) || null, statusId: Number(t.statusId), delayReason: t.delayReason?.trim() || '',
     ...(t.priority !== undefined ? { priority: t.priority === 'urgent' ? 'urgent' : 'normal' } : {}),
   });
+  /** رمز مهمة تُنشأ في النظام: رمز المهندس + S + تسلسل (A08-S0001)، أو S-00001 لمهندس بلا رمز. لا يُعاد رقم */
+  const nextCode = (engineerId) => {
+    const ec = db.users.find((u) => u.id === engineerId)?.engineerCode;
+    const pre = ec ? `${ec}-S` : 'S-';
+    db.seq.codes ||= {};
+    const used = db.tasks.filter((t) => t.taskCode?.startsWith(pre)).map((t) => Number(t.taskCode.slice(pre.length)) || 0);
+    const n = Math.max(db.seq.codes[pre] || 0, ...used) + 1;
+    db.seq.codes[pre] = n;
+    return pre + String(n).padStart(ec ? 4 : 5, '0');
+  };
   const locked = (t) => {
     const d = db.settings.editLockDays;
     const st = db.lookups.statuses.find((s) => s.id === t.statusId);
@@ -204,7 +225,7 @@ export function createAdapter() {
         validate(t);
         const now = new Date().toISOString();
         const engineerId = role() === 'engineer' ? me.id : input.engineerId || me.id;
-        const row = { id: ++db.seq.task, engineerId, ...t, createdAt: now, createdBy: me.id, updatedAt: now, updatedBy: me.id, deletedAt: null, deletedBy: null };
+        const row = { id: ++db.seq.task, engineerId, ...t, taskCode: nextCode(engineerId), enteredAt: now, createdAt: now, createdBy: me.id, updatedAt: now, updatedBy: me.id, deletedAt: null, deletedBy: null };
         db.tasks.push(row);
         audit(row.id, 'insert', null, row);
         persist();
@@ -251,6 +272,40 @@ export function createAdapter() {
         row.deletedAt = null; row.deletedBy = null;
         audit(id, 'restore', before, row); persist();
       },
+      /** تحديث الاستيراد: [{ id, ...TaskInput }] */
+      async bulkUpdate(list, onProgress) {
+        need('admin');
+        let n = 0;
+        for (const { id, ...input } of list) {
+          const row = db.tasks.find((t) => t.id === id);
+          if (!row || row.deletedAt) throw err(`تعذّر تحديث المهمة ${input.taskCode || `#${id}`}: لا صلاحية أو أنها حُذفت.`);
+          const t = clean(input);
+          validate(t, !!input.reviewReasons?.length);
+          const before = { ...row }, now = new Date().toISOString();
+          Object.assign(row, t, { engineerId: input.engineerId || row.engineerId, reviewReasons: input.reviewReasons?.length ? input.reviewReasons : null,
+            enteredAt: input.enteredAt && Date.parse(input.enteredAt) !== Date.parse(row.enteredAt || '') ? input.enteredAt : row.enteredAt, importedAt: input.imported ? now : row.importedAt, updatedAt: now, updatedBy: me.id,
+            importedData: input.importedData !== undefined ? input.importedData : row.importedData ?? null });
+          audit(id, 'update', before, row, input.imported ? { via_import: true } : null);
+          if (++n % 100 === 0) { onProgress?.(n, list.length); await wait(10); }
+        }
+        onProgress?.(n, list.length);
+        persist();
+        return n;
+      },
+      async importBase() {
+        need('admin');
+        return new Map(db.tasks.filter((t) => t.importedData).map((t) => [t.id, t.importedData]));
+      },
+      async saveImportBase(list) {
+        need('admin');
+        let n = 0;
+        for (const { id, data } of list) {
+          const row = db.tasks.find((t) => t.id === id);
+          if (row && JSON.stringify(row.importedData ?? null) !== JSON.stringify(data)) { row.importedData = data; n++; }
+        }
+        persist();
+        return n;
+      },
       async bulkCreate(list, onProgress) {
         need('admin', 'head');
         let n = 0;
@@ -258,7 +313,9 @@ export function createAdapter() {
           const t = clean(input);
           validate(t, !!input.reviewReasons?.length);
           const now = new Date().toISOString();
-          db.tasks.push({ id: ++db.seq.task, engineerId: input.engineerId, ...t, reviewReasons: input.reviewReasons?.length ? input.reviewReasons : null, createdAt: now, createdBy: input.createdBy || me.id, updatedAt: now, updatedBy: input.createdBy || me.id, deletedAt: null, deletedBy: null });
+          const code = input.taskCode?.trim().toUpperCase() || nextCode(input.engineerId);
+          if (db.tasks.some((x) => x.taskCode === code)) throw err(`رمز المهمة ${code} موجود مسبقاً.`);
+          db.tasks.push({ id: ++db.seq.task, engineerId: input.engineerId, ...t, reviewReasons: input.reviewReasons?.length ? input.reviewReasons : null, taskCode: code, enteredAt: input.enteredAt || now, importedAt: input.imported ? now : null, importedData: input.importedData ?? null, createdAt: now, createdBy: input.createdBy || me.id, updatedAt: now, updatedBy: input.createdBy || me.id, deletedAt: null, deletedBy: null });
           if (++n % 100 === 0) { onProgress?.(n, list.length); await wait(10); }
         }
         onProgress?.(n, list.length);
@@ -319,6 +376,25 @@ export function createAdapter() {
         for (const k of ['fullName', 'shortName', 'role', 'isActive']) if (u[k] !== undefined) row[k] = u[k];
         persist();
         const { password, ...out } = row; return out;
+      },
+      async setEngineerCode(id, code) {
+        need('admin');
+        const c = (code || '').trim().toUpperCase();
+        if (c && !/^[A-Z]+[0-9]+$/.test(c)) throw err('رمز المهندس حروف إنجليزية ثم أرقام، مثل A08.');
+        if (c && db.users.some((u) => u.engineerCode === c && u.id !== id)) throw err(`رمز المهندس ${c} مستخدم لحساب آخر.`);
+        db.users.find((u) => u.id === id).engineerCode = c;
+        persist();
+        return c || null;
+      },
+      async learnEngineerCodes() {
+        need('admin');
+        let n = 0;
+        for (const u of db.users.filter((x) => !x.engineerCode)) {
+          const pre = [...new Set(db.tasks.filter((t) => t.engineerId === u.id && /^[A-Z]+[0-9]+-[0-9]+$/.test(t.taskCode || '')).map((t) => t.taskCode.split('-')[0]))];
+          if (pre.length === 1 && !db.users.some((x) => x.engineerCode === pre[0])) { u.engineerCode = pre[0]; n++; }
+        }
+        persist();
+        return n;
       },
       async resetAll(o) {
         need('admin');

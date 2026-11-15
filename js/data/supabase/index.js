@@ -6,12 +6,13 @@ import { normalizeSettings } from '../../core/settings.js';
 import { latinDigits as latin } from '../../core/format.js';
 import { CONFIG } from '../../config.js';
 
-const TASK_COLS = 'id,engineer_id,engineer_name,engineer_short,ref_no,requester,employee_name,subject,received_date,completed_date,notes,task_type_id,task_type,correspondence_type_id,correspondence_type,status_id,status,status_kind,delay_reason,duration_days,created_at,created_by,updated_at,updated_by,deleted_at,deleted_by,review_reasons,priority';
+const TASK_COLS = 'id,engineer_id,engineer_name,engineer_short,ref_no,requester,employee_name,subject,received_date,completed_date,notes,task_type_id,task_type,correspondence_type_id,correspondence_type,status_id,status,status_kind,delay_reason,duration_days,created_at,created_by,updated_at,updated_by,deleted_at,deleted_by,review_reasons,priority,task_code,entered_at,imported_at';
 const LOOKUP_TABLES = { taskTypes: 'task_types', correspondenceTypes: 'correspondence_types', statuses: 'task_statuses' };
 
 const INTERNAL = '@tasks.internal';
 const toUser = (r) => r && ({
   id: r.id, email: r.email?.endsWith(INTERNAL) ? '' : r.email, loginNo: r.login_no || '', fullName: r.full_name, shortName: r.short_name || '',
+  engineerCode: r.engineer_code || '',
   role: r.role, isActive: r.is_active, mustChangePassword: r.must_change_password,
 });
 
@@ -25,6 +26,8 @@ const toTask = (r) => ({
   delayReason: r.delay_reason || '', durationDays: r.duration_days,
   createdAt: r.created_at, createdBy: r.created_by, updatedAt: r.updated_at, updatedBy: r.updated_by,
   deletedAt: r.deleted_at, deletedBy: r.deleted_by, reviewReasons: r.review_reasons || [], priority: r.priority || 'normal',
+  // رمز المهمة (16_task_code.sql)، وتاريخ الإدخال: من Sheets للمستوردة، وإلا وقت الإضافة
+  taskCode: r.task_code || '', enteredAt: r.entered_at || r.created_at, importedAt: r.imported_at || null,
 });
 
 const toLookup = (r) => ({ id: r.id, name: r.name, sortOrder: r.sort_order, isActive: r.is_active, ...(r.kind ? { kind: r.kind } : {}) });
@@ -42,6 +45,12 @@ function taskRow(t) {
   if (t.priority !== undefined) row.priority = t.priority === 'urgent' ? 'urgent' : 'normal';
   // أسباب المراجعة: يضعها الاستيراد، ومسحها = «تمت المراجعة»
   if (t.reviewReasons !== undefined) row.review_reasons = t.reviewReasons?.length ? t.reviewReasons : null;
+  // الاستيراد فقط (مدير النظام): الرمز وتاريخ الإدخال من الملف، و«مستوردة» (قاعدة البيانات تختمها بوقت الكتابة)
+  if (t.taskCode) row.task_code = t.taskCode;
+  if (t.enteredAt) row.entered_at = t.enteredAt;
+  if (t.imported) row.imported_at = new Date().toISOString();
+  // مرجع الاستيراد: قيم الملف لهذه المهمة (للدمج حسب الحقل في الاستيراد التالي، 17_import_merge.sql)
+  if (t.importedData !== undefined) row.imported_data = t.importedData;
   return row;
 }
 
@@ -155,11 +164,44 @@ export function createAdapter(config) {
       },
       async remove(id) { await c.rpc('soft_delete_task', { p_id: id }); },
       async restore(id) { await c.rpc('restore_task', { p_id: id }); },
+      /** مراجع الاستيراد (قيم الملف عند آخر استيراد) ← Map(id → object). مدير النظام */
+      async importBase() {
+        const rows = await c.selectAll('tasks', { select: 'id,imported_data', imported_data: 'not.is.null' });
+        return new Map(rows.map((r) => [r.id, r.imported_data]));
+      },
+      /** حفظ المراجع وحدها دون تعديل المهام: [{ id, data }] ← عدد ما تغيّر */
+      async saveImportBase(list, onProgress) {
+        let n = 0;
+        for (let i = 0; i < list.length; i += 500) {
+          n += await c.rpc('save_import_base', { p: list.slice(i, i + 500) });
+          onProgress?.(Math.min(i + 500, list.length), list.length);
+        }
+        return n;
+      },
+      /** تحديث مهام كثيرة (الاستيراد): [{ id, ...TaskInput }] ← عدد المحدَّثة. ٤ طلبات معاً */
+      async bulkUpdate(list, onProgress) {
+        let done = 0, i = 0;
+        const worker = async () => {
+          while (i < list.length) {
+            const { id, ...t } = list[i++];
+            const rows = await c.update('tasks', { id: `eq.${id}` }, taskRow(t));
+            if (!rows.length) throw new ApiError(`تعذّر تحديث المهمة ${t.taskCode || `#${id}`}: لا صلاحية أو أنها حُذفت.`);
+            done++;
+            onProgress?.(done, list.length);
+          }
+        };
+        await Promise.all(Array.from({ length: Math.min(4, list.length) }, worker));
+        return done;
+      },
       async bulkCreate(list, onProgress) {
         const size = 300;
         let done = 0;
         for (let i = 0; i < list.length; i += size) {
-          const chunk = list.slice(i, i + size).map(taskRow);
+          // PostgREST يشترط المفاتيح نفسها في كل صفوف الدفعة: ما ينقص صفاً (مثل task_code للصف بلا رمز) يُرسل null،
+          // وقاعدة البيانات تعطيه قيمته (الرمز التالي، تاريخ الإدخال = الآن)
+          const part = list.slice(i, i + size).map(taskRow);
+          const keys = [...new Set(part.flatMap(Object.keys))];
+          const chunk = part.map((r) => Object.fromEntries(keys.map((k) => [k, r[k] ?? null])));
           await c.insert('tasks', chunk, { returning: false });
           done += chunk.length;
           onProgress?.(done, list.length);
@@ -205,6 +247,14 @@ export function createAdapter(config) {
         if (u.isActive !== undefined) body.is_active = u.isActive;
         const r = await c.invoke(fn, body);
         return toUser(r.user);
+      },
+      /** رمز المهندس (A08): مدير النظام فقط. الفارغ يمسحه */
+      async setEngineerCode(id, code) {
+        return c.rpc('set_engineer_code', { p_id: id, p_code: code || null });
+      },
+      /** بعد الاستيراد: المهندس الذي ليس له رمز يأخذه من رموز مهامه ← عدد من أُعطوا رموزاً */
+      async learnEngineerCodes() {
+        return c.rpc('learn_engineer_codes');
       },
       async resetPassword(id, password) {
         return c.invoke(fn, { action: 'reset_password', id, password });
@@ -267,8 +317,14 @@ export function createAdapter(config) {
         if (f.to) and.push(`changed_at.lte.${f.to}T23:59:59.999${tz}`);
         if (and.length) q.and = `(${and.join(',')})`;
         const rows = await c.select('task_audit', q);
+        // رمز كل مهمة (للعرض بجانب رقمها)، والمحذوفة نهائياً تبقى برقمها
+        const ids = [...new Set(rows.map((r) => r.task_id))];
+        const codes = new Map();
+        for (let i = 0; i < ids.length; i += 200) {
+          for (const t of await c.select('tasks', { select: 'id,task_code', id: `in.(${ids.slice(i, i + 200).join(',')})` })) codes.set(t.id, t.task_code || '');
+        }
         return rows.map((r) => ({
-          id: r.id, taskId: r.task_id, action: r.action, changedBy: r.changed_by, changedAt: r.changed_at,
+          id: r.id, taskId: r.task_id, taskCode: codes.get(r.task_id) || r.new_data?.task_code || '', action: r.action, changedBy: r.changed_by, changedAt: r.changed_at,
           changedFields: r.changed_fields, oldData: r.old_data, newData: r.new_data,
         }));
       },

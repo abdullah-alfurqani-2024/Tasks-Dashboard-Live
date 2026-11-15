@@ -43,16 +43,16 @@ export function fmtDateTime(ts) {
   return `${p.y}/${p.mo}/${p.d} - ${p.h}:${p.mi}:${p.s}`;
 }
 
-/** ISO (UTC) ← تاريخ 'YYYY-MM-DD' وساعة 'HH:MM' بتوقيت النظام (CONFIG.timeZone) */
+/** ISO (UTC) ← تاريخ 'YYYY-MM-DD' وساعة 'HH:MM' أو 'HH:MM:SS' بتوقيت النظام (CONFIG.timeZone) */
 export function zonedToIso(date, time = '00:00') {
   const [y, mo, d] = date.split('-').map(Number);
-  const [h, mi] = time.split(':').map(Number);
-  if (![y, mo, d, h, mi].every(Number.isFinite)) return '';
-  const want = Date.UTC(y, mo - 1, d, h, mi);
+  const [h, mi, sec = 0] = time.split(':').map(Number);
+  if (![y, mo, d, h, mi, sec].every(Number.isFinite)) return '';
+  const want = Date.UTC(y, mo - 1, d, h, mi, sec);
   let t = want;
   for (let i = 0; i < 2; i++) {               // مرتان تكفيان حتى مع التوقيت الصيفي
     const p = localParts(t);
-    t += want - Date.UTC(+p.y, +p.mo - 1, +p.d, +p.h, +p.mi);
+    t += want - Date.UTC(+p.y, +p.mo - 1, +p.d, +p.h, +p.mi, +p.s);
   }
   return new Date(t).toISOString();
 }
@@ -129,6 +129,35 @@ export function parseDate(v) {
   const dt = new Date(Date.UTC(y, mo - 1, d));
   if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return null;
   return dt.toISOString().slice(0, 10);
+}
+
+/**
+ * يقرأ تاريخاً ووقتاً (مثل «تاريخ الإدخال» من Google Sheets) بتوقيت النظام، ويعيد ISO (UTC) أو null.
+ * رقم Excel (الجزء العشري = الوقت، بدقة الثانية)، أو نص مثل '2026-09-01 10:00:05' أو '2026/09/01 10:00'.
+ * بلا وقت ← منتصف الليل.
+ */
+export function parseDateTime(v) {
+  if (v == null || v === '') return null;
+  const pad = (n) => String(n).padStart(2, '0');
+  if (typeof v === 'number' || /^\d+(\.\d+)?$/.test(latinDigits(v).trim())) {
+    const n = Number(latinDigits(v));
+    if (!Number.isFinite(n) || n < 1 || n > 80000) return null;
+    const total = Math.round(n * 86400);                 // ثوانٍ منذ 1899/12/30
+    const day = Math.floor(total / 86400), sec = total % 86400;
+    const date = new Date(Date.UTC(1899, 11, 30) + day * 864e5).toISOString().slice(0, 10);
+    return zonedToIso(date, `${pad(Math.floor(sec / 3600))}:${pad(Math.floor((sec % 3600) / 60))}:${pad(sec % 60)}`) || null;
+  }
+  const s = latinDigits(v).trim();
+  const date = parseDate(s.split(/[ T]/)[0]);
+  if (!date) return null;
+  const m = s.slice(s.split(/[ T]/)[0].length).match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm|ص|م)?/i);
+  if (!m) return zonedToIso(date, '00:00') || null;
+  let h = Number(m[1]);
+  const ap = (m[4] || '').toLowerCase();
+  if ((ap === 'pm' || ap === 'م') && h < 12) h += 12;
+  if ((ap === 'am' || ap === 'ص') && h === 12) h = 0;
+  if (h > 23 || Number(m[2]) > 59 || Number(m[3] || 0) > 59) return null;
+  return zonedToIso(date, `${pad(h)}:${m[2]}:${m[3] || '00'}`) || null;
 }
 
 /** مقارنة نصوص عربية بعد التوحيد (أ إ آ ← ا، ة ← ه، ى ← ي) */

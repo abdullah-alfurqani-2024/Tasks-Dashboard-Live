@@ -19,7 +19,7 @@ const DEFAULTS = { engineerId: '', taskTypeId: '', correspondenceTypeId: '', sta
 const KINDS = [['done', 'مكتملة', 'var(--ok)'], ['open', 'مفتوحة', 'var(--info)'], ['cancelled', 'مغلقة بدون إنجاز', 'var(--muted)']];
 const KIND_LABEL = { done: 'المكتملة', open: 'المفتوحة', cancelled: 'المغلقة بدون إنجاز' };
 const SORTS = [['receivedDate', 'تاريخ الاستقبال'], ['completedDate', 'تاريخ الانتهاء'], ['engineerName', 'اسم المهندس'], ['taskType', 'نوع المهمة'],
-  ['correspondenceType', 'نوع المراسلة'], ['status', 'الحالة'], ['durationDays', 'المدة'], ['requester', 'الجهة الطالبة'], ['id', 'الرقم']];
+  ['correspondenceType', 'نوع المراسلة'], ['status', 'الحالة'], ['durationDays', 'المدة'], ['requester', 'الجهة الطالبة'], ['taskCode', 'رمز المهمة'], ['id', 'الرقم']];
 
 export default async function report(ctx, main) {
   setTitle('التقرير');
@@ -108,15 +108,15 @@ export default async function report(ctx, main) {
           <span class="chip">متوسط المدة <b>${dec1(s.avgDuration)}</b> يوم</span>
         </div>
         <div class="table-wrap"><table class="table">
-          <thead><tr><th>م</th>${viewAll ? html`<th>اسم المهندس</th>` : ''}<th>رقم القيد</th><th>الجهة الطالبة</th><th>اسم الموظف</th><th>الموضوع</th>
+          <thead><tr><th>م</th><th>الرمز</th>${viewAll ? html`<th>اسم المهندس</th>` : ''}<th>رقم القيد</th><th>الجهة الطالبة</th><th>اسم الموظف</th><th>الموضوع</th>
             <th>الاستقبال</th><th>الانتهاء</th><th>نوع المهمة</th><th>نوع المراسلة</th><th>الحالة</th><th>المدة</th><th>سبب التأخير</th><th>الملاحظات</th></tr></thead>
           <tbody>${list.length ? list.map((t, i) => html`<tr>
-            <td class="num muted">${i + 1}</td>${viewAll ? html`<td class="nowrap">${t.engineerName}</td>` : ''}<td class="num">${t.refNo}</td>
+            <td class="num muted">${i + 1}</td><td class="num nowrap">${t.taskCode}</td>${viewAll ? html`<td class="nowrap">${t.engineerName}</td>` : ''}<td class="num">${t.refNo}</td>
             <td>${t.requester}</td><td>${t.employeeName}</td><td class="subject">${t.subject}</td>
             <td class="num nowrap">${fmtDate(t.receivedDate)}</td><td class="num nowrap">${fmtDate(t.completedDate)}</td>
             <td>${t.taskType}</td><td>${t.correspondenceType}</td><td class="nowrap">${t.status}</td><td class="num">${t.durationDays ?? ''}</td>
             <td>${t.delayReason}</td><td>${t.notes}</td></tr>`)
-            : html`<tr><td colspan="14"><div class="empty">${icon('empty')}<div>لا توجد مهام تطابق المعايير.</div></div></td></tr>`}</tbody>
+            : html`<tr><td colspan="15"><div class="empty">${icon('empty')}<div>لا توجد مهام تطابق المعايير.</div></div></td></tr>`}</tbody>
         </table></div>
       </div>`);
   }

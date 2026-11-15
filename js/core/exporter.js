@@ -7,6 +7,7 @@ import { today, fmtDate, fmtDateTime, localIsoDateTime } from './format.js';
 
 const COLS = [
   { label: LABEL.id, type: 'number', width: 8, get: (t) => t.id },
+  { label: LABEL.taskCode, width: 12, get: (t) => t.taskCode },
   { label: LABEL.engineerId, width: 28, get: (t) => t.engineerName },
   { label: LABEL.refNo, width: 14, get: (t) => t.refNo },
   { label: LABEL.requester, width: 24, get: (t) => t.requester },
@@ -21,7 +22,8 @@ const COLS = [
   { label: LABEL.priority, width: 10, get: (t) => PRIORITY_LABELS[t.priority] || PRIORITY_LABELS.normal },
   { label: LABEL.delayReason, width: 28, get: (t) => t.delayReason },
   { label: LABEL.durationDays, type: 'number', width: 8, get: (t) => t.durationDays },
-  { label: LABEL.createdAt, type: 'datetime', width: 22, get: (t) => localIsoDateTime(t.createdAt), raw: (t) => t.createdAt },
+  // تاريخ الإدخال: من Google Sheets للمهام المستوردة، وإلا وقت إضافتها في النظام
+  { label: LABEL.enteredAt, type: 'datetime', width: 22, get: (t) => localIsoDateTime(t.enteredAt || t.createdAt), raw: (t) => t.enteredAt || t.createdAt },
 ];
 
 export function exportTasks(tasks, { format = 'xlsx', name = 'tasks', sheet = 'المهام' } = {}) {
