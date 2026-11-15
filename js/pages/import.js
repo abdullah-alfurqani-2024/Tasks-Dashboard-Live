@@ -7,9 +7,13 @@
  * لا يمنع الاستيراد إلا اسم مهندس لا يطابق أي حساب، وعلى المدير اختيار الحساب المقابل له.
  *
  * رمز المهمة (عمود «رمز المهمة» من ملف الاستيراد في Google Sheets): المهمة تُعرف برمزها:
- *   رمز جديد ← تُضاف · موجود بلا تغيير ← لا شيء · موجود وتغيّر ← تُحدَّث من الملف (إلا المعدّلة في النظام بعد
- *   آخر استيراد إذا اختير حمايتها) · مهمته محذوفة ← لا تُستورد · مكرر في الملف ← أول صف فقط ·
+ *   رمز جديد ← تُضاف · موجود ← دمج حسب الحقل (أدناه) · مهمته محذوفة ← لا تُستورد · مكرر في الملف ← أول صف فقط ·
  *   صف بلا رمز ← كالسابق + «بدون رمز في الملف» (ويأخذ رمز نظام). و«تاريخ الإدخال» من الملف يُحفظ معها.
+ *
+ * الدمج حسب الحقل: مع كل مهمة يُحفظ «مرجع آخر استيراد» (قيم الملف، imported_data). ولكل حقل في الملف:
+ *   تغيّر في الملف فقط ← يُؤخذ من الملف · في النظام فقط ← يبقى تعديل النظام · في الاثنين بقيمتين ← تعارض
+ *   (يبقى النظام افتراضياً، أو يُؤخذ من الملف حسب الخيار). المهمة بلا مرجع (قبل هذه الميزة): كأن كل فرق
+ *   تعارض إن عُدّلت في النظام بعد آخر استيراد، وإلا من الملف. والأعمدة غير الموجودة في الملف لا تُمس.
  */
 import { db } from '../data/index.js';
 import { html, mount, $, on } from '../core/dom.js';
@@ -79,7 +83,7 @@ const latinCode = (v) => latinDigits(cellText(v)).toUpperCase().replace(/\s+/g, 
 
 export default async function importPage(ctx, main) {
   setTitle('الاستيراد');
-  const S = { step: 1, fileName: '', sheets: [], sheetIdx: 0, headerRow: -1, map: {}, engineerMode: 'column', fixedEngineer: '', createMissing: true, skipDup: true, protectEdited: true, blankEngineer: '', parsed: null, alias: {}, allTasks: null };
+  const S = { step: 1, fileName: '', sheets: [], sheetIdx: 0, headerRow: -1, map: {}, engineerMode: 'column', fixedEngineer: '', createMissing: true, skipDup: true, conflict: 'system', blankEngineer: '', parsed: null, alias: {}, allTasks: null, bases: null };
   const root = newPage(main);
   mount(root, html`
     ${pageHead({ title: 'استيراد المهام', sub: 'من ملف Excel (xlsx) أو CSV — مثل ملفات المهندسين أو الملف الرئيسي في Google Sheets بعد تنزيله.',
@@ -114,7 +118,7 @@ export default async function importPage(ctx, main) {
     try {
       if (file.size > 30 * 1024 * 1024) throw new Error('الملف كبير جداً (أكثر من 30 ميغابايت).');
       S.fileName = file.name;
-      S.alias = {}; S.allTasks = null;
+      S.alias = {}; S.allTasks = null; S.bases = null;
       if (/\.csv$/i.test(file.name) || file.type === 'text/csv') {
         S.sheets = [{ name: 'CSV', rows: parseCsv(await file.text()) }];
       } else if (/\.xlsx$/i.test(file.name)) {
@@ -173,9 +177,11 @@ export default async function importPage(ctx, main) {
           <label class="check"><input type="checkbox" data-k="skipDup" ${S.skipDup ? 'checked' : ''}> عدم تكرار المهام الموجودة في النظام مسبقاً (نفس المهندس + تاريخ الاستقبال + الموضوع).
             إذا كانت المهمة موجودة مرة واحدة وتكررت في الملف مرتين، يُستورد الصف الثاني.</label>
           ${S.map.taskCode != null ? html`<div class="alert small">
-            <b>الملف فيه «رمز المهمة»:</b> المهمة الموجودة برمزها <b>تُحدَّث من الملف</b> إذا تغيّر فيها شيء، والجديدة تُضاف، ولا تتكرر مهمة.
-            <label class="check" style="margin-top:6px"><input type="checkbox" data-k="protectEdited" ${S.protectEdited ? 'checked' : ''}>
-              حماية المهام التي عُدّلت في النظام بعد آخر استيراد: لا تُحدَّث، وتُذكر في المعاينة والتقرير لتقرر فيها.</label></div>` : ''}
+            <b>الملف فيه «رمز المهمة»:</b> الجديدة تُضاف، ولا تتكرر مهمة. والموجودة تُدمج <b>حسب الحقل</b>: ما تغيّر في الملف منذ آخر استيراد
+            يُؤخذ منه، وما عدّله المهندس في النظام يبقى.
+            <div style="margin-top:6px"><b>إذا تغيّر الحقل نفسه في النظام وفي الملف بقيمتين مختلفتين (تعارض):</b></div>
+            <label class="check"><input type="radio" name="conflict" value="system" ${S.conflict === 'system' ? 'checked' : ''}> يبقى ما في النظام (ويُذكر في المعاينة والتقرير)</label>
+            <label class="check"><input type="radio" name="conflict" value="file" ${S.conflict === 'file' ? 'checked' : ''}> يُؤخذ من الملف</label></div>` : ''}
           ${S.engineerMode === 'column' ? html`<div class="field" style="max-width:420px"><label for="i-blank">المهمة التي لا يوجد فيها اسم مهندس تُسند إلى</label>
             <select class="input" id="i-blank" data-k="blankEngineer">${options(engs.map((e) => ({ id: e.id, name: e.fullName, isActive: e.isActive })), S.blankEngineer, '— اختر (عند الحاجة) —')}</select>
             <span class="hint">وتظهر في «تحتاج مراجعة» ليُسندها رئيس القسم أو المدير للمهندس الصحيح.</span></div>` : ''}
@@ -192,6 +198,7 @@ export default async function importPage(ctx, main) {
     step3(null);
   });
 
+  on(root, 'change', '[name="conflict"]', (e, el) => { S.conflict = el.value === 'file' ? 'file' : 'system'; });
   on(root, 'change', '[data-k], [data-map], [name="engMode"]', (e, el) => {
     if (el.dataset.map) { S.map[el.dataset.map] = el.value === '' ? undefined : Number(el.value); if (el.dataset.map === 'taskCode') step2(); return; }
     if (el.name === 'engMode') { S.engineerMode = el.value; step2(); return; }
@@ -252,6 +259,7 @@ export default async function importPage(ctx, main) {
 
     const codeCol = S.map.taskCode != null;
     if ((S.skipDup || codeCol) && !S.allTasks) S.allTasks = await db.tasks.list({ deleted: 'include' });
+    if (codeCol && !S.bases) S.bases = await db.tasks.importBase();
     // المهام الموجودة في النظام: كم مرة توجد كل مهمة (لا نكرر الموجود، ونستورد الزائد عليه)
     // existing: لكل الصفوف بلا رمز. bare: للصف الذي رمزه جديد، مقابل مهام النظام التي بلا رمز
     // (مهام قديمة قبل الرموز: لا تتكرر، والأصل حذفها وإعادة الاستيراد)
@@ -364,14 +372,11 @@ export default async function importPage(ctx, main) {
       }
     }
 
-    // المهمة الموجودة برمزها: ما الذي تغيّر؟ (الملف يفوز، وأسباب المراجعة تُحسب من الملف)
+    // المهمة الموجودة برمزها: الدمج حسب الحقل
     for (const r of out) {
       if (!r.match || r.errors.length) continue;
       r.reasons = finalReasons(r);
-      r.diff = diffOf(r.match, r);
-      const cur = r.match;
-      r.edited = !!cur.updatedAt && Date.parse(cur.updatedAt) > Date.parse(cur.importedAt || cur.createdAt);
-      r.mode = !r.diff.length ? 'same' : S.protectEdited && r.edited ? 'protected' : 'update';
+      mergeOf(r);
     }
     // مهام في النظام برموز Sheets وليست في الملف: لا تُمس، وتُذكر في التقرير
     const inFile = new Set(out.map((r) => r.code).filter(Boolean));
@@ -390,30 +395,66 @@ export default async function importPage(ctx, main) {
     return why;
   }
 
-  /** الفروق بين المهمة في النظام وصفها في الملف ← [{ label, from, to }] */
-  function diffOf(cur, r) {
-    // الأعمدة غير الموجودة في الملف لا تُقارن ولا تُغيَّر
-    const t = r.task, ref = t._ref, out = [];
-    const has = (k) => S.map[k] != null;
-    const nameOf = (x) => x?.name || x?.pending || '';
-    const add = (label, a, b, show = (v) => v || '—') => { if ((a ?? '') !== (b ?? '')) out.push({ label, from: show(a), to: show(b) }); };
-    const eng = engineers({ includeInactive: true });
-    add('المهندس', cur.engineerId, t.engineerId, (id) => eng.find((e) => e.id === id)?.fullName || '—');
-    if (has('refNo')) add('رقم القيد', cur.refNo, t.refNo);
-    if (has('requester')) add('الجهة الطالبة', cur.requester, t.requester);
-    if (has('employeeName')) add('اسم الموظف', cur.employeeName, t.employeeName);
-    add('الموضوع', cur.subject, t.subject);
-    add('تاريخ الاستقبال', cur.receivedDate, t.receivedDate, (v) => fmtDate(v) || '—');
-    if (has('completedDate')) add('تاريخ الانتهاء', cur.completedDate, t.completedDate, (v) => fmtDate(v) || '—');
-    if (has('notes')) add('الملاحظات', cur.notes, t.notes);
-    if (has('taskType')) add('نوع المهمة', cur.taskType, nameOf(ref.taskType));
-    if (has('correspondenceType')) add('نوع المراسلة', cur.correspondenceType, nameOf(ref.correspondenceType));
-    if (has('status')) add('الحالة', cur.status, nameOf(ref.status));
-    if (has('priority')) add('الأولوية', cur.priority, t.priority, (v) => ({ urgent: 'عاجلة', normal: 'عادية' }[v] || '—'));
-    if (has('delayReason')) add('سبب التأخير', cur.delayReason, t.delayReason);
-    if (t.enteredAt) add('تاريخ الإدخال', cur.enteredAt ? new Date(cur.enteredAt).toISOString() : '', new Date(t.enteredAt).toISOString(), (v) => (v ? fmtDateTime(v) : '—'));
-    add('تحتاج مراجعة', (cur.reviewReasons || []).join(' | '), r.reasons.join(' | '));
-    return out;
+  /**
+   * الحقول التي يُدمج فيها: قيمة النظام وقيمة الملف نصوصاً للمقارنة (الفارغ = '')، وطريقة العرض.
+   * col: الحقل لا يُقارن ولا يُغيَّر إلا إذا كان عموده في الملف.
+   */
+  const nameOf = (x) => x?.name || x?.pending || '';
+  const isoOf = (v) => (v ? new Date(v).toISOString() : '');
+  const engName = (id) => engineers({ includeInactive: true }).find((e) => e.id === id)?.fullName || id || '—';
+  const MERGE = [
+    { k: 'engineerId', label: 'المهندس', sys: (c) => c.engineerId, file: (t) => t.engineerId, show: engName },
+    { k: 'refNo', col: 'refNo', label: 'رقم القيد', sys: (c) => c.refNo, file: (t) => t.refNo },
+    { k: 'requester', col: 'requester', label: 'الجهة الطالبة', sys: (c) => c.requester, file: (t) => t.requester },
+    { k: 'employeeName', col: 'employeeName', label: 'اسم الموظف', sys: (c) => c.employeeName, file: (t) => t.employeeName },
+    { k: 'subject', label: 'الموضوع', sys: (c) => c.subject, file: (t) => t.subject },
+    { k: 'receivedDate', label: 'تاريخ الاستقبال', sys: (c) => c.receivedDate, file: (t) => t.receivedDate, show: fmtDate },
+    { k: 'completedDate', col: 'completedDate', label: 'تاريخ الانتهاء', sys: (c) => c.completedDate, file: (t) => t.completedDate, show: fmtDate },
+    { k: 'notes', col: 'notes', label: 'الملاحظات', sys: (c) => c.notes, file: (t) => t.notes },
+    { k: 'taskType', col: 'taskType', label: 'نوع المهمة', sys: (c) => c.taskType, file: (t) => nameOf(t._ref.taskType) },
+    { k: 'correspondenceType', col: 'correspondenceType', label: 'نوع المراسلة', sys: (c) => c.correspondenceType, file: (t) => nameOf(t._ref.correspondenceType) },
+    { k: 'status', col: 'status', label: 'الحالة', sys: (c) => c.status, file: (t) => nameOf(t._ref.status) },
+    { k: 'priority', col: 'priority', label: 'الأولوية', sys: (c) => c.priority, file: (t) => t.priority, show: (v) => ({ urgent: 'عاجلة', normal: 'عادية' }[v]) },
+    { k: 'delayReason', col: 'delayReason', label: 'سبب التأخير', sys: (c) => c.delayReason, file: (t) => t.delayReason },
+    { k: 'enteredAt', col: 'enteredAt', label: 'تاريخ الإدخال', sys: (c) => isoOf(c.enteredAt), file: (t) => isoOf(t.enteredAt), show: fmtDateTime, skip: (t) => !t.enteredAt },
+    { k: 'reviewReasons', label: 'تحتاج مراجعة', sys: (c) => (c.reviewReasons || []).join(' | '), file: (t, r) => r.reasons.join(' | ') },
+  ];
+  const showOf = (f, v) => (v === '' || v == null ? '—' : (f.show ? f.show(v) : v) || '—');
+  const activeFields = (r) => MERGE.filter((f) => (!f.col || S.map[f.col] != null) && !f.skip?.(r.task));
+  /** قيم الملف لهذه المهمة: تُحفظ مرجعاً للاستيراد التالي */
+  const snapOf = (r) => Object.fromEntries(activeFields(r).map((f) => [f.k, f.file(r.task, r) ?? '']));
+  const sameSnap = (a, b) => !!a && !!b && Object.keys(b).length === Object.keys(a).length && Object.keys(b).every((k) => a[k] === b[k]);
+
+  /** الدمج حسب الحقل ← r.take (من الملف) / r.keep (يبقى تعديل النظام) / r.conflicts، وr.mode */
+  function mergeOf(r) {
+    const cur = r.match, base = S.bases?.get(cur.id) || null;
+    r.edited = !!cur.updatedAt && Date.parse(cur.updatedAt) > Date.parse(cur.importedAt || cur.createdAt);
+    r.take = []; r.keep = []; r.conflicts = [];
+    for (const f of activeFields(r)) {
+      const sv = f.sys(cur) ?? '', fv = f.file(r.task, r) ?? '';
+      if (sv === fv) continue;
+      const d = { f, sv, fv };
+      if (base && f.k in base) {
+        d.bv = base[f.k];
+        if (sv === d.bv) r.take.push(d);                 // تغيّر في الملف فقط
+        else if (fv === d.bv) r.keep.push(d);            // تغيّر في النظام فقط
+        else r.conflicts.push(d);                        // تغيّر في الاثنين
+      } else if (r.edited) r.conflicts.push(d);          // بلا مرجع: عُدّلت في النظام بعد آخر استيراد
+      else r.take.push(d);
+    }
+    r.taken = S.conflict === 'file' ? [...r.take, ...r.conflicts] : r.take;
+    r.snap = snapOf(r);
+    r.baseChanged = !sameSnap(base, r.snap);
+    r.mode = r.taken.length ? 'update' : r.keep.length || r.conflicts.length ? 'kept' : 'same';
+  }
+  /** تفاصيل الدمج للعرض والتقرير */
+  function mergeText(r) {
+    const won = S.conflict === 'file' ? 'من الملف' : 'يبقى النظام';
+    return [
+      ...r.take.map((d) => `${d.f.label}: ${showOf(d.f, d.sv)} ← ${showOf(d.f, d.fv)}`),
+      ...r.conflicts.map((d) => `تعارض في ${d.f.label}: النظام «${showOf(d.f, d.sv)}»، الملف «${showOf(d.f, d.fv)}»${d.bv !== undefined ? `، آخر استيراد «${showOf(d.f, d.bv)}»` : ''} ← ${won}`),
+      ...r.keep.map((d) => `يبقى تعديل النظام في ${d.f.label}: «${showOf(d.f, d.sv)}» (في الملف «${showOf(d.f, d.fv)}»)`),
+    ];
   }
 
   /* ───── الخطوة 3 ───── */
@@ -426,7 +467,10 @@ export default async function importPage(ctx, main) {
       stop, go,
       review: go.filter((r) => r.reasons.length), dup: go.filter((r) => r.dup),
       exists: ok.filter((r) => r.exists),
-      upd: ok.filter((r) => r.mode === 'update'), same: ok.filter((r) => r.mode === 'same'), prot: ok.filter((r) => r.mode === 'protected'),
+      upd: ok.filter((r) => r.mode === 'update'), same: ok.filter((r) => r.mode === 'same'), kept: ok.filter((r) => r.mode === 'kept'),
+      conflicts: ok.filter((r) => r.conflicts?.length),
+      // تختلف عن Sheets بعد الاستيراد: تعديلات النظام الباقية (وتعارضات بقي فيها النظام)
+      differs: ok.filter((r) => r.keep?.length || (S.conflict === 'system' && r.conflicts?.length)),
       deleted: ok.filter((r) => r.deleted), dupCode: ok.filter((r) => r.dupCode),
     };
   }
@@ -434,11 +478,11 @@ export default async function importPage(ctx, main) {
     : r.exists ? [r.code ? 'موجودة في النظام بلا رمز (لا تُستورد)' : 'موجودة في النظام مسبقاً (لا تُستورد)', '']
     : r.dupCode ? [`رمز مكرر في الملف (الصف ${r.dupCode} يُستورد، وهذا لا)`, 'bad']
     : r.deleted ? ['مهمتها محذوفة في النظام (لا تُستورد)', '']
-    : r.mode === 'update' ? ['تُحدَّث من الملف', 'info']
-    : r.mode === 'protected' ? ['عُدّلت في النظام بعد آخر استيراد (لا تُحدَّث)', 'warn']
+    : r.mode === 'update' ? [r.conflicts.length ? 'تُحدَّث، وفيها تعارض' : 'تُحدَّث من الملف', r.conflicts.length ? 'warn' : 'info']
+    : r.mode === 'kept' ? [r.conflicts.length ? 'تعارض: يبقى ما في النظام' : 'تعديلات النظام باقية', r.conflicts.length ? 'warn' : '']
     : r.mode === 'same' ? ['بلا تغيير', '']
     : r.reasons.length ? ['تُضاف وتحتاج مراجعة', 'warn'] : ['تُضاف', 'ok']);
-  const diffText = (r) => (r.diff || []).map((d) => `${d.label}: ${d.from} ← ${d.to}`);
+  const diffText = (r) => (r.match && r.mode !== 'same' ? mergeText(r) : []);
 
   async function step3(btn) {
     if (S.map.subject == null || S.map.receivedDate == null) return toastError({ message: 'طابق عمودي «الموضوع» و«تاريخ الاستقبال» على الأقل.' });
@@ -449,9 +493,9 @@ export default async function importPage(ctx, main) {
     const engOpts = engineers({ includeInactive: true }).map((e) => ({ id: e.id, name: e.fullName, isActive: e.isActive }));
     const G = groupsOf(rows);
     const total = rows.length + blank.length;
-    const sum = G.go.length + G.exists.length + blank.length + G.stop.length + G.upd.length + G.same.length + G.prot.length + G.deleted.length + G.dupCode.length;
+    const sum = G.go.length + G.exists.length + blank.length + G.stop.length + G.upd.length + G.same.length + G.kept.length + G.deleted.length + G.dupCode.length;
     const miss = Object.entries(missing).filter(([, v]) => v.size);
-    const show = [...G.stop, ...G.upd, ...G.prot, ...G.dupCode, ...G.deleted, ...G.review, ...G.go.filter((r) => !r.reasons.length), ...G.exists, ...G.same].slice(0, 300);
+    const show = [...G.stop, ...G.conflicts, ...G.upd.filter((r) => !r.conflicts.length), ...G.kept.filter((r) => !r.conflicts.length), ...G.dupCode, ...G.deleted, ...G.review, ...G.go.filter((r) => !r.reasons.length), ...G.exists, ...G.same].slice(0, 300);
     const chip = (n, label, color) => (n ? html`<span class="chip"><span class="dot" style="color:${color}"></span>${label} <b>${num(n)}</b></span>` : '');
     const work = G.go.length + G.upd.length;
     mount(stepBox, html`
@@ -465,7 +509,8 @@ export default async function importPage(ctx, main) {
             ${chip(G.dup.length, 'منها مكررة محتملة', 'var(--warn)')}
             ${codeCol ? html`<span class="chip"><span class="dot" style="color:var(--info)"></span>تُحدَّث من الملف <b>${num(G.upd.length)}</b></span>` : ''}
             ${chip(G.same.length, 'بلا تغيير', 'var(--muted)')}
-            ${chip(G.prot.length, 'عُدّلت في النظام (لا تُحدَّث)', 'var(--warn)')}
+            ${chip(G.conflicts.length, 'فيها تعارض', 'var(--warn)')}
+            ${chip(G.kept.length, 'تعديلات النظام باقية (بلا تحديث)', 'var(--muted)')}
             ${chip(G.deleted.length, 'مهمتها محذوفة في النظام', 'var(--muted)')}
             ${chip(G.dupCode.length, 'رمز مكرر في الملف', 'var(--bad)')}
             ${chip(G.exists.length, 'موجودة في النظام مسبقاً', 'var(--muted)')}
@@ -473,9 +518,11 @@ export default async function importPage(ctx, main) {
             ${chip(G.stop.length, 'تنتظر اختيار المهندس', 'var(--bad)')}
           </div>
           <div class="small ${sum === total ? 'muted' : 'bad'}">
-            المطابقة: ${num(G.go.length)} ${codeCol ? 'جديدة' : 'ستُستورد'}${codeCol ? ` + ${num(G.upd.length)} تُحدَّث + ${num(G.same.length)} بلا تغيير + ${num(G.prot.length)} محمية + ${num(G.deleted.length)} محذوفة + ${num(G.dupCode.length)} رمز مكرر` : ''}
+            المطابقة: ${num(G.go.length)} ${codeCol ? 'جديدة' : 'ستُستورد'}${codeCol ? ` + ${num(G.upd.length)} تُحدَّث + ${num(G.same.length)} بلا تغيير + ${num(G.kept.length)} تعديلات النظام باقية + ${num(G.deleted.length)} محذوفة + ${num(G.dupCode.length)} رمز مكرر` : ''}
             + ${num(G.exists.length)} موجودة مسبقاً + ${num(blank.length)} بلا بيانات مهمة + ${num(G.stop.length)} تنتظر المهندس = <b>${num(total)}</b> صفاً.
             ${empty ? html` (وتجاهلنا ${num(empty)} صفاً فارغاً تماماً)` : ''}</div>
+          ${G.differs.length ? html`<div class="alert small">${num(G.differs.length)} مهمة ستبقى <b>مختلفة عن Sheets</b> بسبب تعديلات في النظام لم تُنقل إلى Sheets.
+            الحقول وقيمها في «تقرير الصفوف»، لتعديلها في Sheets إن لزم.</div>` : ''}
           ${absent?.length ? html`<div class="alert small">${num(absent.length)} مهمة في النظام برموز من Sheets <b>ليست في هذا الملف</b>، ولا تُمس. قائمتها في «تقرير الصفوف».</div>` : ''}
           ${G.exists.some((r) => r.code) ? html`<div class="alert warn small">${num(G.exists.filter((r) => r.code).length)} صفاً برموز جديدة تطابق مهاماً في النظام <b>بلا رمز</b> (نفس المهندس والتاريخ والموضوع)، فلا تُستورد حتى لا تتكرر.
             لربط كل المهام برموزها: احذف كل المهام من «الإعدادات» ثم استورد الملف.</div>` : ''}
@@ -501,7 +548,7 @@ export default async function importPage(ctx, main) {
         </div>
         <div class="table-wrap" style="max-height:60vh"><table class="table">
           <thead><tr><th>الصف</th>${codeCol ? html`<th>الرمز</th>` : ''}<th>المهندس</th><th>الموضوع</th><th>الاستقبال</th><th>الانتهاء</th><th>الحالة</th><th>النتيجة</th></tr></thead>
-          <tbody>${show.map((r) => { const [label, cls] = resultOf(r); const why = r.errors.length ? r.errors : r.diff?.length && r.mode !== 'same' ? diffText(r) : !r.match ? r.reasons : []; return html`<tr>
+          <tbody>${show.map((r) => { const [label, cls] = resultOf(r); const why = r.errors.length ? r.errors : r.match ? diffText(r) : r.reasons; return html`<tr>
             <td class="num muted">${r.line}</td>${codeCol ? html`<td class="num nowrap">${r.code}</td>` : ''}<td class="nowrap">${r.engName}</td><td class="subject"><div class="clip">${r.task.subject}</div></td>
             <td class="num nowrap">${fmtDate(r.task.receivedDate)}</td><td class="num nowrap">${fmtDate(r.task.completedDate)}</td><td>${r.statusName}</td>
             <td><span class="badge ${cls}">${label}</span>${why.length ? html` <span class="small">${why.join('، ')}</span>` : ''}</td></tr>`; })}</tbody>
@@ -515,7 +562,7 @@ export default async function importPage(ctx, main) {
     const { rows, missing, codeCol } = S.parsed;
     const G = groupsOf(rows);
     S.step = 4; drawSteps();
-    S.allTasks = null; // بعد الكتابة تتغير المهام الموجودة
+    S.allTasks = null; S.bases = null; // بعد الكتابة تتغير المهام الموجودة ومراجعها
     mount(stepBox, html`<div class="card card-pad stack"><h2>جارٍ الاستيراد…</h2><div class="progress"><div id="bar"></div></div><div class="small muted" id="msg">تجهيز القوائم…</div></div>`);
     const bar = $('#bar', stepBox), msg = $('#msg', stepBox);
     const progress = (label) => (d, total) => { bar.style.width = `${Math.round((d / total) * 100)}%`; msg.textContent = `${label}: ${num(d)} من ${num(total)}`; };
@@ -536,22 +583,41 @@ export default async function importPage(ctx, main) {
           ...(enteredAt ? { enteredAt } : {}), imported: true };
       };
       // 2) الجديدة على دفعات
-      const list = G.go.map((r) => ({ ...fromFile(r), createdBy: r.task.engineerId, ...(r.code ? { taskCode: r.code } : {}) }));
+      const list = G.go.map((r) => ({ ...fromFile(r), createdBy: r.task.engineerId, ...(r.code ? { taskCode: r.code, importedData: snapOf(r) } : {}) }));
       if (list.length) n = await db.tasks.bulkCreate(list, progress('الإضافة'));
-      // 3) التحديث: الأعمدة الموجودة في الملف تفوز، وغيرها يبقى كما في النظام
-      const has = (k) => S.map[k] != null;
+      // 3) التحديث: الحقول المأخوذة من الملف فقط، والباقي كما في النظام
+      const kindOf = (id) => state.lookups.statuses.find((x) => x.id === id)?.kind;
       const upd = G.upd.map((r) => {
         const cur = r.match, f = fromFile(r);
-        return {
-          id: cur.id, taskCode: cur.taskCode, engineerId: f.engineerId, subject: f.subject, receivedDate: f.receivedDate,
-          refNo: has('refNo') ? f.refNo : cur.refNo, requester: has('requester') ? f.requester : cur.requester, employeeName: has('employeeName') ? f.employeeName : cur.employeeName,
-          completedDate: has('completedDate') ? f.completedDate : cur.completedDate, notes: has('notes') ? f.notes : cur.notes,
-          taskTypeId: has('taskType') ? f.taskTypeId : cur.taskTypeId, correspondenceTypeId: has('correspondenceType') ? f.correspondenceTypeId : cur.correspondenceTypeId,
-          statusId: has('status') ? f.statusId : cur.statusId, priority: has('priority') ? f.priority : cur.priority, delayReason: has('delayReason') ? f.delayReason : cur.delayReason,
-          reviewReasons: f.reviewReasons, ...(f.enteredAt ? { enteredAt: f.enteredAt } : {}), imported: true,
+        const t = {
+          id: cur.id, taskCode: cur.taskCode, engineerId: cur.engineerId, refNo: cur.refNo, requester: cur.requester, employeeName: cur.employeeName,
+          subject: cur.subject, receivedDate: cur.receivedDate, completedDate: cur.completedDate, notes: cur.notes,
+          taskTypeId: cur.taskTypeId, correspondenceTypeId: cur.correspondenceTypeId, statusId: cur.statusId, priority: cur.priority,
+          delayReason: cur.delayReason, reviewReasons: [...(cur.reviewReasons || [])],
+          importedData: r.snap, imported: true,
         };
+        const set = { taskType: 'taskTypeId', correspondenceType: 'correspondenceTypeId', status: 'statusId' };
+        for (const { f: fd } of r.taken) {
+          if (fd.k === 'reviewReasons') t.reviewReasons = f.reviewReasons;
+          else if (fd.k === 'enteredAt') t.enteredAt = f.enteredAt;
+          else if (set[fd.k]) t[set[fd.k]] = f[set[fd.k]];
+          else t[fd.k] = f[fd.k];
+        }
+        // بعد الدمج قد تخالف المهمة قواعد الإدخال (مثل حالة «مكتملة» من الملف وتاريخ انتهاء فارغ في النظام): تُعلَّم للمراجعة
+        if (!t.reviewReasons.length) {
+          const why = [];
+          if (!String(t.subject || '').trim()) why.push('الموضوع فارغ');
+          if (!t.receivedDate) why.push('تاريخ الاستقبال فارغ');
+          if (kindOf(t.statusId) === 'done' && !t.completedDate) why.push('مكتملة بدون تاريخ انتهاء');
+          if (t.completedDate && t.receivedDate && t.completedDate < t.receivedDate) why.push('تاريخ الانتهاء قبل تاريخ الاستقبال');
+          t.reviewReasons = why.map((x) => `بعد الدمج مع تعديلات النظام: ${x}`);
+        }
+        return t;
       });
       if (upd.length) u = await db.tasks.bulkUpdate(upd, progress('التحديث'));
+      // مرجع الاستيراد للمهام التي لم تُحدَّث حقولها (بلا تغيير، أو بقيت فيها تعديلات النظام)
+      const bases = [...G.same, ...G.kept].filter((r) => r.baseChanged).map((r) => ({ id: r.match.id, data: r.snap }));
+      if (bases.length) await db.tasks.saveImportBase(bases, progress('حفظ مرجع الاستيراد'));
       // 4) رموز المهندسين من رموز مهامهم (لمن ليس له رمز)
       let learned = 0;
       if (codeCol) { try { learned = await db.users.learnEngineerCodes(); } catch { /* اختياري */ } }

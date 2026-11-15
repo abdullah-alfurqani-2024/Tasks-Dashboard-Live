@@ -122,7 +122,7 @@ snap = ("select apply_production_snapshot(jsonb_build_object("
         "'settings', '[]'::jsonb,"
         f"'tasks', jsonb_build_array("
         f"  jsonb_build_object('id', 1, 'engineer_id', '{U['eng1']}', 'subject', 'إنتاج قديم', 'received_date', '2026-01-01', 'status_id', {OPEN}, 'created_at', '2026-01-02T08:00:00Z'),"
-        f"  jsonb_build_object('id', 2, 'engineer_id', '{U['eng1']}', 'subject', 'إنتاج مرمّز', 'received_date', '2026-01-01', 'status_id', {OPEN}, 'task_code', 'A01-0100', 'entered_at', '2026-01-01T05:00:00Z', 'imported_at', '2026-11-15T10:00:00Z')"
+        f"  jsonb_build_object('id', 2, 'engineer_id', '{U['eng1']}', 'subject', 'إنتاج مرمّز', 'received_date', '2026-01-01', 'status_id', {OPEN}, 'task_code', 'A01-0100', 'entered_at', '2026-01-01T05:00:00Z', 'imported_at', '2026-11-15T10:00:00Z', 'imported_data', jsonb_build_object('notes', 'م'))"
         "))) ->> 'tasks'")
 check('نسخة الإنتاج: مهمتان (قديمة بلا رمز، ومرمّزة)', True, snap, equals='2')
 check('القديمة: بلا رمز، وتاريخ إدخالها = تاريخ إضافتها؛ والمرمّزة كما هي', True,
@@ -131,9 +131,34 @@ check('القديمة: بلا رمز، وتاريخ إدخالها = تاريخ 
 check('النسخة لا تمسح رمز المهندس في التطوير', True, f"select engineer_code from profiles where id = '{U['eng1']}'", equals='A01')
 check('بعد النسخ: مهمة جديدة A01-S0042 (العدّاد لا يرجع)', True,
       f"insert into tasks (subject, received_date, status_id) values ('بعد النسخ', '2026-11-16', {OPEN}) returning task_code", 'eng1', equals='A01-S0042')
+check('النسخة تنقل مرجع الاستيراد', True, "select imported_data ->> 'notes' from tasks where id = 2", equals='م')
 check('ربط مهمة بلا رمز برمز (المدير، مرة واحدة)', True,
       "update tasks set task_code = 'a01-0050' where id = 1 returning task_code", 'admin', equals='A01-0050')
 check('ثم لا يتغير', True, "update tasks set task_code = 'A01-0051' where id = 1 returning task_code", 'admin', equals='A01-0050')
+
+# ---------- 17: مرجع الاستيراد (الدمج حسب الحقل) ----------
+BASE = "'{\"notes\": \"من الملف\", \"status\": \"x\"}'::jsonb"
+check('الاستيراد يحفظ المرجع مع المهمة', True,
+      f"insert into tasks (engineer_id, subject, received_date, status_id, task_code, imported_at, imported_data) values ('{U['eng1']}', 'بمرجع', '2026-09-03', {OPEN}, 'A01-0900', now(), {BASE}) returning imported_data ->> 'notes'",
+      'admin', equals='من الملف')
+check('المهندس لا يضع مرجعاً عند الإضافة', True,
+      f"insert into tasks (subject, received_date, status_id, imported_data) values ('م', '2026-09-03', {OPEN}, {BASE}) returning coalesce(imported_data::text, '-')", 'eng1', equals='-')
+check('ولا يغيّره عند التعديل', True,
+      "update tasks set notes = 'ن', imported_data = '{}'::jsonb where task_code = 'A01-0900' returning imported_data ->> 'notes'", 'eng1', equals='من الملف')
+check('السجل لا يحمل المرجع', True,
+      "select count(*) from task_audit where new_data ? 'imported_data' or 'imported_data' = any(coalesce(changed_fields, '{}'))", 'admin', equals='0')
+before = check('آخر تعديل قبل حفظ المرجع', True, "select updated_at::text || '|' || coalesce(imported_at::text, '-') from tasks where task_code = 'A01-0900'", 'admin')
+check('المهندس لا يحفظ مراجع', False, "select save_import_base('[]'::jsonb)", 'eng1')
+check('حفظ المراجع دفعة واحدة: المتغيّر فقط', True,
+      "select save_import_base(jsonb_build_array(jsonb_build_object('id', (select id from tasks where task_code = 'A01-0900'), 'data', jsonb_build_object('notes', 'جديد')),"
+      "                                          jsonb_build_object('id', 2, 'data', jsonb_build_object('notes', 'م'))))", 'admin', equals='1')
+check('حفظ المرجع وحده لا يغيّر آخر تعديل ولا آخر استيراد', True,
+      "select updated_at::text || '|' || coalesce(imported_at::text, '-') from tasks where task_code = 'A01-0900'", 'admin', equals=before)
+check('ولا يُكتب في السجل', True,
+      "select count(*) from task_audit where task_id = (select id from tasks where task_code = 'A01-0900') and action = 'update' and changed_by = (select id from profiles where role = 'admin')", 'admin', equals='0')
+check('تحديث استيراد مع حقول: يغيّر آخر تعديل ويحفظ المرجع', True,
+      "update tasks set notes = 'من الملف 2', imported_at = now(), imported_data = '{\"notes\": \"من الملف 2\"}' where task_code = 'A01-0900' "
+      "returning (updated_at = imported_at)::text || '|' || (imported_data ->> 'notes')", 'admin', equals='true|من الملف 2')
 
 print(f'\n{passed} نجح، {failed} فشل')
 sys.exit(1 if failed else 0)

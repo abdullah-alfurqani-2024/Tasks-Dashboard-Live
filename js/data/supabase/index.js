@@ -49,6 +49,8 @@ function taskRow(t) {
   if (t.taskCode) row.task_code = t.taskCode;
   if (t.enteredAt) row.entered_at = t.enteredAt;
   if (t.imported) row.imported_at = new Date().toISOString();
+  // مرجع الاستيراد: قيم الملف لهذه المهمة (للدمج حسب الحقل في الاستيراد التالي، 17_import_merge.sql)
+  if (t.importedData !== undefined) row.imported_data = t.importedData;
   return row;
 }
 
@@ -162,6 +164,20 @@ export function createAdapter(config) {
       },
       async remove(id) { await c.rpc('soft_delete_task', { p_id: id }); },
       async restore(id) { await c.rpc('restore_task', { p_id: id }); },
+      /** مراجع الاستيراد (قيم الملف عند آخر استيراد) ← Map(id → object). مدير النظام */
+      async importBase() {
+        const rows = await c.selectAll('tasks', { select: 'id,imported_data', imported_data: 'not.is.null' });
+        return new Map(rows.map((r) => [r.id, r.imported_data]));
+      },
+      /** حفظ المراجع وحدها دون تعديل المهام: [{ id, data }] ← عدد ما تغيّر */
+      async saveImportBase(list, onProgress) {
+        let n = 0;
+        for (let i = 0; i < list.length; i += 500) {
+          n += await c.rpc('save_import_base', { p: list.slice(i, i + 500) });
+          onProgress?.(Math.min(i + 500, list.length), list.length);
+        }
+        return n;
+      },
       /** تحديث مهام كثيرة (الاستيراد): [{ id, ...TaskInput }] ← عدد المحدَّثة. ٤ طلبات معاً */
       async bulkUpdate(list, onProgress) {
         let done = 0, i = 0;

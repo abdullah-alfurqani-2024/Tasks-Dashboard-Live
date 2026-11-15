@@ -283,11 +283,26 @@ export function createAdapter() {
           validate(t, !!input.reviewReasons?.length);
           const before = { ...row }, now = new Date().toISOString();
           Object.assign(row, t, { engineerId: input.engineerId || row.engineerId, reviewReasons: input.reviewReasons?.length ? input.reviewReasons : null,
-            enteredAt: input.enteredAt && Date.parse(input.enteredAt) !== Date.parse(row.enteredAt || '') ? input.enteredAt : row.enteredAt, importedAt: input.imported ? now : row.importedAt, updatedAt: now, updatedBy: me.id });
+            enteredAt: input.enteredAt && Date.parse(input.enteredAt) !== Date.parse(row.enteredAt || '') ? input.enteredAt : row.enteredAt, importedAt: input.imported ? now : row.importedAt, updatedAt: now, updatedBy: me.id,
+            importedData: input.importedData !== undefined ? input.importedData : row.importedData ?? null });
           audit(id, 'update', before, row, input.imported ? { via_import: true } : null);
           if (++n % 100 === 0) { onProgress?.(n, list.length); await wait(10); }
         }
         onProgress?.(n, list.length);
+        persist();
+        return n;
+      },
+      async importBase() {
+        need('admin');
+        return new Map(db.tasks.filter((t) => t.importedData).map((t) => [t.id, t.importedData]));
+      },
+      async saveImportBase(list) {
+        need('admin');
+        let n = 0;
+        for (const { id, data } of list) {
+          const row = db.tasks.find((t) => t.id === id);
+          if (row && JSON.stringify(row.importedData ?? null) !== JSON.stringify(data)) { row.importedData = data; n++; }
+        }
         persist();
         return n;
       },
@@ -300,7 +315,7 @@ export function createAdapter() {
           const now = new Date().toISOString();
           const code = input.taskCode?.trim().toUpperCase() || nextCode(input.engineerId);
           if (db.tasks.some((x) => x.taskCode === code)) throw err(`رمز المهمة ${code} موجود مسبقاً.`);
-          db.tasks.push({ id: ++db.seq.task, engineerId: input.engineerId, ...t, reviewReasons: input.reviewReasons?.length ? input.reviewReasons : null, taskCode: code, enteredAt: input.enteredAt || now, importedAt: input.imported ? now : null, createdAt: now, createdBy: input.createdBy || me.id, updatedAt: now, updatedBy: input.createdBy || me.id, deletedAt: null, deletedBy: null });
+          db.tasks.push({ id: ++db.seq.task, engineerId: input.engineerId, ...t, reviewReasons: input.reviewReasons?.length ? input.reviewReasons : null, taskCode: code, enteredAt: input.enteredAt || now, importedAt: input.imported ? now : null, importedData: input.importedData ?? null, createdAt: now, createdBy: input.createdBy || me.id, updatedAt: now, updatedBy: input.createdBy || me.id, deletedAt: null, deletedBy: null });
           if (++n % 100 === 0) { onProgress?.(n, list.length); await wait(10); }
         }
         onProgress?.(n, list.length);
