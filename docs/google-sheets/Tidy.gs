@@ -8,17 +8,21 @@
 //   «لا توجد بيانات» حتى يُضاف صف يدوياً. وملف المهندس يحتاج صفوفاً فارغة ليُدخل فيها.
 //
 //  ما يفعله، بهذا الترتيب:
-//   1. ملفات المهندسين (Tasks): يحذف الصفوف الفارغة كلياً بين المهام (من C إلى O)، ويُبقي ENG_BUFFER صفاً
+//   1. ملفات المهندسين (Tasks): يحذف الصفوف الفارغة كلياً بين المهام (C..M و O)، ويُبقي ENG_BUFFER صفاً
 //      فارغاً تحت آخر مهمة (يضيف صفوفاً إن كانت أقل). يتخطى الملف المعدَّل في آخر SKIP_IF_EDITED_MIN دقيقة.
-//   2. الملف الرئيسي و Data-Processing: كل ورقة مهندس (المذكورة في معادلة Report) تُبقي FEED_BUFFER صفاً
-//      احتياطياً، ولا تقل أبداً عن عدد صفوف ملف المهندس نفسه (لتتسع IMPORTRANGE)، ثم Report بـ FEED_BUFFER احتياطياً.
+//   2. الملف الرئيسي و Data-Processing: كل ورقة مهندس (المذكورة في معادلة Report) = عدد صفوف ملف المهندس
+//      (أو آخر صف فيها، الأكبر) + TAB_BUFFER، لتتسع IMPORTRANGE. ثم Report = آخر صف + REPORT_BUFFER.
 //      إن كانت Report تعرض «لا توجد بيانات» أو خطأ، يُتخطى الملف كله ولا يُحذف منه شيء.
 //   3. ملفات القيم (لوكر): يُبقي VALUE_BUFFER صفاً بعد آخر صف.
 //   الحذف من الأسفل إلى الأعلى، دفعة لكل مجموعة متجاورة، وكل شيء يُسجَّل.
 //
+//   4. tidyGuard كل ساعة: يضيف صفوفاً فقط (لا يحذف) إن قلّ الاحتياطي في Report أو أوراق المهندسين،
+//      أو ظهر خطأ IMPORTRANGE/QUERY، فلا تنكسر المعادلات بين تشغيلَي التنظيف رغم صِغر الاحتياطي.
+//
 //  الدوال:
 //   tidyCheck()                       فحص فقط: يعرض ما سيُحذف أو يُضاف، ولا يغيّر شيئاً
 //   deleteEmptyRowsMultipleFiles()    التنظيف (يشغّله المؤقت)
+//   tidyInstallGuard()                مرة واحدة: تفعيل tidyGuard كل ساعة
 // =====================================================================
 
 var TIDY = {
@@ -31,8 +35,8 @@ var TIDY = {
   // A «م» و B «اسم المهندس» و N «المدة» معادلات، فلا تُحسب (N ممدودة حتى آخر الورقة في بعض الملفات).
   ENG_CHECK_COLS: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15],
   ENG_DELETE_GAPS: true,     // حذف الصفوف الفارغة بين المهام
-  ENG_BUFFER: 200,          // صفوف فارغة تبقى تحت آخر مهمة
-  ENG_GROW_BELOW: 100,      // لا تُضاف صفوف إلا إن قلّ الاحتياطي عن هذا (فلا يضيف في كل تشغيل)
+  ENG_BUFFER: 0,            // صفوف فارغة تحت آخر مهمة (0: زر «إضافة صف» في الأعلى يكفي). لا تقل الورقة عن ENG_FIRST_ROW
+  ENG_GROW_BELOW: 100,      // مع احتياطي أكبر من 0: لا تُضاف صفوف إلا إن قلّ عن هذا
   SKIP_IF_EDITED_MIN: 30,
 
   FEED_FILES: [              // الملف الرئيسي و Data-Processing
@@ -40,15 +44,100 @@ var TIDY = {
   ],
   REPORT_SHEET: 'Report',
   REPORT_FORMULA_CELL: 'B37',
-  FEED_BUFFER: 300,
+  TAB_BUFFER: 20,           // أوراق المهندسين في الملفين: فوق حجم ملف المهندس
+  REPORT_BUFFER: 50,        // Report في الملفين
+  GUARD_REPORT_MIN: 25, GUARD_REPORT_ADD: 50,   // tidyGuard: إن قلّ احتياطي Report عن 25 يضيف 50
+  GUARD_TAB_MIN: 10, GUARD_TAB_ADD: 20,          // وإن قلّ احتياطي ورقة مهندس عن 10 يضيف 20
 
   VALUE_FILES: [             // ملفات فيها قيم منسوخة فقط (لوكر)
     // { id: 'ضع_ID', name: 'لوكر', sheet: 'Report' },
   ],
-  VALUE_BUFFER: 20
+  VALUE_BUFFER: 0            // سكربت النسخ نفسه يقصّها بعد كل نسخ، ويضيف صفوفاً إن احتاج
 };
 
 function tidyCheck() { tidyRun_(true); }
+
+// ---------------------------------------------------------------------
+//  كل ساعة: يضيف صفوفاً فقط إن قلّ الاحتياطي أو ظهر خطأ في المعادلة. لا يحذف شيئاً، ولا يفتح ملفات المهندسين.
+// ---------------------------------------------------------------------
+function tidyGuard() {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(60000)) return;
+  var log = [], engMap = null;
+  // حجم ملفات المهندسين: يُفتح فقط إن ظهر خطأ في ورقة مهندس (نادر)
+  var engRowsOf = function (t) {
+    if (!engMap) {
+      engMap = {};
+      TIDY.ENGINEER_IDS.forEach(function (id) {
+        if (!id || id.indexOf('ضع_ID') !== -1) return;
+        try { var ss = SpreadsheetApp.openById(id), sh = ss.getSheetByName(TIDY.ENGINEER_SHEET); if (sh) engMap[ss.getName()] = sh.getMaxRows(); }
+        catch (err) {}
+      });
+    }
+    return engMap[t];
+  };
+  var grow = function (sh, add, label, why) {
+    sh.insertRowsAfter(sh.getMaxRows(), add);
+    log.push('+ ' + label + ': أُضيف ' + add + ' صفاً' + (why ? ' (' + why + ')' : ''));
+  };
+  try {
+    TIDY.FEED_FILES.forEach(function (f) {
+      if (!f.id || f.id.indexOf('ضع_ID') !== -1) return;
+      try {
+        var ss = SpreadsheetApp.openById(f.id), name = f.name || ss.getName();
+        var report = ss.getSheetByName(TIDY.REPORT_SHEET);
+        if (!report) return;
+        var cell = report.getRange(TIDY.REPORT_FORMULA_CELL), formula = cell.getFormula(), m, re = /'([^']+)'!/g, tabs = {};
+        while ((m = re.exec(formula))) tabs[m[1]] = true;
+        var total = 0;
+        Object.keys(tabs).forEach(function (t) {
+          var sh = ss.getSheetByName(t);
+          if (!sh) return;
+          var label = name + ' ‹ ' + t;
+          if (tidyFormulaBroken_(sh)) {
+            var eng = engRowsOf(t), need = eng === undefined ? 0 : eng + TIDY.TAB_BUFFER;
+            if (need > sh.getMaxRows()) grow(sh, need - sh.getMaxRows(), label, 'IMPORTRANGE كانت تعرض خطأ لنقص الصفوف');
+            else log.push('⚠ ' + label + ': IMPORTRANGE تعرض خطأ، والصفوف كافية: السبب غير الصفوف (صلاحية أو نطاق؟). راجعها.');
+          } else if (sh.getMaxRows() - sh.getLastRow() < TIDY.GUARD_TAB_MIN) {
+            grow(sh, TIDY.GUARD_TAB_ADD, label);
+          }
+          total += sh.getLastRow();
+        });
+        var shown = String(cell.getDisplayValue()).trim(), bad = !shown || shown === 'لا توجد بيانات' || shown.charAt(0) === '#';
+        var label = name + ' ‹ ' + TIDY.REPORT_SHEET, top = cell.getRow() - 1;
+        if (bad) {
+          // أقصى ما قد تحتاجه QUERY: مجموع صفوف أوراق المهندسين
+          var needR = top + total + TIDY.REPORT_BUFFER;
+          if (needR > report.getMaxRows()) grow(report, needR - report.getMaxRows(), label, 'كانت تعرض «' + (shown || 'فارغ') + '»');
+          else log.push('⚠ ' + label + ': تعرض «' + (shown || 'فارغ') + '»، والصفوف كافية: السبب غير الصفوف (فلتر أو خطأ في ورقة مهندس؟). راجعها.');
+        } else if (report.getMaxRows() - report.getLastRow() < TIDY.GUARD_REPORT_MIN) {
+          grow(report, TIDY.GUARD_REPORT_ADD, label);
+        }
+      } catch (err) { log.push('✗ ' + (f.name || f.id) + ': ' + err.message); }
+    });
+  } finally {
+    lock.releaseLock();
+  }
+  if (log.length) Logger.log('حماية الصفوف:\n' + log.join('\n'));
+}
+
+function tidyInstallGuard() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'tidyGuard') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('tidyGuard').timeBased().everyHours(1).create();
+  Logger.log('فُعّلت حماية الصفوف كل ساعة.');
+}
+
+// هل معادلة IMPORTRANGE في أعلى الورقة تعرض خطأ؟ (أول 3 صفوف × 3 أعمدة)
+function tidyFormulaBroken_(sh) {
+  var n = Math.min(3, sh.getMaxRows()), w = Math.min(3, sh.getMaxColumns());
+  var f = sh.getRange(1, 1, n, w).getFormulas(), v = sh.getRange(1, 1, n, w).getDisplayValues();
+  for (var i = 0; i < n; i++) for (var j = 0; j < w; j++) {
+    if (/IMPORTRANGE/i.test(f[i][j]) && String(v[i][j]).charAt(0) === '#') return true;
+  }
+  return false;
+}
 function deleteEmptyRowsMultipleFiles() { tidyRun_(false); }
 
 // =====================================================================
@@ -105,7 +194,8 @@ function tidyEngineer_(id, dry, log, engRows) {
     if (!dry) tidyDeleteRows_(sh, gaps);
     lastTask -= gaps.length;
   }
-  var rows = tidyTrim_(sh, Math.max(lastTask, f0 - 1) + TIDY.ENG_BUFFER, dry, log, label, { gaps: gaps.length, grow: true });
+  // لا تقل عن ENG_FIRST_ROW: IMPORTRANGE من B3:O تحتاج الصف 3 موجوداً، وإلا انكسرت معادلة Report كلها
+  var rows = tidyTrim_(sh, Math.max(lastTask + TIDY.ENG_BUFFER, f0), dry, log, label, { gaps: gaps.length, grow: true });
   engRows[name] = rows;
 }
 
@@ -127,9 +217,9 @@ function tidyFeed_(f, dry, log, engRows) {
     if (!sh) { log.push('⚠ ' + name + ': الورقة «' + t + '» مذكورة في المعادلة وغير موجودة'); return; }
     if (engRows[t] === undefined) { log.push('… ' + name + ' ‹ ' + t + ': لا أعرف حجم ملف المهندس، تُركت كما هي'); return; }
     // IMPORTRANGE تحتاج صفوفاً بعدد صفوف ملف المهندس على الأقل
-    tidyTrim_(sh, Math.max(sh.getLastRow() + TIDY.FEED_BUFFER, engRows[t] + 10), dry, log, name + ' ‹ ' + t);
+    tidyTrim_(sh, Math.max(sh.getLastRow(), engRows[t]) + TIDY.TAB_BUFFER, dry, log, name + ' ‹ ' + t);
   });
-  tidyTrim_(report, report.getLastRow() + TIDY.FEED_BUFFER, dry, log, name + ' ‹ ' + TIDY.REPORT_SHEET);
+  tidyTrim_(report, report.getLastRow() + TIDY.REPORT_BUFFER, dry, log, name + ' ‹ ' + TIDY.REPORT_SHEET);
 }
 
 // يجعل عدد صفوف الورقة = keep: يحذف الزائد في الأسفل، ويضيف إن كان أقل (ملفات المهندسين فقط). يعيد العدد الجديد.
@@ -141,7 +231,7 @@ function tidyTrim_(sh, keep, dry, log, label, opts) {
     if (!dry) sh.deleteRows(keep + 1, max - keep);
     return keep;
   }
-  if (max < keep && opts.grow && keep - max > TIDY.ENG_BUFFER - TIDY.ENG_GROW_BELOW) {
+  if (max < keep && opts.grow && (TIDY.ENG_BUFFER === 0 || keep - max > TIDY.ENG_BUFFER - TIDY.ENG_GROW_BELOW)) {
     log.push((dry ? '؟ ' : '✓ ') + label + ': ' + (keep - max) + ' صفاً' + (dry ? ' سيُضاف' : ' أُضيف') + ' ليبقى الاحتياطي ' + TIDY.ENG_BUFFER);
     if (!dry) tidyGrow_(sh, keep - max);
     return keep;
