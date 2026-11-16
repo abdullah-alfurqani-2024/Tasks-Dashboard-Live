@@ -40,11 +40,15 @@ var CODES = {
     engineer: 'اسم المهندس', ref: 'رقم القيد', requester: 'الجهة الطالبة', employee: 'اسم الموظف',
     subject: 'الموضوع', received: 'تاريخ الاستقبال', taskType: 'نوع المهمة', entry: 'تاريخ الإدخال'
   },
-  REQUIRED: ['engineer', 'entry', 'subject', 'received']
+  REQUIRED: ['engineer', 'entry', 'subject', 'received'],
+  // حماية من عطل مؤقت في Report («لا توجد بيانات» مثلاً): إن قلّ عدد المهام عن هذه النسبة من آخر تشغيل
+  // ناجح، يتوقف دون أن يكتب. لحذف كبير مقصود (أرشفة مثلاً) اجعلها 0 لتشغيل واحد ثم أعدها.
+  MIN_RATIO: 0.8
 };
 
 var CODES_REG_HEAD = ['رمز المهمة', 'رمز المهندس', 'اسم المهندس', 'تاريخ الإدخال', 'البصمة', 'أول ظهور', 'آخر ظهور', 'الحالة', 'ملاحظة'];
 var CODES_RC = { code: 0, engCode: 1, eng: 2, entry: 3, print: 4, first: 5, last: 6, state: 7, note: 8 };
+var CODES_LOG_HEAD = ['الوقت', 'مهام', 'ثابتة', 'جديدة', 'اختفت', 'عادت', 'بلا تاريخ إدخال', 'تاريخ إدخال مكرر', 'مهندسون جدد', 'التفاصيل'];
 var CODES_PRESENT = 'موجودة', CODES_MISSING = 'غير موجودة في المصدر';
 
 // ---------------------------------------------------------------------
@@ -54,6 +58,14 @@ function importCopyWithCodes() {
   try {
     var ctx = codesLoad_();
     if (!ctx) return;
+    var prev = codesLastTotal_(ctx.dst);
+    if (prev && ctx.rows.length < prev * CODES.MIN_RATIO) {
+      var why = 'أُوقف: ' + ctx.rows.length + ' مهمة فقط في المصدر مقابل ' + prev + ' في آخر تشغيل ناجح (أقل من ' +
+        Math.round(CODES.MIN_RATIO * 100) + '%). لم يُكتب شيء. راجع Report في المصدر.';
+      Logger.log('⚠ ' + why);
+      codesSheet_(ctx.dst, CODES.LOG_SHEET, CODES_LOG_HEAD).appendRow([ctx.now, ctx.rows.length, '', '', '', '', '', '', '', why]);
+      return;
+    }
     var res = codesAssign_(ctx);
     codesWriteReport_(ctx, res);
     codesSaveRegistry_(ctx);
@@ -234,6 +246,8 @@ function codesWriteReport_(ctx, res) {
   // مسح المنطقة القديمة (المحتوى فقط، التنسيق يبقى)
   var last = d.getLastRow();
   if (last >= row0) d.getRange(row0, col0, last - row0 + 1, w).clearContent();
+  var need = row0 + ctx.rows.length - 1;
+  if (d.getMaxRows() < need) d.insertRowsAfter(d.getMaxRows(), need - d.getMaxRows());   // صفوف إضافية إن لم تتسع
   if (ctx.rows.length) {
     var c = ctx.col;
     var out = ctx.rows.map(function (r, i) { return r.concat([ctx.codes[i]]); });
@@ -263,7 +277,7 @@ function codesSaveRegistry_(ctx) {
 }
 
 function codesLog_(ctx, res) {
-  var sh = codesSheet_(ctx.dst, CODES.LOG_SHEET, ['الوقت', 'مهام', 'ثابتة', 'جديدة', 'اختفت', 'عادت', 'بلا تاريخ إدخال', 'تاريخ إدخال مكرر', 'مهندسون جدد', 'التفاصيل']);
+  var sh = codesSheet_(ctx.dst, CODES.LOG_SHEET, CODES_LOG_HEAD);
   var details = [];
   if (res.added.length) details.push('جديدة: ' + codesRangeText_(res.added));
   if (res.missing.length) details.push('اختفت: ' + res.missing.join('، '));
@@ -272,6 +286,19 @@ function codesLog_(ctx, res) {
   if (res.renamed.length) details.push('تغيّر اسم مهندس: ' + res.renamed.join('، '));
   sh.appendRow([ctx.now, res.total, res.kept, res.added.length, res.missing.length, res.back.length, res.noEntry, res.dupEntry.length,
     res.newEng.join('، '), details.join('\n')]);
+}
+
+// عدد المهام في آخر تشغيل ناجح (يتجاهل أسطر «أُوقف»)
+function codesLastTotal_(dst) {
+  var sh = dst.getSheetByName(CODES.LOG_SHEET);
+  if (!sh || sh.getLastRow() < 2) return 0;
+  var rows = sh.getRange(2, 1, sh.getLastRow() - 1, CODES_LOG_HEAD.length).getValues();
+  for (var i = rows.length - 1; i >= 0; i--) {
+    if (String(rows[i][9]).indexOf('أُوقف') === 0) continue;
+    var n = Number(rows[i][1]);
+    if (n > 0) return n;
+  }
+  return 0;
 }
 
 function codesSummary_(res) {
