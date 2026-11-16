@@ -27,10 +27,12 @@ var TIDY = {
   ],
   ENGINEER_SHEET: 'Tasks',
   ENG_FIRST_ROW: 3,          // أول صف مهام
-  ENG_CHECK_FIRST_COL: 3,    // C: الصف فارغ إذا كان فارغاً من C إلى O
-  ENG_CHECK_LAST_COL: 15,    // O تاريخ الإدخال
+  // الصف مهمة إذا كان فيه شيء في هذه الأعمدة: C..M (الإدخال) و O (تاريخ الإدخال).
+  // A «م» و B «اسم المهندس» و N «المدة» معادلات، فلا تُحسب (N ممدودة حتى آخر الورقة في بعض الملفات).
+  ENG_CHECK_COLS: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15],
   ENG_DELETE_GAPS: true,     // حذف الصفوف الفارغة بين المهام
-  ENG_BUFFER: 200,
+  ENG_BUFFER: 200,          // صفوف فارغة تبقى تحت آخر مهمة
+  ENG_GROW_BELOW: 100,      // لا تُضاف صفوف إلا إن قلّ الاحتياطي عن هذا (فلا يضيف في كل تشغيل)
   SKIP_IF_EDITED_MIN: 30,
 
   FEED_FILES: [              // الملف الرئيسي و Data-Processing
@@ -91,9 +93,9 @@ function tidyEngineer_(id, dry, log, engRows) {
 
   var f0 = TIDY.ENG_FIRST_ROW, last = sh.getLastRow(), lastTask = f0 - 1, gaps = [];
   if (last >= f0) {
-    var w = TIDY.ENG_CHECK_LAST_COL - TIDY.ENG_CHECK_FIRST_COL + 1;
-    var vals = sh.getRange(f0, TIDY.ENG_CHECK_FIRST_COL, last - f0 + 1, w).getValues();
-    var empty = vals.map(function (r) { return r.every(tidyBlank_); });
+    var c1 = Math.min.apply(null, TIDY.ENG_CHECK_COLS), c2 = Math.max.apply(null, TIDY.ENG_CHECK_COLS);
+    var vals = sh.getRange(f0, c1, last - f0 + 1, c2 - c1 + 1).getValues();
+    var empty = vals.map(function (r) { return TIDY.ENG_CHECK_COLS.every(function (c) { return tidyBlank_(r[c - c1]); }); });
     for (var i = empty.length - 1; i >= 0; i--) if (!empty[i]) { lastTask = f0 + i; break; }
     if (TIDY.ENG_DELETE_GAPS) for (var j = 0; j < lastTask - f0 + 1; j++) if (empty[j]) gaps.push(f0 + j);
   }
@@ -139,7 +141,7 @@ function tidyTrim_(sh, keep, dry, log, label, opts) {
     if (!dry) sh.deleteRows(keep + 1, max - keep);
     return keep;
   }
-  if (max < keep && opts.grow) {
+  if (max < keep && opts.grow && keep - max > TIDY.ENG_BUFFER - TIDY.ENG_GROW_BELOW) {
     log.push((dry ? '؟ ' : '✓ ') + label + ': ' + (keep - max) + ' صفاً' + (dry ? ' سيُضاف' : ' أُضيف') + ' ليبقى الاحتياطي ' + TIDY.ENG_BUFFER);
     if (!dry) tidyGrow_(sh, keep - max);
     return keep;
