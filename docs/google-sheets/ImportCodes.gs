@@ -89,8 +89,8 @@ function codesCheck() {
 // =====================================================================
 
 function codesLoad_() {
-  var src = SpreadsheetApp.openById(CODES.SOURCE_FILE_ID);
-  var dst = SpreadsheetApp.openById(CODES.DEST_FILE_ID);
+  var src = SpreadsheetApp.openById(codesId_(CODES.SOURCE_FILE_ID, 'SOURCE_FILE_ID'));
+  var dst = SpreadsheetApp.openById(codesId_(CODES.DEST_FILE_ID, 'DEST_FILE_ID'));
   var s = src.getSheetByName(CODES.SHEET), d = dst.getSheetByName(CODES.SHEET);
   if (!s || !d) { Logger.log('لا توجد ورقة ' + CODES.SHEET + ' في أحد الملفين.'); return null; }
   var tz = dst.getSpreadsheetTimeZone();
@@ -334,6 +334,17 @@ function codesMs_(v) {
 function codesNorm_(v) { return String(v === null || v === undefined ? '' : v).replace(/\s+/g, ' ').trim(); }
 function codesPad_(n, w) { n = String(n); while (n.length < w) n = '0' + n; return n; }
 function codesColLetter_(n) { var s = ''; while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - m - 1) / 26; } return s; }
+
+// معرّف ملف من النص المكتوب في الإعدادات: يقبل المعرّف وحده أو رابط الملف كاملاً
+function codesId_(v, label) {
+  var s = String(v || '').trim(), m = s.match(/\/d\/([A-Za-z0-9_-]+)/);
+  if (m) s = m[1];
+  if (!/^[A-Za-z0-9_-]{20,}$/.test(s)) {
+    throw new Error('قيمة ' + label + ' في أعلى السكربت ليست معرّف ملف: «' + String(v) + '». ' +
+      'ضع الجزء من رابط الملف بين ‎/d/‎ و ‎/edit‎ (أو الرابط كاملاً) بين علامتي التنصيص.');
+  }
+  return s;
+}
 
 function codesSheet_(ss, name, head) {
   var sh = ss.getSheetByName(name);
