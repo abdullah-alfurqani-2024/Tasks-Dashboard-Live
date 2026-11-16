@@ -263,6 +263,9 @@ function codesWriteReport_(ctx, res) {
     out = order.map(function (o) { return o.r; });
     d.getRange(row0, col0, out.length, w).setValues(out);
   }
+  // قصّ الصفوف الفارغة تحت آخر مهمة (ملف قيم فقط؛ التشغيل التالي يضيف صفوفاً إن احتاج)
+  var keep = Math.max(need, row0);
+  if (d.getMaxRows() > keep) d.deleteRows(keep + 1, d.getMaxRows() - keep);
   if (row0 > 1) {
     var h = d.getRange(row0 - 1, col0 + ctx.width);
     if (String(h.getValue()).trim() === '') h.setValue(CODES.CODE_HEADER);
