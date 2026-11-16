@@ -16,13 +16,13 @@
 //   3. ملفات القيم (لوكر): يُبقي VALUE_BUFFER صفاً بعد آخر صف.
 //   الحذف من الأسفل إلى الأعلى، دفعة لكل مجموعة متجاورة، وكل شيء يُسجَّل.
 //
-//   4. tidyGuard كل ساعة: يضيف صفوفاً فقط (لا يحذف) إن قلّ الاحتياطي في Report أو أوراق المهندسين،
+//   4. tidyGuard مرة يومياً قبل الدوام (GUARD_HOUR): يضيف صفوفاً فقط (لا يحذف) إن قلّ الاحتياطي في Report أو أوراق المهندسين،
 //      أو ظهر خطأ IMPORTRANGE/QUERY، فلا تنكسر المعادلات بين تشغيلَي التنظيف رغم صِغر الاحتياطي.
 //
 //  الدوال:
 //   tidyCheck()                       فحص فقط: يعرض ما سيُحذف أو يُضاف، ولا يغيّر شيئاً
 //   deleteEmptyRowsMultipleFiles()    التنظيف (يشغّله المؤقت)
-//   tidyInstallGuard()                مرة واحدة: تفعيل tidyGuard كل ساعة
+//   tidyInstallGuard()                مرة واحدة: تفعيل tidyGuard يومياً (يحذف المؤقت السابق إن وُجد)
 // =====================================================================
 
 var TIDY = {
@@ -48,6 +48,7 @@ var TIDY = {
   REPORT_BUFFER: 50,        // Report في الملفين
   GUARD_REPORT_MIN: 25, GUARD_REPORT_ADD: 50,   // tidyGuard: إن قلّ احتياطي Report عن 25 يضيف 50
   GUARD_TAB_MIN: 10, GUARD_TAB_ADD: 20,          // وإن قلّ احتياطي ورقة مهندس عن 10 يضيف 20
+  GUARD_HOUR: 6,                                 // tidyGuard مرة يومياً قبل الدوام (بتوقيت المشروع)
 
   VALUE_FILES: [             // ملفات فيها قيم منسوخة فقط (لوكر)
     // { id: 'ضع_ID', name: 'لوكر', sheet: 'Report' },
@@ -58,7 +59,7 @@ var TIDY = {
 function tidyCheck() { tidyRun_(true); }
 
 // ---------------------------------------------------------------------
-//  كل ساعة: يضيف صفوفاً فقط إن قلّ الاحتياطي أو ظهر خطأ في المعادلة. لا يحذف شيئاً، ولا يفتح ملفات المهندسين.
+//  مرة يومياً (GUARD_HOUR): يضيف صفوفاً فقط إن قلّ الاحتياطي أو ظهر خطأ في المعادلة. لا يحذف شيئاً.
 // ---------------------------------------------------------------------
 function tidyGuard() {
   var lock = LockService.getScriptLock();
@@ -125,8 +126,8 @@ function tidyInstallGuard() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === 'tidyGuard') ScriptApp.deleteTrigger(t);
   });
-  ScriptApp.newTrigger('tidyGuard').timeBased().everyHours(1).create();
-  Logger.log('فُعّلت حماية الصفوف كل ساعة.');
+  ScriptApp.newTrigger('tidyGuard').timeBased().everyDays(1).atHour(TIDY.GUARD_HOUR).create();
+  Logger.log('فُعّلت حماية الصفوف يومياً الساعة ' + TIDY.GUARD_HOUR + '.');
 }
 
 // هل معادلة IMPORTRANGE في أعلى الورقة تعرض خطأ؟ (أول 3 صفوف × 3 أعمدة)
