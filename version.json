@@ -1,5 +1,5 @@
 {
-  "version": "2.0.0",
+  "version": "2.0.2",
   "files": [
     "css/app.css",
     "css/print.css",
@@ -35,12 +35,15 @@
     "js/pages/settings.js",
     "js/pages/tasks.js",
     "js/pages/users.js",
+    "js/ui/calendar.js",
     "js/ui/dateField.js",
     "js/ui/feedback.js",
     "js/ui/icons.js",
     "js/ui/parts.js",
+    "js/ui/selectPopup.js",
     "js/ui/table.js",
     "js/ui/taskForm.js",
+    "js/ui/tooltip.js",
     "js/version.js"
   ]
 }

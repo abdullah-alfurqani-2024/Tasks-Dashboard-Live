@@ -10,11 +10,15 @@ import { setChrome, homePath, endSession, stopActing } from './core/session.js';
 import { icon } from './ui/icons.js';
 import { toast, toastError } from './ui/feedback.js';
 import { watchDateFields } from './ui/dateField.js';
+import { watchSelectPopups } from './ui/selectPopup.js';
+import { watchTooltips } from './ui/tooltip.js';
 import { checkOnStart, watchUpdates } from './core/updates.js';
 import { VERSION } from './version.js';
 import { activeAnnouncement } from './core/settings.js';
 
 watchDateFields(document.body);
+watchSelectPopups();
+watchTooltips();
 
 const main = document.getElementById('main');
 const topbar = document.getElementById('topbar');

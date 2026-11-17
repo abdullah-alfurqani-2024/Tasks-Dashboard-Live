@@ -40,11 +40,18 @@ var CODES = {
     engineer: 'اسم المهندس', ref: 'رقم القيد', requester: 'الجهة الطالبة', employee: 'اسم الموظف',
     subject: 'الموضوع', received: 'تاريخ الاستقبال', taskType: 'نوع المهمة', entry: 'تاريخ الإدخال'
   },
-  REQUIRED: ['engineer', 'entry', 'subject', 'received']
+  REQUIRED: ['engineer', 'entry', 'subject', 'received'],
+  // حماية من عطل مؤقت في Report («لا توجد بيانات» مثلاً): إن قلّ عدد المهام عن هذه النسبة من آخر تشغيل
+  // ناجح، يتوقف دون أن يكتب. لحذف كبير مقصود (أرشفة مثلاً) اجعلها 0 لتشغيل واحد ثم أعدها.
+  MIN_RATIO: 0.8,
+  // حد جوجل لأي تشغيل 6 دقائق. إن استغرقت القراءة أكثر من هذا (المصدر يُعاد حسابه مثلاً)، يتوقف قبل الكتابة
+  // بدل أن يُقطع في منتصفها، ويحاول في التشغيل التالي.
+  MAX_SECONDS_BEFORE_WRITE: 240
 };
 
 var CODES_REG_HEAD = ['رمز المهمة', 'رمز المهندس', 'اسم المهندس', 'تاريخ الإدخال', 'البصمة', 'أول ظهور', 'آخر ظهور', 'الحالة', 'ملاحظة'];
 var CODES_RC = { code: 0, engCode: 1, eng: 2, entry: 3, print: 4, first: 5, last: 6, state: 7, note: 8 };
+var CODES_LOG_HEAD = ['الوقت', 'مهام', 'ثابتة', 'جديدة', 'اختفت', 'عادت', 'بلا تاريخ إدخال', 'تاريخ إدخال مكرر', 'مهندسون جدد', 'التفاصيل'];
 var CODES_PRESENT = 'موجودة', CODES_MISSING = 'غير موجودة في المصدر';
 
 // ---------------------------------------------------------------------
@@ -52,13 +59,32 @@ function importCopyWithCodes() {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(60000)) { Logger.log('تشغيل آخر قيد العمل، أُجّل.'); return; }
   try {
+    var t0 = Date.now();
     var ctx = codesLoad_();
     if (!ctx) return;
+    var tRead = Math.round((Date.now() - t0) / 1000);
+    var prev = codesLastTotal_(ctx.dst);
+    if (prev && ctx.rows.length < prev * CODES.MIN_RATIO) {
+      var why = 'أُوقف: ' + ctx.rows.length + ' مهمة فقط في المصدر مقابل ' + prev + ' في آخر تشغيل ناجح (أقل من ' +
+        Math.round(CODES.MIN_RATIO * 100) + '%). لم يُكتب شيء. راجع Report في المصدر.';
+      Logger.log('⚠ ' + why);
+      codesSheet_(ctx.dst, CODES.LOG_SHEET, CODES_LOG_HEAD).appendRow([ctx.now, ctx.rows.length, '', '', '', '', '', '', '', why]);
+      return;
+    }
     var res = codesAssign_(ctx);
-    codesWriteReport_(ctx, res);
+    var spent = Math.round((Date.now() - t0) / 1000);
+    if (spent > CODES.MAX_SECONDS_BEFORE_WRITE) {
+      var late = 'أُوقف: القراءة استغرقت ' + spent + ' ثانية (المصدر قيد إعادة الحساب غالباً). لم يُكتب شيء، ويحاول التشغيل التالي.';
+      Logger.log('⚠ ' + late);
+      codesSheet_(ctx.dst, CODES.LOG_SHEET, CODES_LOG_HEAD).appendRow([ctx.now, ctx.rows.length, '', '', '', '', '', '', '', late]);
+      return;
+    }
+    // السجل أولاً: هو مرجع الرموز. لو قُطع التشغيل بعده، يُصلح التشغيل التالي ورقة Report
     codesSaveRegistry_(ctx);
+    codesWriteReport_(ctx, res);
+    res.timing = 'المدة: قراءة ' + tRead + ' ث، المجموع ' + Math.round((Date.now() - t0) / 1000) + ' ث';
     codesLog_(ctx, res);
-    Logger.log(codesSummary_(res));
+    Logger.log(codesSummary_(res) + '\n' + res.timing);
   } finally {
     lock.releaseLock();
   }
@@ -77,8 +103,8 @@ function codesCheck() {
 // =====================================================================
 
 function codesLoad_() {
-  var src = SpreadsheetApp.openById(CODES.SOURCE_FILE_ID);
-  var dst = SpreadsheetApp.openById(CODES.DEST_FILE_ID);
+  var src = SpreadsheetApp.openById(codesId_(CODES.SOURCE_FILE_ID, 'SOURCE_FILE_ID'));
+  var dst = SpreadsheetApp.openById(codesId_(CODES.DEST_FILE_ID, 'DEST_FILE_ID'));
   var s = src.getSheetByName(CODES.SHEET), d = dst.getSheetByName(CODES.SHEET);
   if (!s || !d) { Logger.log('لا توجد ورقة ' + CODES.SHEET + ' في أحد الملفين.'); return null; }
   var tz = dst.getSpreadsheetTimeZone();
@@ -234,6 +260,8 @@ function codesWriteReport_(ctx, res) {
   // مسح المنطقة القديمة (المحتوى فقط، التنسيق يبقى)
   var last = d.getLastRow();
   if (last >= row0) d.getRange(row0, col0, last - row0 + 1, w).clearContent();
+  var need = row0 + ctx.rows.length - 1;
+  if (d.getMaxRows() < need) d.insertRowsAfter(d.getMaxRows(), need - d.getMaxRows());   // صفوف إضافية إن لم تتسع
   if (ctx.rows.length) {
     var c = ctx.col;
     var out = ctx.rows.map(function (r, i) { return r.concat([ctx.codes[i]]); });
@@ -249,6 +277,9 @@ function codesWriteReport_(ctx, res) {
     out = order.map(function (o) { return o.r; });
     d.getRange(row0, col0, out.length, w).setValues(out);
   }
+  // قصّ الصفوف الفارغة تحت آخر مهمة (ملف قيم فقط؛ التشغيل التالي يضيف صفوفاً إن احتاج)
+  var keep = Math.max(need, row0);
+  if (d.getMaxRows() > keep) d.deleteRows(keep + 1, d.getMaxRows() - keep);
   if (row0 > 1) {
     var h = d.getRange(row0 - 1, col0 + ctx.width);
     if (String(h.getValue()).trim() === '') h.setValue(CODES.CODE_HEADER);
@@ -263,15 +294,29 @@ function codesSaveRegistry_(ctx) {
 }
 
 function codesLog_(ctx, res) {
-  var sh = codesSheet_(ctx.dst, CODES.LOG_SHEET, ['الوقت', 'مهام', 'ثابتة', 'جديدة', 'اختفت', 'عادت', 'بلا تاريخ إدخال', 'تاريخ إدخال مكرر', 'مهندسون جدد', 'التفاصيل']);
+  var sh = codesSheet_(ctx.dst, CODES.LOG_SHEET, CODES_LOG_HEAD);
   var details = [];
   if (res.added.length) details.push('جديدة: ' + codesRangeText_(res.added));
   if (res.missing.length) details.push('اختفت: ' + res.missing.join('، '));
   if (res.back.length) details.push('عادت: ' + res.back.join('، '));
   if (res.dupEntry.length) details.push('تاريخ إدخال مكرر (راجعها): ' + res.dupEntry.join('؛ '));
   if (res.renamed.length) details.push('تغيّر اسم مهندس: ' + res.renamed.join('، '));
+  if (res.timing) details.push(res.timing);
   sh.appendRow([ctx.now, res.total, res.kept, res.added.length, res.missing.length, res.back.length, res.noEntry, res.dupEntry.length,
     res.newEng.join('، '), details.join('\n')]);
+}
+
+// عدد المهام في آخر تشغيل ناجح (يتجاهل أسطر «أُوقف»)
+function codesLastTotal_(dst) {
+  var sh = dst.getSheetByName(CODES.LOG_SHEET);
+  if (!sh || sh.getLastRow() < 2) return 0;
+  var rows = sh.getRange(2, 1, sh.getLastRow() - 1, CODES_LOG_HEAD.length).getValues();
+  for (var i = rows.length - 1; i >= 0; i--) {
+    if (String(rows[i][9]).indexOf('أُوقف') === 0) continue;
+    var n = Number(rows[i][1]);
+    if (n > 0) return n;
+  }
+  return 0;
 }
 
 function codesSummary_(res) {
@@ -307,6 +352,17 @@ function codesMs_(v) {
 function codesNorm_(v) { return String(v === null || v === undefined ? '' : v).replace(/\s+/g, ' ').trim(); }
 function codesPad_(n, w) { n = String(n); while (n.length < w) n = '0' + n; return n; }
 function codesColLetter_(n) { var s = ''; while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - m - 1) / 26; } return s; }
+
+// معرّف ملف من النص المكتوب في الإعدادات: يقبل المعرّف وحده أو رابط الملف كاملاً
+function codesId_(v, label) {
+  var s = String(v || '').trim(), m = s.match(/\/d\/([A-Za-z0-9_-]+)/);
+  if (m) s = m[1];
+  if (!/^[A-Za-z0-9_-]{20,}$/.test(s)) {
+    throw new Error('قيمة ' + label + ' في أعلى السكربت ليست معرّف ملف: «' + String(v) + '». ' +
+      'ضع الجزء من رابط الملف بين ‎/d/‎ و ‎/edit‎ (أو الرابط كاملاً) بين علامتي التنصيص.');
+  }
+  return s;
+}
 
 function codesSheet_(ss, name, head) {
   var sh = ss.getSheetByName(name);

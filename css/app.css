@@ -225,6 +225,19 @@ textarea.input { min-height: 84px; resize: vertical; }
 .check input { width: 17px; height: 17px; accent-color: var(--brand); }
 .form-grid { display: grid; gap: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .form-grid .span-2 { grid-column: 1 / -1; }
+/* القائمة المنسدلة داخل الصفحة (فايرفوكس على الحاسوب، js/ui/selectPopup.js):
+   قائمة فايرفوكس الأصلية لا ترى خط الموقع، فتُعرض هذه بدلها بنفس الخيارات */
+.sel-pop {
+  position: fixed; z-index: 80; overflow-y: auto; overscroll-behavior: contain;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg); padding: 4px; font-family: var(--font-body); line-height: 1.6;
+}
+.sel-opt { padding: 5px 10px; border-radius: 6px; cursor: default; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sel-opt.in-group { padding-inline-start: 20px; }
+.sel-opt.active { background: var(--brand-soft); color: var(--brand); }
+.sel-opt[aria-selected="true"] { font-weight: 700; }
+.sel-opt[aria-disabled="true"] { color: var(--muted); opacity: .6; }
+.sel-group { padding: 6px 10px 2px; font-size: .82em; font-weight: 700; color: var(--muted); cursor: default; }
 /* حقل التاريخ سنة/شهر/يوم */
 .date-field { position: relative; display: block; }
 .date-field .date-text { text-align: right; padding-left: 38px; font-variant-numeric: tabular-nums; }
@@ -246,6 +259,39 @@ textarea.input { min-height: 84px; resize: vertical; }
 /* Chrome وEdge: علامة التقويم الداخلية تغطي الحقل كله، فأي نقرة تفتحه حتى بلا showPicker() */
 .date-field .date-native::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: auto; height: auto; margin: 0; padding: 0; opacity: 0; cursor: pointer; }
 .date-field.bad-date .date-text { border-color: var(--bad); }
+/* الحاسوب: زر التقويم يفتح التقويم داخل الصفحة (js/ui/calendar.js) */
+.date-field.cal .date-btn { pointer-events: auto; cursor: pointer; }
+.date-field.cal .date-btn:not(.off):hover { background: var(--surface-2); color: var(--ink); }
+.date-field.cal .date-btn.off { pointer-events: none; }
+.cal-pop {
+  position: fixed; z-index: 80; width: 272px; padding: 10px;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-radius: var(--radius);
+  box-shadow: var(--shadow-lg); font-family: var(--font-body); font-size: 13px; line-height: 1.5; user-select: none;
+}
+.cal-pop button:not(.btn) { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; border-radius: 7px; }
+.cal-head { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
+.cal-title { flex: 1; font-weight: 700; padding: 5px; }
+.cal-nav { width: 32px; height: 32px; display: grid; place-items: center; color: var(--muted) !important; }
+.cal-nav:hover { color: var(--ink) !important; }
+.cal-title:hover, .cal-nav:hover, .cal-day:hover, .cal-month:hover { background: var(--surface-2); }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+.cal-dow { font-size: .8rem; font-weight: 700; color: var(--muted); padding: 2px 0; }
+.cal-day { height: 32px; font-variant-numeric: tabular-nums; }
+.cal-day.out { color: var(--muted) !important; opacity: .55; }
+.cal-day.today { box-shadow: inset 0 0 0 1px var(--brand); color: var(--brand) !important; font-weight: 700; }
+.cal-day.focus { background: var(--surface-2); }
+.cal-day.sel, .cal-month.sel { background: var(--brand) !important; color: var(--brand-ink) !important; font-weight: 700; opacity: 1; }
+.cal-months { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.cal-month { padding: 10px 0; }
+.cal-month.today { box-shadow: inset 0 0 0 1px var(--brand); }
+.cal-foot { display: flex; gap: 6px; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.cal-foot .btn { padding: 4px 12px; }
+/* التلميح عند الوقوف بالفأرة (js/ui/tooltip.js) بدل تلميح المتصفح */
+.tip {
+  position: fixed; z-index: 90; max-width: 320px; padding: 5px 10px; pointer-events: none;
+  background: var(--ink); color: var(--surface); border-radius: 7px; box-shadow: var(--shadow);
+  font: 12.5px/1.6 var(--font-body); white-space: pre-line; overflow-wrap: anywhere; animation: fade .12s ease;
+}
 
 /* شريط الفلاتر */
 .filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; padding: 14px 16px; }
