@@ -36,6 +36,7 @@ const P = {
   ban: '<circle cx="12" cy="12" r="9"/><path d="M5.7 5.7l12.6 12.6"/>',
   chevronDown: '<path d="M6 9l6 6 6-6"/>',
   chevronLeft: '<path d="M15 6l-6 6 6 6"/>',
+  idcard: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2.2"/><path d="M5.8 16c.5-1.5 1.7-2.3 3.2-2.3s2.7.8 3.2 2.3M14.5 10h4M14.5 13.5h3"/>',
   dot: '<circle cx="12" cy="12" r="1.6" fill="currentColor"/>',
   file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>',
 };

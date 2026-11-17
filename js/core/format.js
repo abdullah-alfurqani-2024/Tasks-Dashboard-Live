@@ -170,6 +170,20 @@ export function normalizeAr(s) {
 }
 
 /** «3 أيام» / «يوم واحد» / «15 يوماً» */
+/**
+ * مفتاح البحث: normalizeAr، ثم «ال» التعريف وما يلتصق بها في أول كل كلمة تُحذف
+ * (الموارد، للموارد، بالموارد، والموارد ← موارد)، فيجد «الموارد» وحدة اسمها «المديرية العامة للموارد البشرية».
+ * يُطبَّق على النص وعلى ما يكتبه المستخدم معاً.
+ */
+export function searchKey(s) {
+  return normalizeAr(s).split(' ').map((w) => (w.length > 4 ? w.replace(/^(?:[وفبك]?ال|و?لل)/, '') : w)).join(' ');
+}
+
+/** كلمات البحث بمفتاح searchKey؛ وأثناء الكتابة («ال»، «الم») تُحذف «ال» من أول الكلمة القصيرة أيضاً، فلا تختفي النتائج مؤقتاً */
+export function queryWords(q) {
+  return searchKey(q).split(' ').map((w) => (w.startsWith('ال') && w.length <= 4 ? w.slice(2) : w)).filter(Boolean);
+}
+
 export function daysAr(n) {
   if (n == null) return '—';
   if (n === 1) return 'يوم واحد';

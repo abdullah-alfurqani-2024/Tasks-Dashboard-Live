@@ -1,5 +1,5 @@
 {
-  "version": "2.1.0-dev.5",
+  "version": "2.1.0-dev.6",
   "files": [
     "css/app.css",
     "css/print.css",
@@ -10,6 +10,7 @@
     "js/core/exporter.js",
     "js/core/fields.js",
     "js/core/format.js",
+    "js/core/orgModel.js",
     "js/core/router.js",
     "js/core/session.js",
     "js/core/settings.js",
@@ -27,6 +28,7 @@
     "js/lib/zip.js",
     "js/pages/audit.js",
     "js/pages/dashboard.js",
+    "js/pages/employees.js",
     "js/pages/import.js",
     "js/pages/lists.js",
     "js/pages/login.js",
@@ -45,6 +47,7 @@
     "js/ui/table.js",
     "js/ui/taskForm.js",
     "js/ui/tooltip.js",
+    "js/ui/unitPicker.js",
     "js/version.js"
   ]
 }

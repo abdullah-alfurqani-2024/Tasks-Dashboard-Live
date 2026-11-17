@@ -85,6 +85,15 @@ function seedOrg() {
   return { levels, units: [], audit: [], seq: { level: levels.length, unit: 0, audit: 0 } };
 }
 
+/** الموظفون: موظفو الحسابات التجريبية (الرقم المدني = رقم الدخول، فيرتبطون بها)، والأنواع الأربعة، بلا إسنادات */
+function seedEmp(users) {
+  const list = users.map((u, i) => ({ id: i + 1, civilNo: u.loginNo, employeeNo: String(5000 + i + 1), nameAr: u.fullName, nameEn: '', isActive: true }));
+  users.forEach((u, i) => { u.employeeId = i + 1; });
+  const types = [['أصيل', true, false], ['تكليف', false, false], ['ندب', false, false], ['قيام بالأعمال', false, true]]
+    .map(([name, isPrimary, impliesHead], i) => ({ id: i + 1, name, isPrimary, impliesHead, sortOrder: i + 1, isActive: true }));
+  return { list, types, asg: [], seq: { emp: list.length, type: types.length, asg: 0 } };
+}
+
 function load() {
   try { const d = JSON.parse(localStorage.getItem(KEY) || 'null'); if (d?.tasks) return d; } catch { /* */ }
   return seed();
@@ -93,6 +102,7 @@ function load() {
 export function createAdapter() {
   const db = load();
   db.org ||= seedOrg();   // بيانات تجريبية محفوظة من إصدار سابق: يُضاف لها الهيكل فارغاً
+  db.emp ||= seedEmp(db.users);
   let me = null;
   try { const id = sessionStorage.getItem(KEY + '.me'); me = db.users.find((u) => u.id === id && u.isActive) || null; } catch { /* */ }
   let adminId = null;
@@ -115,6 +125,57 @@ export function createAdapter() {
     const changedFields = action === 'update' ? Object.keys(n).filter((k) => JSON.stringify(n[k]) !== JSON.stringify(o[k])).sort() : null;
     if (action === 'update' && !changedFields.length) return;
     O().audit.unshift({ id: ++O().seq.audit, entity, entityId, action, changedBy: me?.id || null, changedAt: new Date().toISOString(), changedFields, oldData: o, newData: n });
+  };
+  /* الموظفون والإسناد */
+  const Em = () => db.emp;
+  const today = () => new Date().toISOString().slice(0, 10);
+  const digits = (v) => latinDigits(String(v ?? '')).replace(/\s+/g, '');
+  const overlap = (a, b) => a.startDate <= (b.endDate || '9999-12-31') && b.startDate <= (a.endDate || '9999-12-31');
+  const aType = (id) => Em().types.find((t) => t.id === Number(id));
+  const emp = (id) => Em().list.find((e) => e.id === Number(id));
+  function checkAssignment(a) {
+    const t = aType(a.typeId), e = emp(a.employeeId), u = oUnit(Number(a.unitId));
+    if (!t) throw err('اختر نوع الإسناد.');
+    if (!e) throw err('الموظف غير موجود.');
+    if (!u) throw err('اختر الوحدة.');
+    if (!a.startDate) throw err('تاريخ البداية مطلوب.');
+    if (a.endDate && a.endDate < a.startDate) throw err('تاريخ النهاية قبل تاريخ البداية.');
+    if (t.impliesHead) a.isHead = true;
+    const old = a.id ? Em().asg.find((x) => x.id === a.id) : null;
+    const open = !a.endDate || a.endDate >= today();
+    if (open && (!old || old.endDate !== a.endDate || old.unitId !== a.unitId || old.typeId !== a.typeId)) {
+      if (!e.isActive) throw err(`الموظف «${e.nameAr}» غير نشط.`);
+      if (!u.isActive) throw err(`الوحدة «${u.name}» معطّلة.`);
+      if (!t.isActive) throw err(`نوع الإسناد «${t.name}» معطّل.`);
+    }
+    const others = Em().asg.filter((x) => x.id !== a.id && overlap(x, a));
+    if (t.isPrimary) {
+      const o = others.find((x) => x.employeeId === e.id && aType(x.typeId).isPrimary);
+      if (o) throw err(`للموظف «${e.nameAr}» إسناد أصيل في «${oUnit(o.unitId)?.name}» في الفترة نفسها. أنهِه أولاً، أو استخدم «نقل».`);
+    }
+    if (others.some((x) => x.employeeId === e.id && x.unitId === u.id && x.typeId === t.id)) throw err(`للموظف إسناد «${t.name}» في «${u.name}» في الفترة نفسها.`);
+    if (a.isHead) {
+      const o = others.find((x) => x.unitId === u.id && x.isHead && aType(x.typeId).isPrimary === t.isPrimary);
+      if (o) throw err(t.isPrimary ? `للوحدة «${u.name}» رئيس في الفترة نفسها: ${emp(o.employeeId).nameAr}. أنهِ إسناده أولاً.`
+        : `يقوم بأعمال رئاسة الوحدة «${u.name}» في الفترة نفسها: ${emp(o.employeeId).nameAr}. أنهِ إسناده أولاً.`);
+    }
+  }
+  const EMP_SNAKE = { civilNo: 'civil_no', employeeNo: 'employee_no', nameAr: 'name_ar', nameEn: 'name_en', employeeId: 'employee_id', unitId: 'unit_id', typeId: 'type_id', isHead: 'is_head', startDate: 'start_date', endDate: 'end_date', isPrimary: 'is_primary', impliesHead: 'implies_head' };
+  const eLog = (entity, id, action, o, n) => {
+    const m = (x) => (x ? Object.fromEntries(Object.entries(x).map(([k, v]) => [EMP_SNAKE[k] || ORG_SNAKE[k] || k, v === '' ? null : v ?? null])) : null);
+    const od = m(o), nd = m(n);
+    const changedFields = action === 'update' ? Object.keys(nd).filter((k) => JSON.stringify(nd[k]) !== JSON.stringify(od[k])).sort() : null;
+    if (action === 'update' && !changedFields.length) return;
+    O().audit.unshift({ id: ++O().seq.audit, entity, entityId: id, action, changedBy: me?.id || null, changedAt: new Date().toISOString(), changedFields, oldData: od, newData: nd });
+  };
+  const linkUsers = () => {
+    let n = 0;
+    for (const u of db.users) {
+      if (u.employeeId || !u.loginNo) continue;
+      const e = Em().list.find((x) => (x.civilNo === u.loginNo || x.employeeNo.toUpperCase() === u.loginNo.toUpperCase()) && !db.users.some((y) => y.employeeId === x.id));
+      if (e) { u.employeeId = e.id; n++; }
+    }
+    return n;
   };
   const need = (...roles) => { if (!me) throw err('سجّل الدخول أولاً.'); if (!roles.includes(me.role)) throw err('لا تملك صلاحية لهذه العملية.'); };
 
@@ -460,6 +521,141 @@ export function createAdapter() {
         persist();
       },
       async audit(f = {}) { await wait(40); need('admin'); return JSON.parse(JSON.stringify(O().audit.slice(0, f.limit || 300))); },
+    },
+
+    employees: {
+      async list() { await wait(40); need('admin'); return JSON.parse(JSON.stringify(Em().list)); },
+      async save(e) {
+        await wait(60); need('admin');
+        const civilNo = digits(e.civilNo), employeeNo = digits(e.employeeNo).toUpperCase(), nameAr = oClean(e.nameAr), nameEn = oClean(e.nameEn);
+        if (!civilNo) throw err('الرقم المدني مطلوب.');
+        if (!/^[0-9]{1,20}$/.test(civilNo)) throw err(`الرقم المدني «${civilNo}» أرقام فقط (حتى 20 خانة).`);
+        if (employeeNo && !/^[0-9A-Z/-]{1,30}$/.test(employeeNo)) throw err(`الرقم الوظيفي «${employeeNo}» غير صحيح.`);
+        if (!nameAr) throw err('الاسم بالعربي مطلوب.');
+        const dupC = Em().list.find((x) => x.civilNo === civilNo && x.id !== e.id);
+        if (dupC) throw err(`الرقم المدني ${civilNo} مسجّل للموظف «${dupC.nameAr}».`);
+        const dupN = employeeNo && Em().list.find((x) => x.employeeNo.toUpperCase() === employeeNo && x.id !== e.id);
+        if (dupN) throw err(`الرقم الوظيفي ${employeeNo} مسجّل للموظف «${dupN.nameAr}».`);
+        let row = e.id ? emp(e.id) : null;
+        const old = row ? { ...row } : null;
+        if (!row) { row = { id: ++Em().seq.emp, isActive: true }; Em().list.push(row); }
+        Object.assign(row, { civilNo, employeeNo, nameAr, nameEn });
+        eLog('employee', row.id, old ? 'update' : 'insert', old, row);
+        if (!old) linkUsers();
+        persist(); return { ...row };
+      },
+      async setActive(id, active, date = today()) {
+        await wait(60); need('admin');
+        const e = emp(id);
+        if (!e) throw err('الموظف غير موجود.');
+        let n = 0;
+        if (!active) {
+          if (!date || date > today()) throw err('تاريخ انتهاء الإسنادات لا يكون بعد اليوم.');
+          for (const a of [...Em().asg]) {
+            if (a.employeeId !== e.id) continue;
+            if (a.startDate > date) { Em().asg = Em().asg.filter((x) => x !== a); eLog('assignment', a.id, 'delete', a, null); n++; }
+            else if (!a.endDate || a.endDate > date) { const o = { ...a }; a.endDate = date; eLog('assignment', a.id, 'update', o, a); n++; }
+          }
+        }
+        if (e.isActive !== !!active) { const o = { ...e }; e.isActive = !!active; eLog('employee', e.id, 'update', o, e); }
+        persist(); return n;
+      },
+      async assignments(f = {}) {
+        await wait(40); need('admin');
+        return JSON.parse(JSON.stringify(Em().asg.filter((a) => !f.employeeId || a.employeeId === Number(f.employeeId))
+          .sort((a, b) => b.startDate.localeCompare(a.startDate) || b.id - a.id)));
+      },
+      async saveAssignment(a) {
+        await wait(60); need('admin');
+        const old = a.id ? Em().asg.find((x) => x.id === a.id) : null;
+        if (a.id && !old) throw err('الإسناد غير موجود.');
+        const next = { id: a.id, employeeId: old ? old.employeeId : Number(a.employeeId), unitId: Number(a.unitId), typeId: Number(a.typeId),
+          isHead: !!a.isHead, startDate: a.startDate, endDate: a.endDate || null, notes: oClean(a.notes) };
+        checkAssignment(next);
+        const prev = old ? { ...old } : null;
+        const row = old || { id: ++Em().seq.asg };
+        Object.assign(row, next, { id: row.id });
+        if (!old) Em().asg.push(row);
+        eLog('assignment', row.id, prev ? 'update' : 'insert', prev, row);
+        persist(); return { ...row };
+      },
+      async deleteAssignment(id) {
+        await wait(60); need('admin');
+        const a = Em().asg.find((x) => x.id === id);
+        if (!a) throw err('الإسناد غير موجود.');
+        Em().asg = Em().asg.filter((x) => x.id !== id);
+        eLog('assignment', id, 'delete', a, null);
+        persist();
+      },
+      async transfer({ employeeId, unitId, date, isHead }) {
+        await wait(60); need('admin');
+        if (!date) throw err('تاريخ النقل مطلوب.');
+        const prim = Em().types.find((t) => t.isPrimary);
+        const cur = Em().asg.find((a) => a.employeeId === Number(employeeId) && a.typeId === prim.id && a.startDate <= date && (!a.endDate || a.endDate >= date));
+        const snapshot = JSON.stringify(Em().asg);
+        try {
+          if (cur) {
+            if (cur.unitId === Number(unitId)) throw err('الموظف في هذه الوحدة أصلاً.');
+            if (cur.startDate === date) return (await this.saveAssignment({ ...cur, unitId, isHead })).id;
+            const prev = new Date(Date.parse(date + 'T00:00:00Z') - 864e5).toISOString().slice(0, 10);
+            const o = { ...cur }; cur.endDate = prev; eLog('assignment', cur.id, 'update', o, cur);
+          }
+          return (await this.saveAssignment({ employeeId, unitId, typeId: prim.id, isHead, startDate: date })).id;
+        } catch (e) { Em().asg = JSON.parse(snapshot); throw e; }
+      },
+      async types() { await wait(40); if (!me) throw err('سجّل الدخول أولاً.'); return JSON.parse(JSON.stringify(Em().types)); },
+      async saveType(t) {
+        await wait(60); need('admin');
+        const name = oClean(t.name);
+        if (!name) throw err('اكتب اسم النوع.');
+        if (Em().types.some((x) => x.name.toLowerCase() === name.toLowerCase() && x.id !== t.id)) throw err(`يوجد نوع باسم «${name}».`);
+        let row = t.id ? aType(t.id) : null;
+        const old = row ? { ...row } : null;
+        if (!row) { row = { id: ++Em().seq.type, isPrimary: false }; Em().types.push(row); }
+        Object.assign(row, { name, sortOrder: Number(t.sortOrder) || 0, isActive: row.isPrimary ? true : t.isActive !== false, impliesHead: row.isPrimary ? false : !!t.impliesHead });
+        Em().types.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'ar'));
+        eLog('assignment_type', row.id, old ? 'update' : 'insert', old, row);
+        persist(); return { ...row };
+      },
+      async deleteType(id) {
+        await wait(60); need('admin');
+        const t = aType(id);
+        if (!t) throw err('النوع غير موجود.');
+        if (t.isPrimary) throw err('نوع «أصيل» أساسي ولا يُحذف.');
+        const n = Em().asg.filter((a) => a.typeId === id).length;
+        if (n) throw err(`النوع «${t.name}» مستخدم في ${n} إسناد؛ عطّله بدلاً من حذفه.`);
+        Em().types = Em().types.filter((x) => x.id !== id);
+        eLog('assignment_type', id, 'delete', t, null);
+        persist();
+      },
+      async import(rows, onProgress) {
+        await wait(150); need('admin');
+        const sum = { created: 0, updated: 0, unchanged: 0, linked: 0 };
+        rows.forEach((r, i) => {
+          const civilNo = digits(r.civilNo), employeeNo = digits(r.employeeNo).toUpperCase(), nameAr = oClean(r.nameAr), nameEn = oClean(r.nameEn);
+          const e = Em().list.find((x) => x.civilNo === civilNo);
+          if (!e) {
+            if (!/^[0-9]{1,20}$/.test(civilNo) || !nameAr) throw err(`صف ${i + 1}: الرقم المدني والاسم بالعربي مطلوبان.`);
+            const row = { id: ++Em().seq.emp, civilNo, employeeNo, nameAr, nameEn, isActive: true };
+            Em().list.push(row); eLog('employee', row.id, 'insert', null, row); sum.created++;
+          } else if ((employeeNo && employeeNo !== e.employeeNo) || (nameAr && nameAr !== e.nameAr) || (nameEn && nameEn !== e.nameEn)) {
+            const o = { ...e };
+            Object.assign(e, { employeeNo: employeeNo || e.employeeNo, nameAr: nameAr || e.nameAr, nameEn: nameEn || e.nameEn });
+            eLog('employee', e.id, 'update', o, e); sum.updated++;
+          } else sum.unchanged++;
+          if ((i + 1) % 200 === 0) onProgress?.(i + 1, rows.length);
+        });
+        sum.linked = linkUsers();
+        onProgress?.(rows.length, rows.length);
+        persist(); return sum;
+      },
+      async linkUsers() { await wait(60); need('admin'); const n = linkUsers(); persist(); return n; },
+      async setUser(employeeId, userId) {
+        await wait(60); need('admin');
+        for (const u of db.users) if (u.employeeId === employeeId && u.id !== userId) u.employeeId = null;
+        if (userId) { const u = db.users.find((x) => x.id === userId); if (!u) throw err('المستخدم غير موجود.'); u.employeeId = employeeId; }
+        persist();
+      },
     },
 
     users: {

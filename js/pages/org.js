@@ -10,33 +10,13 @@ import { icon } from '../ui/icons.js';
 import { modal, busy, toast, toastError, confirmBox } from '../ui/feedback.js';
 import { dataTable } from '../ui/table.js';
 import { pageHead, options, loading, newPage, searchBox } from '../ui/parts.js';
-import { normalizeAr, fmtDateTime } from '../core/format.js';
+import { normalizeAr, searchKey, queryWords, fmtDateTime, fmtDate, today } from '../core/format.js';
 import { CONFIG } from '../config.js';
+import { buildModel, pathText } from '../core/orgModel.js';
 
 const TABS = [['tree', 'الهيكل'], ['levels', 'المستويات'], ['log', 'سجل التغييرات']];
 const OPEN_KEY = `${CONFIG.storagePrefix}org.open`;
 const MAX_RESULTS = 200;
-
-/* ───────────── نموذج الشجرة (يُبنى من القائمة المسطّحة بعد كل تحميل) ───────────── */
-function buildModel({ levels, units }) {
-  const level = new Map(levels.map((l) => [l.id, l]));
-  const unit = new Map(units.map((u) => [u.id, u]));
-  const kids = new Map();
-  for (const u of units) {
-    const k = u.parentId || 0;
-    if (!kids.has(k)) kids.set(k, []);
-    kids.get(k).push(u);
-  }
-  for (const list of kids.values()) list.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'ar'));
-  const childrenOf = (id) => kids.get(id || 0) || [];
-  const ancestors = (u) => { const a = []; for (let p = unit.get(u.parentId); p && a.length < 50; p = unit.get(p.parentId)) a.unshift(p); return a; };
-  const subtree = (id) => { const out = [id]; for (let i = 0; i < out.length; i++) for (const c of childrenOf(out[i])) out.push(c.id); return out; };
-  const levelNo = (u) => level.get(u.levelId)?.levelNo ?? 0;
-  const searchText = new Map(units.map((u) => [u.id, normalizeAr([u.name, u.shortName, u.code, ...(u.aliases || [])].join(' '))]));
-  return { levels, units, level, unit, childrenOf, ancestors, subtree, levelNo, searchText };
-}
-
-const pathText = (M, u) => M.ancestors(u).map((a) => a.name).join(' ← ');
 
 export default async function org(ctx, main) {
   setTitle('الهيكل التنظيمي');
@@ -61,6 +41,24 @@ export default async function org(ctx, main) {
   async function reload() {
     M = buildModel(await db.org.load());
     for (const id of open) if (!M.unit.has(id)) open.delete(id);
+  }
+
+  /** رؤساء الوحدات وعدد موظفيها اليوم (من الإسنادات). إن لم تُجهَّز الموظفون بعد تبقى الصفحة كما هي */
+  let P = null;
+  async function loadPeople() {
+    try {
+      const [emps, asg, types] = await Promise.all([db.employees.list(), db.employees.assignments(), db.employees.types()]);
+      const T = today();
+      const name = new Map(emps.map((e) => [e.id, e.nameAr]));
+      const primary = new Set(types.filter((t) => t.isPrimary).map((t) => t.id));
+      P = { head: new Map(), acting: new Map(), count: new Map(), empName: name, typeName: new Map(types.map((t) => [t.id, t.name])) };
+      for (const a of asg) {
+        if (!(a.startDate <= T && (!a.endDate || a.endDate >= T))) continue;
+        const isP = primary.has(a.typeId);
+        if (isP) P.count.set(a.unitId, (P.count.get(a.unitId) || 0) + 1);
+        if (a.isHead) (isP ? P.head : P.acting).set(a.unitId, name.get(a.employeeId) || '');
+      }
+    } catch { P = null; }
   }
 
   /* ───────────── تبويب الهيكل ───────────── */
@@ -106,6 +104,7 @@ export default async function org(ctx, main) {
           ${u.code ? html`<span class="small muted ltr" title="الرمز الرسمي">${u.code}</span>` : ''}
           ${!withPath && kids.length ? html`<span class="small muted">${kids.length} تابعة</span>` : ''}
           ${u.isActive ? '' : html`<span class="badge warn">معطّلة</span>`}
+          ${P ? peopleLine(u, lv) : ''}
         </div>
         ${withPath ? html`<div class="small muted org-path">${pathText(M, u) || 'وحدة رئيسية'}</div>` : ''}
       </div>
@@ -119,12 +118,19 @@ export default async function org(ctx, main) {
     </div>`;
   }
 
+  function peopleLine(u, lv) {
+    const title = lv?.headTitle || 'الرئيس';
+    const h = P.head.get(u.id), a = P.acting.get(u.id), n = P.count.get(u.id) || 0;
+    return html`${h ? html`<span class="org-head">${title}: ${h}</span>` : ''}
+      ${a ? html`<span class="org-head acting">قائم بأعمال ${title}: ${a}</span>` : ''}
+      ${n ? html`<span class="small muted" title="الموظفون الأصيلون فيها اليوم">${n.toLocaleString('en-US')} موظف</span>` : ''}`;
+  }
+
   function drawNodes() {
     const box = $('#tree', body);
     if (!box) return;
-    const nq = normalizeAr(q);
-    if (nq) {
-      const words = nq.split(' ');
+    const words = queryWords(q);
+    if (words.length) {
       const hits = M.units.filter((u) => visible(u) && words.every((w) => M.searchText.get(u.id).includes(w)));
       mount(box, hits.length
         ? html`${hits.slice(0, MAX_RESULTS).map((u) => row(u, 0, { withPath: true }))}
@@ -188,7 +194,7 @@ export default async function org(ctx, main) {
     // الوحدات التي يمكن أن تكون أماً لوحدة جديدة: مفعّلة، ويوجد مستوى مفعّل أدنى منها
     // (تُحسب من الهيكل الحالي في كل مرة: «إضافة وأخرى» تضيف وحدات أثناء فتح النافذة)
     const parentList = () => (isNew ? treeOrder().filter((t) => t.isActive && M.levelNo(t) < maxNo) : []);
-    const ptext = (t) => normalizeAr(`${fullPath(t)} ${t.shortName} ${t.code} ${(t.aliases || []).join(' ')}`);
+    const ptext = (t) => searchKey(`${fullPath(t)} ${t.shortName} ${t.code} ${(t.aliases || []).join(' ')}`);
     const hasParents = parentList().length > 0;
     const m = modal({
       title: isNew ? 'وحدة جديدة' : `تعديل: ${unit.name}`,
@@ -247,8 +253,8 @@ export default async function org(ctx, main) {
     if (isNew) {
       const picker = $('[data-picker]', m.el), plist = $('[data-plist]', m.el), pq = $('#o-pq', m.el);
       const drawPicks = () => {
-        const nq = normalizeAr(pq.value);
-        const words = nq ? nq.split(' ') : [];
+        const words = queryWords(pq.value);
+        const nq = words.length > 0;
         const hits = parentList().filter((t) => { const x = ptext(t); return words.every((w) => x.includes(w)); });
         mount(plist, html`
           ${!nq ? html`<button type="button" class="org-opt ${!parent ? 'on' : ''}" data-pick="0"><b>بدون وحدة أعلى</b><span class="small muted">وحدة رئيسية في أعلى الهيكل (مثل مكتب الوزير)</span></button>` : ''}
@@ -260,7 +266,7 @@ export default async function org(ctx, main) {
       const openPicker = () => { picker.hidden = false; pq.value = ''; drawPicks(); pq.focus(); };
       $('[data-change]', m.el).onclick = () => (picker.hidden ? openPicker() : (picker.hidden = true));
       pq.addEventListener('input', debounce(drawPicks, 120));
-      pq.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); plist.querySelector('[data-pick]:not([data-pick="0"])')?.click(); } });
+      pq.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); drawPicks(); plist.querySelector('[data-pick]:not([data-pick="0"])')?.click(); } });
       on(plist, 'click', '[data-pick]', (e, b) => {
         parent = M.unit.get(Number(b.dataset.pick)) || null;   // M الحالي (بعد آخر حفظ)
         picker.hidden = true;
@@ -327,7 +333,7 @@ export default async function org(ctx, main) {
     walk(0);
     const targets = ordered.filter((t) => M.levelNo(t) < myNo && (t.isActive || !unit.isActive))
       .map((t) => ({ t, path: [...M.ancestors(t), t].map((a) => a.name).join(' ← ') }));
-    const text = new Map(targets.map(({ t, path }) => [t.id, normalizeAr(`${path} ${t.shortName} ${t.code} ${(t.aliases || []).join(' ')}`)]));
+    const text = new Map(targets.map(({ t, path }) => [t.id, searchKey(`${path} ${t.shortName} ${t.code} ${(t.aliases || []).join(' ')}`)]));
     let pick = null;  // 0 = وحدة رئيسية
     const m = modal({
       title: `نقل: ${unit.name}`,
@@ -341,8 +347,8 @@ export default async function org(ctx, main) {
     });
     const list = $('#mv-list', m.el), ok = $('[data-ok]', m.el), err = $('[data-err]', m.el);
     const draw = () => {
-      const nq = normalizeAr($('#mv-q', m.el).value);
-      const words = nq ? nq.split(' ') : [];
+      const words = queryWords($('#mv-q', m.el).value);
+      const nq = words.length > 0;
       const hits = targets.filter(({ t }) => t.id !== unit.parentId && words.every((w) => text.get(t.id).includes(w)));
       mount(list, html`
         ${unit.parentId && !nq ? html`<button type="button" class="org-opt ${pick === 0 ? 'on' : ''}" data-pick="0"><b>بدون وحدة أعلى</b><span class="small muted">تصبح وحدة رئيسية</span></button>` : ''}
@@ -460,6 +466,8 @@ export default async function org(ctx, main) {
   const FIELD = {
     name: 'الاسم', parent_id: 'الوحدة الأعلى', level_id: 'المستوى', short_name: 'الاختصار', code: 'الرمز الرسمي', aliases: 'الأسماء البديلة',
     sort_order: 'ترتيب العرض', is_active: 'الحالة', level_no: 'الترتيب', head_title: 'مسمى المسؤول',
+    civil_no: 'الرقم المدني', employee_no: 'الرقم الوظيفي', name_ar: 'الاسم بالعربي', name_en: 'الاسم بالإنجليزي',
+    unit_id: 'الوحدة', type_id: 'النوع', is_head: 'الرئاسة', start_date: 'من', end_date: 'إلى', notes: 'ملاحظات', implies_head: 'رئاسة',
   };
   const ACTION = { insert: ['إضافة', 'ok'], update: ['تعديل', 'info'], delete: ['حذف', 'bad'] };
   function show(k, v) {
@@ -467,6 +475,10 @@ export default async function org(ctx, main) {
     if (k === 'is_active') return v ? 'مفعّلة' : 'معطّلة';
     if (k === 'parent_id') return M.unit.get(v)?.name || `#${v}`;
     if (k === 'level_id') return M.level.get(v)?.name || `#${v}`;
+    if (k === 'unit_id') return M.unit.get(v)?.name || `#${v}`;
+    if (k === 'type_id') return P?.typeName.get(v) || `#${v}`;
+    if (k === 'is_head' || k === 'implies_head') return v ? 'نعم' : 'لا';
+    if (k === 'start_date' || k === 'end_date') return fmtDate(v);
     if (Array.isArray(v)) return v.join('، ');
     return String(v);
   }
@@ -484,6 +496,9 @@ export default async function org(ctx, main) {
           { key: 'action', label: 'العملية', render: (r) => html`<span class="badge ${ACTION[r.action][1]}">${ACTION[r.action][0]}</span>` },
           { key: 'entity', label: 'على', sort: false, render: (r) => {
             const d = r.newData || r.oldData || {};
+            if (r.entity === 'employee') return html`<b>${d.name_ar}</b><div class="small muted">موظف</div>`;
+            if (r.entity === 'assignment') return html`<b>${P?.empName.get(d.employee_id) || `#${d.employee_id}`}</b><div class="small muted">إسناد</div>`;
+            if (r.entity === 'assignment_type') return html`<b>${d.name}</b><div class="small muted">نوع إسناد</div>`;
             return html`<b>${d.name || `#${r.entityId}`}</b><div class="small muted">${r.entity === 'level' ? 'مستوى' : (M.level.get(d.level_id)?.name || 'وحدة')}</div>`;
           } },
           { key: 'details', label: 'التفاصيل', sort: false, render: (r) => {
@@ -492,6 +507,9 @@ export default async function org(ctx, main) {
             }
             const d = r.newData || r.oldData || {};
             if (r.entity === 'level') return html`<span class="small muted">الترتيب ${d.level_no}${d.head_title ? ` — ${d.head_title}` : ''}</span>`;
+            if (r.entity === 'employee') return html`<span class="small muted ltr">${d.civil_no}</span>`;
+            if (r.entity === 'assignment_type') return '';
+            if (r.entity === 'assignment') return html`<span class="small muted">${show('type_id', d.type_id)} في «${show('unit_id', d.unit_id)}»${d.is_head ? ' (رئاسة)' : ''}، من ${fmtDate(d.start_date)}${d.end_date ? ` إلى ${fmtDate(d.end_date)}` : ''}</span>`;
             return html`<span class="small muted">${d.parent_id ? `تحت «${show('parent_id', d.parent_id)}»` : 'وحدة رئيسية'}</span>`;
           } },
         ],
@@ -543,7 +561,7 @@ export default async function org(ctx, main) {
   root.addEventListener('input', (e) => { if (e.target.id === 'org-q') { q = e.target.value; onSearch(); } });
 
   try {
-    await reload();
+    await Promise.all([reload(), loadPeople()]);
     draw();
   } catch (e) {
     mount(body, html`<div class="card-pad"><div class="alert bad">${e.message}</div></div>`);

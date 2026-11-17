@@ -5,7 +5,7 @@
  * ───────────── أشكال البيانات (camelCase) ─────────────
  *
  * User    { id, loginNo, email, fullName, shortName, role: 'admin'|'head'|'engineer'|'viewer',
- *           isActive, mustChangePassword, engineerCode }   engineerCode: رمز المهندس (A08) أو ''
+ *           isActive, mustChangePassword, engineerCode, employeeId }   engineerCode: رمز المهندس (A08) أو ''؛ employeeId: سجله الوظيفي أو null
  *
  * Task    { id, engineerId, engineerName, engineerShort,
  *           refNo, requester, employeeName, subject,
@@ -28,7 +28,11 @@
  * Settings   { editLockDays: number, delayThresholdDays: number, minPasswordLength: number, forcePasswordChange: boolean }
  * OrgLevel { id, name, levelNo, headTitle, isActive }          levelNo: ترتيب المستوى، الأصغر أعلى في الهيكل
  * OrgUnit  { id, parentId: number|null, levelId, name, shortName, code, aliases: string[], sortOrder, isActive }   code: الرمز الرسمي (اختياري)، sortOrder: ترتيب العرض
- * OrgAuditEntry { id, entity: 'level'|'unit', entityId, action: 'insert'|'update'|'delete', changedBy, changedAt,
+ * Employee { id, civilNo, employeeNo, nameAr, nameEn, isActive }   civilNo: الرقم المدني (المعرّف، لا يتكرر)
+ * AssignmentType { id, name, isPrimary, impliesHead, sortOrder, isActive }   isPrimary: «أصيل» (واحد فقط)
+ * Assignment { id, employeeId, unitId, typeId, isHead, startDate: 'YYYY-MM-DD', endDate: 'YYYY-MM-DD'|null, notes }
+ *              endDate فارغ = قائم. القائم اليوم: startDate <= اليوم و(endDate فارغ أو >= اليوم)
+ * OrgAuditEntry { id, entity: 'level'|'unit'|'employee'|'assignment'|'assignment_type', entityId, action: 'insert'|'update'|'delete', changedBy, changedAt,
  *                 changedFields: string[]|null, oldData, newData }   (مفاتيح snake_case كما في قاعدة البيانات)
  * AuditEntry { id, taskId, action: 'insert'|'update'|'delete'|'restore', changedBy, changedAt,
  *              changedFields: string[]|null, oldData: object|null, newData: object|null }
@@ -80,6 +84,22 @@
  * org.deleteUnit(id)             → void           الوحدة التي ليس تحتها وحدات فقط
  * org.audit({ limit? })          → OrgAuditEntry[]   الأحدث أولاً (المدير)
  *        القواعد (قاعدة البيانات تفرضها): الأم في مستوى أعلى، لا دوران، لا مفعّلة تحت معطّلة، الاسم لا يتكرر بين الأخوات
+ *
+ * employees.list()               → Employee[]                       (المدير)
+ * employees.save(employee)       → Employee         بدون id = إضافة. التفعيل والتعطيل عبر setActive
+ * employees.setActive(id, active, date?) → number   التعطيل ينهي إسناداته القائمة في date (اليوم افتراضياً)
+ * employees.assignments({ employeeId? }) → Assignment[]   كل الإسنادات (الحالية والسابقة)
+ * employees.saveAssignment(a)    → Assignment       بدون id = إضافة
+ * employees.deleteAssignment(id) → void             لتصحيح خطأ في الإدخال
+ * employees.transfer({ employeeId, unitId, date, isHead }) → number   نقل الأصيل: ينتهي القائم في اليوم السابق
+ * employees.types()              → AssignmentType[]
+ * employees.saveType(t)          → AssignmentType
+ * employees.deleteType(id)       → void             غير المستخدم فقط، و«أصيل» لا يُحذف
+ * employees.import(rows, onProgress) → { created, updated, unchanged, linked }
+ *        rows: [{ civilNo, employeeNo, nameAr, nameEn }]، إضافة أو تحديث حسب الرقم المدني، والفارغ لا يمسح
+ * employees.linkUsers()          → number           ربط المستخدمين بسجلاتهم: رقم الدخول = الرقم المدني أو الوظيفي
+ * employees.setUser(employeeId, userId|null) → void
+ *        القواعد: أصيل واحد للموظف في أي يوم، رئيس أصيل واحد للوحدة ومن يقوم بأعمالها واحد، لا إسناد قائم في وحدة معطّلة أو لموظف غير نشط
  *
  * maintenance.refreshFromProduction() → { users, tasks, at }   اختياري: نسخة التجربة فقط
  *

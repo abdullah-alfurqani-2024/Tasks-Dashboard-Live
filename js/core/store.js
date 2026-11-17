@@ -25,6 +25,7 @@ const MATRIX = {
   'users.manage':     ['admin'],
   'lists.manage':     ['admin', 'head'],
   'org.manage':       ['admin'],
+  'employees.manage': ['admin'],
   'settings.manage':  ['admin'],
   'audit.view':       ['admin', 'head'],
   'import.run':       ['admin'],

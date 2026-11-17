@@ -61,3 +61,11 @@ TEST_DB=t TEST_SCHEMA=support_tasks python3 supabase/tests/run_dev_tests.py
 ```bash
 TEST_DB=td TEST_SCHEMA=support_tasks_dev python3 supabase/tests/run_org_tests.py
 ```
+
+## اختبارات الموظفين والإسناد (2.1.0-dev.6)
+`run_employee_tests.py` يختبر `supabase/dev/sql/19_employees.sql` (53 حالة): الموظفون والرقم المدني، والأنواع، وقواعد الإسناد والرئاسة،
+والنقل، وإنهاء الخدمة، والحذف، والاستيراد، وربط المستخدمين، والسجل:
+
+```bash
+TEST_DB=td TEST_SCHEMA=support_tasks_dev python3 supabase/tests/run_employee_tests.py
+```

@@ -12,7 +12,7 @@ const LOOKUP_TABLES = { taskTypes: 'task_types', correspondenceTypes: 'correspon
 const INTERNAL = '@tasks.internal';
 const toUser = (r) => r && ({
   id: r.id, email: r.email?.endsWith(INTERNAL) ? '' : r.email, loginNo: r.login_no || '', fullName: r.full_name, shortName: r.short_name || '',
-  engineerCode: r.engineer_code || '',
+  engineerCode: r.engineer_code || '', employeeId: r.employee_id ?? null,
   role: r.role, isActive: r.is_active, mustChangePassword: r.must_change_password,
 });
 
@@ -41,6 +41,22 @@ const orgMissing = (e) => {
   // PGRST205: الجدول غير موجود، PGRST202: الدالة غير موجودة (أو قديمة في ذاكرة Supabase)
   if (['PGRST205', 'PGRST202', '42P01', '42883'].includes(e?.code)) {
     throw new ApiError('الهيكل التنظيمي غير مجهّز في قاعدة بيانات هذه النسخة: نفّذ ملف supabase/dev/sql/18_org_structure.sql في SQL Editor.', e.status, e.code);
+  }
+  throw e;
+};
+
+const toEmployee = (r) => ({ id: r.id, civilNo: r.civil_no, employeeNo: r.employee_no || '', nameAr: r.name_ar, nameEn: r.name_en || '', isActive: r.is_active });
+const toAType = (r) => ({ id: r.id, name: r.name, isPrimary: r.is_primary, impliesHead: r.implies_head, sortOrder: r.sort_order, isActive: r.is_active });
+const toAssignment = (r) => ({
+  id: r.id, employeeId: r.employee_id, unitId: r.unit_id, typeId: r.type_id, isHead: r.is_head,
+  startDate: r.start_date, endDate: r.end_date, notes: r.notes || '',
+});
+const EMP_COLS = 'id,civil_no,employee_no,name_ar,name_en,is_active';
+const ASG_COLS = 'id,employee_id,unit_id,type_id,is_head,start_date,end_date,notes';
+/** جداول الموظفين غير موجودة بعد */
+const empMissing = (e) => {
+  if (['PGRST205', 'PGRST202', '42P01', '42883'].includes(e?.code)) {
+    throw new ApiError('الموظفون غير مجهّزين في قاعدة بيانات هذه النسخة: نفّذ ملف supabase/dev/sql/19_employees.sql في SQL Editor.', e.status, e.code);
   }
   throw e;
 };
@@ -279,6 +295,60 @@ export function createAdapter(config) {
           changedFields: r.changed_fields, oldData: r.old_data, newData: r.new_data,
         }));
       },
+    },
+
+    employees: {
+      async list() {
+        return (await c.selectAll('employees', { select: EMP_COLS, order: 'name_ar.asc,id.asc' }).catch(empMissing)).map(toEmployee);
+      },
+      async save(e) {
+        const row = { civil_no: e.civilNo, employee_no: e.employeeNo || null, name_ar: e.nameAr, name_en: e.nameEn || null };
+        const rows = e.id ? await c.update('employees', { id: `eq.${e.id}`, select: EMP_COLS }, row) : await c.insert('employees', row);
+        if (!rows.length) throw new ApiError('لا تملك صلاحية تعديل الموظفين.');
+        return toEmployee(rows[0]);
+      },
+      async setActive(id, active, date) {
+        return c.rpc('employee_set_active', { p_id: id, p_active: !!active, ...(date ? { p_date: date } : {}) });
+      },
+      async assignments(f = {}) {
+        const q = { select: ASG_COLS, order: 'start_date.desc,id.desc' };
+        if (f.employeeId) q.employee_id = `eq.${f.employeeId}`;
+        return (await c.selectAll('employee_assignments', q).catch(empMissing)).map(toAssignment);
+      },
+      async saveAssignment(a) {
+        const row = { unit_id: a.unitId, type_id: a.typeId, is_head: !!a.isHead, start_date: a.startDate, end_date: a.endDate || null, notes: a.notes || null };
+        if (!a.id) row.employee_id = a.employeeId;
+        const rows = a.id ? await c.update('employee_assignments', { id: `eq.${a.id}`, select: ASG_COLS }, row) : await c.insert('employee_assignments', row);
+        if (!rows.length) throw new ApiError('لا تملك صلاحية تعديل الإسنادات.');
+        return toAssignment(rows[0]);
+      },
+      async deleteAssignment(id) { await c.rpc('assignment_delete', { p_id: id }); },
+      async transfer(t) {
+        return c.rpc('employee_transfer', { p_employee: t.employeeId, p_unit: t.unitId, p_date: t.date, p_is_head: !!t.isHead });
+      },
+      async types() {
+        return (await c.select('assignment_types', { select: '*', order: 'sort_order.asc,name.asc' }).catch(empMissing)).map(toAType);
+      },
+      async saveType(t) {
+        const row = { name: t.name, implies_head: !!t.impliesHead, sort_order: Number(t.sortOrder) || 0, is_active: t.isActive !== false };
+        const rows = t.id ? await c.update('assignment_types', { id: `eq.${t.id}` }, row) : await c.insert('assignment_types', row);
+        if (!rows.length) throw new ApiError('لا تملك صلاحية تعديل الأنواع.');
+        return toAType(rows[0]);
+      },
+      async deleteType(id) { await c.rpc('assignment_type_delete', { p_id: id }); },
+      /** دفعات من 500 ← المجموع */
+      async import(rows, onProgress) {
+        const sum = { created: 0, updated: 0, unchanged: 0, linked: 0 };
+        for (let i = 0; i < rows.length; i += 500) {
+          const part = rows.slice(i, i + 500).map((r) => ({ civil_no: r.civilNo, employee_no: r.employeeNo || null, name_ar: r.nameAr || null, name_en: r.nameEn || null }));
+          const r = await c.rpc('employees_import', { p: part }).catch(empMissing);
+          for (const k of Object.keys(sum)) sum[k] += r[k] || 0;
+          onProgress?.(Math.min(i + 500, rows.length), rows.length);
+        }
+        return sum;
+      },
+      async linkUsers() { return c.rpc('link_users_to_employees').catch(empMissing); },
+      async setUser(employeeId, userId) { await c.rpc('employee_set_user', { p_employee: employeeId, p_user: userId || null }); },
     },
 
     users: {

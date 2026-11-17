@@ -464,11 +464,26 @@ button.org-tog:hover { background: var(--gray-soft); color: var(--ink); }
 .org-opt:hover { background: var(--surface-2); }
 .org-opt.on { background: var(--brand-soft); box-shadow: inset 3px 0 0 var(--brand); }
 .list-row.org-lv { grid-template-columns: 80px 1fr 1fr 90px 90px auto; }
+.org-head { font-size: .82rem; color: var(--ok); background: var(--ok-soft); padding: 1px 9px; border-radius: 999px; }
+.org-head.acting { color: var(--warn); background: var(--warn-soft); }
+.unit-picker { margin-top: 6px; }
+.unit-picker .org-pick { max-height: 34vh; margin-bottom: 0; }
+
+/* ---------------- الموظفون ---------------- */
+.modal.lg { width: min(1000px, 100%); }
+.emp-filters { border-bottom: 1px solid var(--line); align-items: flex-end; }
+.emp-filters .check { align-self: center; margin-top: 18px; }
+.emp-section { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.emp-section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.emp-section-head h3 { margin: 0; font-size: 1rem; }
+.emp-section-head .row-actions { margin-inline-start: auto; display: flex; gap: 6px; }
+.emp-section .row-actions { display: flex; gap: 2px; justify-content: flex-end; }
+.list-row.emp-type { grid-template-columns: 80px 1fr 100px 90px 90px auto; }
 @media (pointer: coarse) { .org-act { opacity: 1; } }
 @media (max-width: 640px) {
   .org-row { padding-inline-start: calc(6px + var(--d, 0) * 14px); flex-wrap: wrap; }
   .org-act { width: 100%; justify-content: flex-end; flex-direction: row-reverse; }
-  .list-row.org-lv { grid-template-columns: 60px 1fr auto; }
+  .list-row.org-lv, .list-row.emp-type { grid-template-columns: 60px 1fr auto; }
 }
 
 /* ---------------- الاستيراد ---------------- */
