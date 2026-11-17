@@ -44,7 +44,7 @@ export default async function org(ctx, main) {
   const root = newPage(main);
   mount(root, html`
     ${pageHead({ title: 'الهيكل التنظيمي', sub: 'وحدات الوزارة من مكتب الوزير حتى الأقسام. أضف كل وحدة تحت وحدتها الأم، ونقل وحدة ينقل ما تحتها معها. الوحدة المستخدمة لا تُحذف؛ عطّلها بدلاً من ذلك.',
-      actions: html`<button class="btn btn-primary" data-act="add-root">${icon('plus')}وحدة رئيسية</button>` })}
+      actions: html`<button class="btn btn-primary" data-act="add-root">${icon('plus')}وحدة جديدة</button>` })}
     <div class="card">
       <div class="tabs" role="tablist">${TABS.map(([k, l]) => html`<button role="tab" data-tab="${k}">${l}</button>`)}</div>
       <div id="body">${loading()}</div>
@@ -165,28 +165,50 @@ export default async function org(ctx, main) {
     return M.levels.filter((l) => (l.isActive || l.id === unit?.levelId) && l.levelNo > pNo && l.levelNo < cNo);
   }
 
+  /** الوحدات بترتيب الشجرة (الأم ثم ما تحتها)، عدا ما تحت except */
+  function treeOrder(except = new Set()) {
+    const out = [];
+    const walk = (pid) => { for (const c of M.childrenOf(pid)) { if (!except.has(c.id)) { out.push(c); walk(c.id); } } };
+    walk(0);
+    return out;
+  }
+  const fullPath = (u) => [...M.ancestors(u), u].map((a) => a.name).join(' ← ');
+
   function unitForm({ unit = null, parentId = null }) {
     const isNew = !unit;
-    const parent = M.unit.get(isNew ? parentId : unit.parentId) || null;
-    const levels = allowedLevels(parent, unit);
-    const siblings = M.childrenOf(parent?.id || 0);
-    const nextOrder = () => Math.max(0, ...M.childrenOf(parent?.id || 0).map((s) => s.sortOrder)) + 1;
-    const where = parent ? [...M.ancestors(parent), parent].map((a) => a.name).join(' ← ') : 'وحدة رئيسية (بلا وحدة أم)';
-    if (!levels.length) {
+    let parent = M.unit.get(isNew ? parentId : unit.parentId) || null;
+    const activeNos = M.levels.filter((l) => l.isActive).map((l) => l.levelNo);
+    const maxNo = activeNos.length ? Math.max(...activeNos) : -Infinity;
+    if (!allowedLevels(parent, unit).length) {
       toastError({ message: parent ? `لا يوجد مستوى مفعّل أدنى من مستوى «${M.level.get(parent.levelId)?.name}». أضف مستوى من تبويب «المستويات».` : 'لا يوجد مستوى مفعّل. أضف مستوى من تبويب «المستويات».' });
       return;
     }
+    const nextOrder = () => Math.max(0, ...M.childrenOf(parent?.id || 0).map((s) => s.sortOrder)) + 1;
+    // الوحدات التي يمكن أن تكون أماً لوحدة جديدة: مفعّلة، ويوجد مستوى مفعّل أدنى منها
+    // (تُحسب من الهيكل الحالي في كل مرة: «إضافة وأخرى» تضيف وحدات أثناء فتح النافذة)
+    const parentList = () => (isNew ? treeOrder().filter((t) => t.isActive && M.levelNo(t) < maxNo) : []);
+    const ptext = (t) => normalizeAr(`${fullPath(t)} ${t.shortName} ${t.code} ${(t.aliases || []).join(' ')}`);
+    const hasParents = parentList().length > 0;
     const m = modal({
-      title: isNew ? (parent ? 'وحدة تابعة جديدة' : 'وحدة رئيسية جديدة') : `تعديل: ${unit.name}`,
+      title: isNew ? 'وحدة جديدة' : `تعديل: ${unit.name}`,
       body: html`<form class="form-grid" novalidate>
-        <div class="field span-2"><span class="label">مكانها في الهيكل</span>
-          <div class="org-where">${where}</div>
-          ${isNew ? '' : html`<span class="hint">لنقلها إلى وحدة أخرى استخدم زر «نقل».</span>`}</div>
+        <div class="field span-2"><span class="label">الوحدة الأم (تتبع لها) <span class="req">*</span></span>
+          <div class="org-where">
+            <span data-where></span>
+            ${isNew ? html`<button type="button" class="btn btn-sm" data-change>${icon('edit')}تغيير</button>`
+              : html`<button type="button" class="btn btn-sm" data-move>${icon('move')}نقل…</button>`}
+          </div>
+          <div data-picker hidden>
+            ${searchBox('', 'ابحث عن الوحدة الأم…', 'o-pq')}
+            <div class="org-pick" data-plist></div>
+          </div>
+          <span class="hint">${isNew ? 'اختر الوحدة التي تتبع لها هذه الوحدة، أو «بدون وحدة أم» للوحدة الرئيسية (مثل مكتب الوزير). ويمكن أيضاً الإضافة من زر «+» بجانب أي وحدة في الشجرة.'
+            : 'لنقلها إلى وحدة أم أخرى (مع كل ما تحتها) استخدم «نقل».'}</span></div>
         <div class="field span-2"><label for="o-name">اسم الوحدة <span class="req">*</span></label>
-          <input class="input" id="o-name" name="name" value="${unit?.name || ''}" maxlength="200" required autofocus></div>
+          <input class="input" id="o-name" name="name" value="${unit?.name || ''}" maxlength="200" required ${isNew && !parent && hasParents ? '' : 'autofocus'}></div>
         <div class="field"><label for="o-level">المستوى <span class="req">*</span></label>
-          <select class="input" id="o-level" name="levelId">${options(levels.map((l) => ({ id: l.id, name: l.name, isActive: l.isActive })), unit?.levelId ?? levels[0].id)}</select>
-          <span class="hint">${parent ? 'المستويات الأدنى من مستوى الوحدة الأم فقط.' : 'الوحدة الرئيسية عادة «مكتب الوزير».'}</span></div>
+          <select class="input" id="o-level" name="levelId"></select>
+          <span class="hint" data-level-hint></span></div>
         <div class="field"><label for="o-order">الترتيب بين أخواتها</label>
           <input class="input num" id="o-order" name="sortOrder" type="number" min="0" value="${unit?.sortOrder ?? nextOrder()}">
           <span class="hint">الأصغر أولاً، ثم أبجدياً.</span></div>
@@ -200,9 +222,54 @@ export default async function org(ctx, main) {
         <div class="alert bad span-2" data-err hidden></div>
       </form>`,
       footer: html`<button class="btn btn-primary" data-save>${icon('check')}${isNew ? 'إضافة' : 'حفظ'}</button>
-        ${isNew ? html`<button class="btn" data-save-more title="تبقى النافذة مفتوحة لإضافة وحدة أخرى في المكان نفسه">${icon('plus')}إضافة وأخرى</button>` : ''}
+        ${isNew ? html`<button class="btn" data-save-more title="تبقى النافذة مفتوحة لإضافة وحدة أخرى تحت الوحدة الأم نفسها">${icon('plus')}إضافة وأخرى</button>` : ''}
         <button class="btn" data-x>إلغاء</button>`,
     });
+
+    /** المكان والمستويات المسموحة حسب الوحدة الأم الحالية */
+    const levelSel = $('#o-level', m.el);
+    function applyParent(reset = false) {
+      mount($('[data-where]', m.el), parent ? html`<b>${parent.name}</b> <span class="badge">${M.level.get(parent.levelId)?.name}</span>
+        ${M.ancestors(parent).length ? html`<div class="small muted">${M.ancestors(parent).map((a) => a.name).join(' ← ')}</div>` : ''}`
+        : html`<b>بدون وحدة أم</b> <span class="small muted">— وحدة رئيسية في أعلى الهيكل</span>`);
+      const levels = allowedLevels(parent, unit);
+      // وحدة جديدة: المستوى التالي تحت الأم افتراضياً
+      const keep = !reset && levels.some((l) => String(l.id) === levelSel.value) ? levelSel.value : (unit?.levelId ?? levels[0]?.id);
+      mount(levelSel, options(levels.map((l) => ({ id: l.id, name: l.name, isActive: l.isActive })), keep));
+      mount($('[data-level-hint]', m.el), html`${parent ? `المستويات الأدنى من «${M.level.get(parent.levelId)?.name}» فقط.` : 'الوحدة الرئيسية عادة «مكتب الوزير».'}`);
+      if (isNew) $('#o-order', m.el).value = nextOrder();
+    }
+    applyParent();
+
+    if (isNew) {
+      const picker = $('[data-picker]', m.el), plist = $('[data-plist]', m.el), pq = $('#o-pq', m.el);
+      const drawPicks = () => {
+        const nq = normalizeAr(pq.value);
+        const words = nq ? nq.split(' ') : [];
+        const hits = parentList().filter((t) => { const x = ptext(t); return words.every((w) => x.includes(w)); });
+        mount(plist, html`
+          ${!nq ? html`<button type="button" class="org-opt ${!parent ? 'on' : ''}" data-pick="0"><b>بدون وحدة أم</b><span class="small muted">وحدة رئيسية في أعلى الهيكل (مثل مكتب الوزير)</span></button>` : ''}
+          ${hits.slice(0, 100).map((t) => html`<button type="button" class="org-opt ${parent?.id === t.id ? 'on' : ''}" data-pick="${t.id}">
+            <b>${t.name}</b> <span class="badge">${M.level.get(t.levelId)?.name}</span><span class="small muted">${pathText(M, t) || 'وحدة رئيسية'}</span></button>`)}
+          ${hits.length > 100 ? html`<div class="small muted card-pad">تظهر أول 100 من ${hits.length}. اكتب للبحث.</div>` : ''}
+          ${nq && !hits.length ? html`<div class="small muted card-pad">لا توجد وحدة بهذا الاسم.</div>` : ''}`);
+      };
+      const openPicker = () => { picker.hidden = false; pq.value = ''; drawPicks(); pq.focus(); };
+      $('[data-change]', m.el).onclick = () => (picker.hidden ? openPicker() : (picker.hidden = true));
+      pq.addEventListener('input', debounce(drawPicks, 120));
+      pq.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); plist.querySelector('[data-pick]:not([data-pick="0"])')?.click(); } });
+      on(plist, 'click', '[data-pick]', (e, b) => {
+        parent = M.unit.get(Number(b.dataset.pick)) || null;   // M الحالي (بعد آخر حفظ)
+        picker.hidden = true;
+        applyParent(true);
+        $('#o-name', m.el).focus();
+      });
+      // «وحدة جديدة» من أعلى الصفحة والهيكل فيه وحدات: يبدأ باختيار الوحدة الأم
+      if (!parent && hasParents) openPicker();
+    } else {
+      $('[data-move]', m.el).onclick = () => { m.close(); moveForm(unit); };
+    }
+
     const f = $('form', m.el);
     const err = $('[data-err]', m.el);
     const fail = (t) => { err.textContent = t; err.hidden = false; };
@@ -213,7 +280,7 @@ export default async function org(ctx, main) {
       const v = Object.fromEntries(['name', 'levelId', 'sortOrder', 'shortName', 'code', 'aliases'].map((k) => [k, f.elements[k].value]));
       const name = v.name.replace(/\s+/g, ' ').trim();
       if (!name) { f.elements.name.focus(); return fail('اكتب اسم الوحدة.'); }
-      if (siblings.some((s) => s.id !== unit?.id && normalizeAr(s.name) === normalizeAr(name))) return fail(`توجد وحدة باسم «${name}» في المكان نفسه من الهيكل.`);
+      if (M.childrenOf(parent?.id || 0).some((s) => s.id !== unit?.id && normalizeAr(s.name) === normalizeAr(name))) return fail(`توجد وحدة باسم «${name}» تحت «${parent?.name || 'أعلى الهيكل'}».`);
       const item = {
         id: unit?.id, parentId: parent?.id || null, levelId: Number(v.levelId), name,
         sortOrder: Number(v.sortOrder) || 0, shortName: v.shortName.trim(), code: v.code.trim(),
@@ -228,7 +295,6 @@ export default async function org(ctx, main) {
           drawTree();
           if (more) {
             added++;
-            siblings.push(saved);
             toast(`أُضيفت «${saved.name}» (${added} في هذه النافذة).`, 'ok', 2500);
             f.elements.name.value = ''; f.elements.shortName.value = ''; f.elements.code.value = ''; f.elements.aliases.value = '';
             f.elements.sortOrder.value = nextOrder();

@@ -454,7 +454,10 @@ button.org-tog:hover { background: var(--gray-soft); color: var(--ink); }
 .org-act { display: flex; gap: 2px; flex: none; width: 172px; justify-content: flex-start; opacity: .35; transition: opacity .15s; }  /* عرض ثابت: الأزرار في أماكنها في كل صف */
 .org-row:hover .org-act, .org-row:focus-within .org-act { opacity: 1; }
 .org-act .danger, .row-actions .danger { color: var(--bad); }
-.org-where { padding: 8px 11px; border-radius: 9px; background: var(--surface-2); border: 1px solid var(--line); font-size: .9rem; }
+.org-where { display: flex; align-items: center; gap: 10px; padding: 8px 11px; border-radius: 9px; background: var(--surface-2); border: 1px dashed var(--line-strong); font-size: .9rem; }
+.org-where > [data-where] { flex: 1; min-width: 0; }
+[data-picker] .org-pick { max-height: 34vh; margin-bottom: 0; }
+[data-picker] { margin-top: 6px; }
 .org-pick { margin: 10px 0; border: 1px solid var(--line); border-radius: 9px; max-height: 46vh; overflow-y: auto; }
 .org-opt { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; width: 100%; text-align: start; border: 0; border-bottom: 1px solid var(--line); background: none; padding: 8px 12px; cursor: pointer; font: inherit; color: var(--ink); }
 .org-opt .small { width: 100%; }
