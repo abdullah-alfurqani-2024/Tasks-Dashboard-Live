@@ -22,8 +22,8 @@
   <div class="sub">سجل التطوير والإصدارات: الطلبات والتعديلات من البداية حتى اليوم</div>
   <div class="rule"></div>
   <div class="meta">
-    <div><span>آخر إصدار</span><b class="ltr" data-fill="latest">2.0.1</b></div>
-    <div><span>عدد الإصدارات</span><b data-fill="count">35</b></div>
+    <div><span>آخر إصدار</span><b class="ltr" data-fill="latest">2.0.2</b></div>
+    <div><span>عدد الإصدارات</span><b data-fill="count">36</b></div>
     <div><span>تاريخ المستند</span><b class="ltr" data-fill="date">2026/11/17</b></div>
   </div>
   <div class="aud">موجَّه إلى: <span class="chip">الإدارة العليا</span><span class="chip">مستخدمي النظام</span><span class="chip">المهندس المسؤول</span></div>
@@ -308,7 +308,7 @@
       <tr><td><b>الثالثة</b></td><td class="ltr">1.7.0 – 1.11.2</td><td>تجهيز البيانات: الاستيراد بلا فقد، والمراجعة</td></tr>
       <tr><td><b>الرابعة</b></td><td class="ltr">1.12.0 – 1.14.2</td><td>فصل البيئات وتوحيد الحسابات، وأول تعديلات تدريبية</td></tr>
       <tr><td><b>الخامسة</b></td><td class="ltr">1.15.0 – 1.21.0</td><td>التواصل داخل النظام، وتحسينات التشغيل، ونسخة التطوير</td></tr>
-      <tr><td><b>السادسة</b></td><td class="ltr">2.0.0 – 2.0.1</td><td>أول تعديل جذري: رمز المهمة من Google Sheets، والاستيراد بالرمز والدمج</td></tr>
+      <tr><td><b>السادسة</b></td><td class="ltr">2.0.0 – 2.0.2</td><td>أول تعديل جذري: رمز المهمة من Google Sheets، والاستيراد بالرمز والدمج</td></tr>
     </tbody>
   </table>
 
@@ -885,6 +885,22 @@
       </ul>
       <figure><img src="img/28-firefox-select.jpg"><figcaption>قائمة «الحالة» مفتوحة في فايرفوكس بخط النظام، مع مجموعتي «مجموعات» و«الحالات»</figcaption></figure>
       <div class="aud-box eng"><h5><span class="tag eng">للمهندس</span></h5>الملف الجديد <code>js/ui/selectPopup.js</code> يُفعَّل مرة واحدة من <code>app.js</code>، ويعمل فقط إن كان المتصفح فايرفوكس والمؤشر فأرة (<code>pointer: fine</code>). يمنع فتح القائمة الأصلية عند الضغط، ويرسل حدثي <code>input</code> و<code>change</code> من <code>&lt;select&gt;</code> نفسه عند الاختيار. وحقل <code>&lt;input list&gt;</code> تُنقل خاصيته إلى <code>data-list</code> وتُعرض اقتراحات <code>&lt;datalist&gt;</code> نفسها. لا يوجد ملف SQL ولا تحديث دوال.</div>
+    </div>
+  </section>
+
+  <section class="ver">
+    <div class="ver-head"><span class="ver-no">2.0.2</span><h3>التقويم والتلميح بخط النظام</h3><span class="tag fix">إصلاح</span><span class="ver-date">2026/11/17</span></div>
+    <div class="ver-body">
+      <div class="req"><b>الطلب:</b> بعد إصلاح القوائم المنسدلة بقي عنصران يرسمهما المتصفح نفسه بخط الجهاز في كروم وفايرفوكس معاً: التلميح عند الوقوف بالفأرة، ونافذة التقويم. <span class="q">«أريد توحيدهما أيضاً»</span>.</div>
+      <ul>
+        <li><b>التقويم (الحاسوب، كل المتصفحات):</b> زر التقويم في أي حقل تاريخ يفتح تقويماً داخل الصفحة بخط النظام: الأسبوع يبدأ بالأحد، وأسماء الأشهر بالعربية، واليوم الحالي مميز. الضغط على اسم الشهر يعرض الأشهر ويتنقل بين السنوات. زر «اليوم»، وزر «مسح» للحقول غير الإلزامية.</li>
+        <li><b>لوحة المفاتيح:</b> Alt+السهم للأسفل أو F4 يفتحه، والأسهم تتنقل بين الأيام، وPageUp/PageDown بين الأشهر، وEnter يختار، وEsc يغلقه دون النافذة. والكتابة المباشرة في الحقل كما هي.</li>
+        <li><b>الهواتف:</b> يبقى منتقي التاريخ الخاص بالهاتف كما استقر في الإصدار <span class="ltr">1.19.1</span>.</li>
+        <li><b>التلميح (كل المتصفحات بالفأرة):</b> كل التلميحات، ومنها تلميحات الرسوم في لوحة المؤشرات، صارت بخط النظام وبألوانه في الوضعين. لم تتغير أي شاشة: التلميحات المكتوبة في الكود تُعرض بالطريقة الجديدة تلقائياً.</li>
+      </ul>
+      <figure><img src="img/29-calendar.jpg"><figcaption>التقويم الجديد في فلتر «فترة محددة»: التاريخ المختار، واليوم الحالي، وزرا «اليوم» و«مسح»</figcaption></figure>
+      <figure><img src="img/30-tooltip.jpg"><figcaption>تلميح رسم «المهام حسب المهندس» بخط النظام</figcaption></figure>
+      <div class="aud-box eng"><h5><span class="tag eng">للمهندس</span></h5>ملفان جديدان: <code>js/ui/calendar.js</code> (يفتحه <code>dateField.js</code> على الحاسوب، <code>pointer: fine</code>، ويخفي حقل التاريخ الأصلي هناك؛ القيمة والأحداث كما هي) و<code>js/ui/tooltip.js</code> (يُفعَّل من <code>app.js</code>: عند الوقوف بالفأرة ينقل <code>title</code> أو <code>&lt;title&gt;</code> في SVG إلى <code>data-tip</code>، ويحفظ النص لقارئ الشاشة في <code>aria-label</code> أو <code>aria-description</code>). لا يوجد ملف SQL ولا تحديث دوال.</div>
     </div>
   </section>
 
