@@ -22,9 +22,9 @@
   <div class="sub">سجل التطوير والإصدارات: الطلبات والتعديلات من البداية حتى اليوم</div>
   <div class="rule"></div>
   <div class="meta">
-    <div><span>آخر إصدار</span><b class="ltr" data-fill="latest">2.0.0</b></div>
-    <div><span>عدد الإصدارات</span><b data-fill="count">34</b></div>
-    <div><span>تاريخ المستند</span><b class="ltr" data-fill="date">2026/11/15</b></div>
+    <div><span>آخر إصدار</span><b class="ltr" data-fill="latest">2.0.1</b></div>
+    <div><span>عدد الإصدارات</span><b data-fill="count">35</b></div>
+    <div><span>تاريخ المستند</span><b class="ltr" data-fill="date">2026/11/17</b></div>
   </div>
   <div class="aud">موجَّه إلى: <span class="chip">الإدارة العليا</span><span class="chip">مستخدمي النظام</span><span class="chip">المهندس المسؤول</span></div>
 </section>
@@ -73,7 +73,7 @@
   <div class="ch-head"><div class="ch-no">1</div><div><h2>الملخص التنفيذي</h2><p><span class="tag mgmt">للإدارة</span> الوضع العام في صفحتين</p></div></div>
   <p class="lead">نظام ويب لمتابعة مهام قسم الدعم الفني والصيانة: تسجيل المهام وتوزيعها على المهندسين، ومتابعة إنجازها وتأخرها، وتقارير ومؤشرات لحظية. يحل محل ملفات Google Sheets والسكربتات الملحقة بها ولوحة Looker Studio، ويعمل بالعربية من اليمين لليسار على الحاسوب والجوال.</p>
   <div class="grid4" style="margin:5mm 0">
-    <div class="kpi"><b data-fill="count">34</b><span>إصداراً خلال 16 يوماً</span></div>
+    <div class="kpi"><b data-fill="count">35</b><span>إصداراً خلال 16 يوماً</span></div>
     <div class="kpi t"><b>3</b><span>نسخ مستقلة: إنتاج للعمل، وتجربة قبل الاعتماد، وتطوير للتعديلات الجذرية</span></div>
     <div class="kpi g"><b>233</b><span>اختباراً آلياً للصلاحيات والدوال</span></div>
     <div class="kpi o"><b>0</b><span>تكلفة اشتراك: خطط مجانية</span></div>
@@ -308,7 +308,7 @@
       <tr><td><b>الثالثة</b></td><td class="ltr">1.7.0 – 1.11.2</td><td>تجهيز البيانات: الاستيراد بلا فقد، والمراجعة</td></tr>
       <tr><td><b>الرابعة</b></td><td class="ltr">1.12.0 – 1.14.2</td><td>فصل البيئات وتوحيد الحسابات، وأول تعديلات تدريبية</td></tr>
       <tr><td><b>الخامسة</b></td><td class="ltr">1.15.0 – 1.21.0</td><td>التواصل داخل النظام، وتحسينات التشغيل، ونسخة التطوير</td></tr>
-      <tr><td><b>السادسة</b></td><td class="ltr">2.0.0</td><td>أول تعديل جذري: رمز المهمة من Google Sheets، والاستيراد بالرمز والدمج</td></tr>
+      <tr><td><b>السادسة</b></td><td class="ltr">2.0.0 – 2.0.1</td><td>أول تعديل جذري: رمز المهمة من Google Sheets، والاستيراد بالرمز والدمج</td></tr>
     </tbody>
   </table>
 
@@ -871,6 +871,20 @@
           <li>اختبارات جديدة: 46 لقاعدة البيانات (الرمز، والدمج، والنسخ، والترقية من الإصدار السابق، والتراجع) وواحد لدالة النسخ.</li>
         </ul>
       </div>
+    </div>
+  </section>
+
+  <section class="ver">
+    <div class="ver-head"><span class="ver-no">2.0.1</span><h3>القوائم المنسدلة بخط النظام في فايرفوكس</h3><span class="tag fix">إصلاح</span><span class="ver-date">2026/11/17</span></div>
+    <div class="ver-body">
+      <div class="req"><b>الملاحظة:</b> <span class="q">«حسب اتفاقنا أنه الخط في كل الصفحات والتقارير والتصدير من نوع droid arabic kufi أو بديله noto»</span>، و<span class="q">«متصفح الكروم لا يوجد به مشكلة ولكن فايرفوكس بعض الجوانب الخط غير، مثل القوائم المنسدلة»</span>.</div>
+      <ul>
+        <li><b>السبب:</b> فايرفوكس يرسم القائمة المنسدلة وهي مفتوحة، واقتراحات حقل «الجهة الطالبة»، خارج الصفحة في واجهة المتصفح نفسها، وهناك لا يصل خط الموقع، فتظهر الخيارات بخط Tahoma. مشكلة معروفة في فايرفوكس منذ سنوات، ولا تُحل بالتنسيق (CSS).</li>
+        <li><b>الإصلاح:</b> في فايرفوكس على الحاسوب تُفتح بدل القائمة الأصلية قائمة داخل الصفحة بنفس الخيارات والمجموعات وبخط النظام، وبألوان الوضع النهاري والليلي. تعمل بالفأرة ولوحة المفاتيح (الأسهم، Enter، Esc، والبحث بأول حرف)، وEsc يغلق القائمة وحدها دون النافذة.</li>
+        <li><b>ما لا يتغير:</b> كروم وEdge وSafari والهواتف كما هي. القائمة نفسها (المغلقة) في مكانها وهي مصدر القيمة، فالفلاتر والنماذج والحفظ تعمل كما كانت.</li>
+      </ul>
+      <figure><img src="img/28-firefox-select.jpg"><figcaption>قائمة «الحالة» مفتوحة في فايرفوكس بخط النظام، مع مجموعتي «مجموعات» و«الحالات»</figcaption></figure>
+      <div class="aud-box eng"><h5><span class="tag eng">للمهندس</span></h5>الملف الجديد <code>js/ui/selectPopup.js</code> يُفعَّل مرة واحدة من <code>app.js</code>، ويعمل فقط إن كان المتصفح فايرفوكس والمؤشر فأرة (<code>pointer: fine</code>). يمنع فتح القائمة الأصلية عند الضغط، ويرسل حدثي <code>input</code> و<code>change</code> من <code>&lt;select&gt;</code> نفسه عند الاختيار. وحقل <code>&lt;input list&gt;</code> تُنقل خاصيته إلى <code>data-list</code> وتُعرض اقتراحات <code>&lt;datalist&gt;</code> نفسها. لا يوجد ملف SQL ولا تحديث دوال.</div>
     </div>
   </section>
 
