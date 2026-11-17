@@ -426,7 +426,7 @@ export function createAdapter() {
         }
         if (O().units.some((x) => (x.parentId || 0) === (parentId || 0) && x.name.toLowerCase() === name.toLowerCase() && x.id !== u.id)) throw err(`توجد وحدة باسم «${name}» في المكان نفسه من الهيكل.`);
         const code = oClean(u.code).toUpperCase();
-        if (code && O().units.some((x) => x.code === code && x.id !== u.id)) throw err(`الرمز «${code}» مستخدم لوحدة أخرى.`);
+        if (code && O().units.some((x) => x.code === code && x.id !== u.id)) throw err(`الرمز الرسمي «${code}» مستخدم لوحدة أخرى.`);
         const seen = new Set([name.toLowerCase()]);
         const aliases = (u.aliases || []).map(oClean).filter((a) => a && !seen.has(a.toLowerCase()) && seen.add(a.toLowerCase()));
         const old = row ? { ...row } : null;

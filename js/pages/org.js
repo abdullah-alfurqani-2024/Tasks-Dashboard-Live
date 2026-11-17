@@ -75,7 +75,7 @@ export default async function org(ctx, main) {
     }
     mount(body, html`
       <div class="filters org-tools">
-        <div class="field wide">${searchBox(q, 'ابحث بالاسم أو الاختصار أو الرمز…', 'org-q')}</div>
+        <div class="field wide">${searchBox(q, 'ابحث بالاسم أو الاختصار أو الرمز الرسمي…', 'org-q')}</div>
         <label class="check"><input type="checkbox" data-act="show-off" ${showOff ? 'checked' : ''}> إظهار المعطّلة</label>
         <div class="btns">
           <button class="btn btn-sm" data-act="expand">فتح الكل</button>
@@ -103,7 +103,7 @@ export default async function org(ctx, main) {
           <button class="org-name" data-name="${u.id}">${u.name}</button>
           ${u.shortName ? html`<span class="small muted">(${u.shortName})</span>` : ''}
           <span class="badge">${lv?.name || '—'}</span>
-          ${u.code ? html`<span class="small muted ltr">${u.code}</span>` : ''}
+          ${u.code ? html`<span class="small muted ltr" title="الرمز الرسمي">${u.code}</span>` : ''}
           ${!withPath && kids.length ? html`<span class="small muted">${kids.length} تابعة</span>` : ''}
           ${u.isActive ? '' : html`<span class="badge warn">معطّلة</span>`}
         </div>
@@ -209,13 +209,15 @@ export default async function org(ctx, main) {
         <div class="field"><label for="o-level">المستوى <span class="req">*</span></label>
           <select class="input" id="o-level" name="levelId"></select>
           <span class="hint" data-level-hint></span></div>
-        <div class="field"><label for="o-order">الترتيب بين أخواتها</label>
+        <div class="field"><label for="o-order">ترتيب العرض</label>
           <input class="input num" id="o-order" name="sortOrder" type="number" min="0" value="${unit?.sortOrder ?? nextOrder()}">
-          <span class="hint">الأصغر أولاً، ثم أبجدياً.</span></div>
+          <span class="hint">ترتيب ظهورها بين الوحدات التابعة لنفس الوحدة الأم: الأصغر أولاً، وعند التساوي أبجدياً.</span></div>
         <div class="field"><label for="o-short">الاختصار</label>
-          <input class="input" id="o-short" name="shortName" value="${unit?.shortName || ''}" maxlength="60" placeholder="اختياري"></div>
-        <div class="field"><label for="o-code">الرمز</label>
-          <input class="input ltr" style="display:block;text-align:left" id="o-code" name="code" value="${unit?.code || ''}" maxlength="30" placeholder="اختياري، لا يتكرر"></div>
+          <input class="input" id="o-short" name="shortName" value="${unit?.shortName || ''}" maxlength="60" placeholder="اختياري">
+          <span class="hint">يظهر بجانب الاسم في الشجرة، ويمكن البحث به.</span></div>
+        <div class="field"><label for="o-code">الرمز الرسمي</label>
+          <input class="input ltr" style="display:block;text-align:left" id="o-code" name="code" value="${unit?.code || ''}" maxlength="30" placeholder="اختياري، لا يتكرر">
+          <span class="hint">رمز الوحدة المعتمد في الوزارة إن وُجد (مثل نظام الموارد البشرية).</span></div>
         <div class="field span-2"><label for="o-alias">أسماء بديلة</label>
           <textarea class="input" id="o-alias" name="aliases" rows="3" placeholder="سطر لكل اسم">${(unit?.aliases || []).join('\n')}</textarea>
           <span class="hint">الأسماء الأخرى التي تُكتب بها هذه الوحدة (في Google Sheets مثلاً). ستُستخدم لاحقاً لمطابقة «الجهة الطالبة» تلقائياً عند الاستيراد.</span></div>
@@ -454,8 +456,8 @@ export default async function org(ctx, main) {
 
   /* ───────────── تبويب السجل ───────────── */
   const FIELD = {
-    name: 'الاسم', parent_id: 'الوحدة الأم', level_id: 'المستوى', short_name: 'الاختصار', code: 'الرمز', aliases: 'الأسماء البديلة',
-    sort_order: 'الترتيب', is_active: 'الحالة', level_no: 'الترتيب', head_title: 'مسمى المسؤول',
+    name: 'الاسم', parent_id: 'الوحدة الأم', level_id: 'المستوى', short_name: 'الاختصار', code: 'الرمز الرسمي', aliases: 'الأسماء البديلة',
+    sort_order: 'ترتيب العرض', is_active: 'الحالة', level_no: 'الترتيب', head_title: 'مسمى المسؤول',
   };
   const ACTION = { insert: ['إضافة', 'ok'], update: ['تعديل', 'info'], delete: ['حذف', 'bad'] };
   function show(k, v) {

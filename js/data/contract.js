@@ -27,7 +27,7 @@
  * Lookups    { taskTypes: LookupItem[], correspondenceTypes: LookupItem[], statuses: LookupItem[] }
  * Settings   { editLockDays: number, delayThresholdDays: number, minPasswordLength: number, forcePasswordChange: boolean }
  * OrgLevel { id, name, levelNo, headTitle, isActive }          levelNo: ترتيب المستوى، الأصغر أعلى في الهيكل
- * OrgUnit  { id, parentId: number|null, levelId, name, shortName, code, aliases: string[], sortOrder, isActive }
+ * OrgUnit  { id, parentId: number|null, levelId, name, shortName, code, aliases: string[], sortOrder, isActive }   code: الرمز الرسمي (اختياري)، sortOrder: ترتيب العرض
  * OrgAuditEntry { id, entity: 'level'|'unit', entityId, action: 'insert'|'update'|'delete', changedBy, changedAt,
  *                 changedFields: string[]|null, oldData, newData }   (مفاتيح snake_case كما في قاعدة البيانات)
  * AuditEntry { id, taskId, action: 'insert'|'update'|'delete'|'restore', changedBy, changedAt,

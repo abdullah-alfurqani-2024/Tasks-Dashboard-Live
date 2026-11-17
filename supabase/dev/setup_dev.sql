@@ -1861,9 +1861,9 @@ create table if not exists support_tasks_dev.org_units (
   level_id   smallint not null references support_tasks_dev.org_levels (id),
   name       text not null,
   short_name text,                                               -- اختصار اختياري (م.ع.ت.م)
-  code       text,                                               -- رمز اختياري لا يتكرر
+  code       text,                                               -- الرمز الرسمي (اختياري، لا يتكرر)
   aliases    text[] not null default '{}',                       -- أسماء بديلة (لمطابقة الاستيراد لاحقاً)
-  sort_order int not null default 0,                             -- ترتيب الوحدة بين أخواتها
+  sort_order int not null default 0,                             -- ترتيب العرض بين الوحدات التابعة لنفس الأم
   is_active  boolean not null default true,
   created_at timestamptz not null default now(),
   created_by uuid references support_tasks_dev.profiles (id) on delete set null,
@@ -2043,7 +2043,7 @@ begin
     perform support_tasks_dev.app_error(format('توجد وحدة باسم «%s» في المكان نفسه من الهيكل.', new.name));
   end if;
   if new.code is not null and exists (select 1 from support_tasks_dev.org_units u where upper(u.code) = new.code and u.id is distinct from new.id) then
-    perform support_tasks_dev.app_error(format('الرمز «%s» مستخدم لوحدة أخرى.', new.code));
+    perform support_tasks_dev.app_error(format('الرمز الرسمي «%s» مستخدم لوحدة أخرى.', new.code));
   end if;
   return new;
 end $$;
