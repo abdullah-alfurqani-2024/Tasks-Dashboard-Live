@@ -1,5 +1,5 @@
 {
-  "version": "2.0.2",
+  "version": "2.1.0-dev.1",
   "files": [
     "css/app.css",
     "css/print.css",
@@ -30,6 +30,7 @@
     "js/pages/import.js",
     "js/pages/lists.js",
     "js/pages/login.js",
+    "js/pages/org.js",
     "js/pages/password.js",
     "js/pages/report.js",
     "js/pages/settings.js",

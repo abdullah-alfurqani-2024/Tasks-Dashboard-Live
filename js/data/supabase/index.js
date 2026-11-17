@@ -30,6 +30,21 @@ const toTask = (r) => ({
   taskCode: r.task_code || '', enteredAt: r.entered_at || r.created_at, importedAt: r.imported_at || null,
 });
 
+const toLevel = (r) => ({ id: r.id, name: r.name, levelNo: r.level_no, headTitle: r.head_title || '', isActive: r.is_active });
+const toUnit = (r) => ({
+  id: r.id, parentId: r.parent_id, levelId: r.level_id, name: r.name, shortName: r.short_name || '', code: r.code || '',
+  aliases: r.aliases || [], sortOrder: r.sort_order, isActive: r.is_active,
+});
+const UNIT_COLS = 'id,parent_id,level_id,name,short_name,code,aliases,sort_order,is_active';
+/** جداول الهيكل غير موجودة بعد (لم يُنفَّذ ملف قاعدة البيانات في هذه النسخة) */
+const orgMissing = (e) => {
+  // PGRST205: الجدول غير موجود، PGRST202: الدالة غير موجودة (أو قديمة في ذاكرة Supabase)
+  if (['PGRST205', 'PGRST202', '42P01', '42883'].includes(e?.code)) {
+    throw new ApiError('الهيكل التنظيمي غير مجهّز في قاعدة بيانات هذه النسخة: نفّذ ملف supabase/dev/sql/18_org_structure.sql في SQL Editor.', e.status, e.code);
+  }
+  throw e;
+};
+
 const toLookup = (r) => ({ id: r.id, name: r.name, sortOrder: r.sort_order, isActive: r.is_active, ...(r.kind ? { kind: r.kind } : {}) });
 
 function taskRow(t) {
@@ -224,6 +239,45 @@ export function createAdapter(config) {
           ? await c.update(table, { id: `eq.${item.id}` }, row)
           : await c.insert(table, row);
         return toLookup(rows[0]);
+      },
+    },
+
+    org: {
+      async load() {
+        try {
+          const [l, u] = await Promise.all([
+            c.select('org_levels', { select: 'id,name,level_no,head_title,is_active', order: 'level_no.asc,name.asc' }),
+            c.selectAll('org_units', { select: UNIT_COLS, order: 'sort_order.asc,name.asc,id.asc' }),
+          ]);
+          return { levels: l.map(toLevel), units: u.map(toUnit) };
+        } catch (e) { return orgMissing(e); }
+      },
+      async saveLevel(l) {
+        const row = { name: l.name, level_no: Number(l.levelNo), head_title: l.headTitle || null, is_active: l.isActive !== false };
+        const rows = l.id ? await c.update('org_levels', { id: `eq.${l.id}` }, row) : await c.insert('org_levels', row);
+        if (!rows.length) throw new ApiError('لا تملك صلاحية تعديل الهيكل.');
+        return toLevel(rows[0]);
+      },
+      async deleteLevel(id) { await c.rpc('org_delete_level', { p_id: id }).catch(orgMissing); },
+      async saveUnit(u) {
+        const row = {
+          parent_id: u.parentId || null, level_id: u.levelId, name: u.name, short_name: u.shortName || null, code: u.code || null,
+          aliases: u.aliases || [], sort_order: Number(u.sortOrder) || 0,
+        };
+        const rows = u.id ? await c.update('org_units', { id: `eq.${u.id}`, select: UNIT_COLS }, row) : await c.insert('org_units', row);
+        if (!rows.length) throw new ApiError('لا تملك صلاحية تعديل الهيكل، أو أن الوحدة حُذفت.');
+        return toUnit(rows[0]);
+      },
+      async setActive(id, active, subtree = false) {
+        return c.rpc('org_set_active', { p_id: id, p_active: !!active, p_subtree: !!subtree }).catch(orgMissing);
+      },
+      async deleteUnit(id) { await c.rpc('org_delete_unit', { p_id: id }).catch(orgMissing); },
+      async audit(f = {}) {
+        const rows = await c.select('org_audit', { select: '*', order: 'changed_at.desc,id.desc', limit: String(f.limit || 300) });
+        return rows.map((r) => ({
+          id: r.id, entity: r.entity, entityId: r.entity_id, action: r.action, changedBy: r.changed_by, changedAt: r.changed_at,
+          changedFields: r.changed_fields, oldData: r.old_data, newData: r.new_data,
+        }));
       },
     },
 

@@ -78,6 +78,13 @@ function seed() {
   return { users, lookups, tasks, audit: [], settings: normalizeSettings({ allowPurgeTasks: true }), seq: { task: tasks.length, audit: 0, lookup: 100, user: users.length } };
 }
 
+/** الهيكل التنظيمي: المستويات الخمسة، والوحدات فارغة (يدخلها مدير النظام) */
+function seedOrg() {
+  const levels = [['مكتب الوزير', 10, 'الوزير'], ['مكتب الوكيل', 20, 'الوكيل'], ['مديرية', 30, 'المدير العام'], ['دائرة', 40, 'المدير'], ['قسم', 50, 'رئيس القسم']]
+    .map(([name, levelNo, headTitle], i) => ({ id: i + 1, name, levelNo, headTitle, isActive: true }));
+  return { levels, units: [], audit: [], seq: { level: levels.length, unit: 0, audit: 0 } };
+}
+
 function load() {
   try { const d = JSON.parse(localStorage.getItem(KEY) || 'null'); if (d?.tasks) return d; } catch { /* */ }
   return seed();
@@ -85,6 +92,7 @@ function load() {
 
 export function createAdapter() {
   const db = load();
+  db.org ||= seedOrg();   // بيانات تجريبية محفوظة من إصدار سابق: يُضاف لها الهيكل فارغاً
   let me = null;
   try { const id = sessionStorage.getItem(KEY + '.me'); me = db.users.find((u) => u.id === id && u.isActive) || null; } catch { /* */ }
   let adminId = null;
@@ -93,6 +101,21 @@ export function createAdapter() {
   const asUser = (u) => (adminId ? { ...u, actingAs: true, mustChangePassword: false } : { ...u });
   const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch { /* */ } };
   const role = () => me?.role;
+  /* الهيكل التنظيمي */
+  const O = () => db.org;
+  const oClean = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
+  const oLevel = (id) => O().levels.find((x) => x.id === id);
+  const oUnit = (id) => (id ? O().units.find((x) => x.id === id) : null);
+  /** الوحدة وكل ما تحتها (هي أولاً، ثم من الأعلى للأسفل) */
+  const oSub = (id) => { const out = [id]; for (let i = 0; i < out.length; i++) for (const u of O().units) if (u.parentId === out[i]) out.push(u.id); return out; };
+  const ORG_SNAKE = { parentId: 'parent_id', levelId: 'level_id', shortName: 'short_name', sortOrder: 'sort_order', isActive: 'is_active', levelNo: 'level_no', headTitle: 'head_title' };
+  const orgSnake = (o) => (o ? Object.fromEntries(Object.entries(o).map(([k, v]) => [ORG_SNAKE[k] || k, v ?? null])) : null);
+  const oLog = (entity, entityId, action, oldRow, newRow) => {
+    const o = orgSnake(oldRow), n = orgSnake(newRow && { ...newRow });
+    const changedFields = action === 'update' ? Object.keys(n).filter((k) => JSON.stringify(n[k]) !== JSON.stringify(o[k])).sort() : null;
+    if (action === 'update' && !changedFields.length) return;
+    O().audit.unshift({ id: ++O().seq.audit, entity, entityId, action, changedBy: me?.id || null, changedAt: new Date().toISOString(), changedFields, oldData: o, newData: n });
+  };
   const need = (...roles) => { if (!me) throw err('سجّل الدخول أولاً.'); if (!roles.includes(me.role)) throw err('لا تملك صلاحية لهذه العملية.'); };
 
   const view = (t) => {
@@ -340,6 +363,103 @@ export function createAdapter() {
         persist();
         return { ...row };
       },
+    },
+
+    org: {
+      async load() { await wait(40); if (!me) throw err('سجّل الدخول أولاً.'); return JSON.parse(JSON.stringify({ levels: O().levels, units: O().units })); },
+      async saveLevel(l) {
+        await wait(60); need('admin');
+        const name = oClean(l.name);
+        if (!name) throw err('اكتب اسم المستوى.');
+        const no = Number(l.levelNo);
+        if (!Number.isInteger(no) || no < 1 || no > 9999) throw err('الترتيب رقم صحيح من 1 إلى 9999.');
+        if (O().levels.some((x) => x.name.toLowerCase() === name.toLowerCase() && x.id !== l.id)) throw err(`يوجد مستوى باسم «${name}».`);
+        let row = O().levels.find((x) => x.id === l.id);
+        if (row && no !== row.levelNo) {
+          const bad = O().units.some((u) => {
+            const p = oUnit(u.parentId);
+            if (!p) return false;
+            const un = u.levelId === row.id ? no : oLevel(u.levelId).levelNo;
+            const pn = p.levelId === row.id ? no : oLevel(p.levelId).levelNo;
+            return pn >= un;
+          });
+          if (bad) throw err(`لا يمكن جعل ترتيب «${name}» ${no}: توجد وحدات من هذا المستوى ستصبح تحت وحدات في مستواها أو أدنى منها، أو فوق وحدات في مستوى أعلى منها.`);
+        }
+        const old = row ? { ...row } : null;
+        if (!row) { row = { id: ++O().seq.level }; O().levels.push(row); }
+        Object.assign(row, { name, levelNo: no, headTitle: oClean(l.headTitle), isActive: l.isActive !== false });
+        O().levels.sort((a, b) => a.levelNo - b.levelNo || a.name.localeCompare(b.name, 'ar'));
+        oLog('level', row.id, old ? 'update' : 'insert', old, row);
+        persist(); return { ...row };
+      },
+      async deleteLevel(id) {
+        await wait(60); need('admin');
+        const row = oLevel(id);
+        if (!row) throw err('المستوى غير موجود.');
+        const n = O().units.filter((u) => u.levelId === id).length;
+        if (n) throw err(`المستوى «${row.name}» مستخدم في ${n} وحدة؛ عطّله بدلاً من حذفه.`);
+        O().levels = O().levels.filter((x) => x.id !== id);
+        oLog('level', id, 'delete', row, null);
+        persist();
+      },
+      async saveUnit(u) {
+        await wait(60); need('admin');
+        const name = oClean(u.name);
+        if (!name) throw err('اكتب اسم الوحدة.');
+        const row = u.id ? oUnit(u.id) : null;
+        if (u.id && !row) throw err('الوحدة غير موجودة.');
+        const lv = oLevel(Number(u.levelId));
+        if (!lv) throw err('اختر مستوى الوحدة.');
+        if (!lv.isActive && (!row || row.levelId !== lv.id)) throw err(`المستوى «${lv.name}» معطّل؛ فعّله من تبويب «المستويات» أولاً.`);
+        const parentId = u.parentId ? Number(u.parentId) : null;
+        const active = row ? row.isActive : true;
+        if (parentId) {
+          const p = oUnit(parentId);
+          if (!p) throw err('الوحدة الأم غير موجودة.');
+          if (oLevel(p.levelId).levelNo >= lv.levelNo) throw err(`لا يمكن أن تتبع وحدة من مستوى «${lv.name}» وحدةً من مستوى «${oLevel(p.levelId).name}»: الوحدة الأم يجب أن تكون في مستوى أعلى.`);
+          if (row && oSub(row.id).includes(parentId)) throw err('لا يمكن نقل الوحدة تحت نفسها أو تحت إحدى الوحدات التابعة لها.');
+          if (active && !p.isActive) throw err(`الوحدة الأم «${p.name}» معطّلة؛ فعّلها أولاً.`);
+        }
+        if (row && lv.id !== row.levelId) {
+          const kids = O().units.filter((c) => c.parentId === row.id).map((c) => oLevel(c.levelId).levelNo);
+          if (kids.length && Math.min(...kids) <= lv.levelNo) throw err(`لا يمكن جعل الوحدة من مستوى «${lv.name}»: تحتها وحدات في هذا المستوى أو أعلى منه.`);
+        }
+        if (O().units.some((x) => (x.parentId || 0) === (parentId || 0) && x.name.toLowerCase() === name.toLowerCase() && x.id !== u.id)) throw err(`توجد وحدة باسم «${name}» في المكان نفسه من الهيكل.`);
+        const code = oClean(u.code).toUpperCase();
+        if (code && O().units.some((x) => x.code === code && x.id !== u.id)) throw err(`الرمز «${code}» مستخدم لوحدة أخرى.`);
+        const seen = new Set([name.toLowerCase()]);
+        const aliases = (u.aliases || []).map(oClean).filter((a) => a && !seen.has(a.toLowerCase()) && seen.add(a.toLowerCase()));
+        const old = row ? { ...row } : null;
+        const r = row || { id: ++O().seq.unit, isActive: true };
+        Object.assign(r, { parentId, levelId: lv.id, name, shortName: oClean(u.shortName), code, aliases, sortOrder: Number(u.sortOrder) || 0 });
+        if (!row) O().units.push(r);
+        oLog('unit', r.id, old ? 'update' : 'insert', old, r);
+        persist(); return { ...r };
+      },
+      async setActive(id, active, sub = false) {
+        await wait(60); need('admin');
+        const row = oUnit(id);
+        if (!row) throw err('الوحدة غير موجودة.');
+        let n = 0;
+        const flip = (x, v) => { if (x.isActive !== v) { const old = { ...x }; x.isActive = v; n++; oLog('unit', x.id, 'update', old, x); } };
+        if (!active) oSub(id).forEach((i) => flip(oUnit(i), false));
+        else {
+          const p = oUnit(row.parentId);
+          if (p && !p.isActive) throw err(`الوحدة الأم «${p.name}» معطّلة؛ فعّلها أولاً.`);
+          (sub ? oSub(id) : [id]).forEach((i) => flip(oUnit(i), true));
+        }
+        persist(); return n;
+      },
+      async deleteUnit(id) {
+        await wait(60); need('admin');
+        const row = oUnit(id);
+        if (!row) throw err('الوحدة غير موجودة.');
+        if (O().units.some((x) => x.parentId === id)) throw err(`لا يمكن حذف «${row.name}» لأن تحتها وحدات. احذف الوحدات التابعة أولاً، أو عطّل الوحدة.`);
+        O().units = O().units.filter((x) => x.id !== id);
+        oLog('unit', id, 'delete', row, null);
+        persist();
+      },
+      async audit(f = {}) { await wait(40); need('admin'); return JSON.parse(JSON.stringify(O().audit.slice(0, f.limit || 300))); },
     },
 
     users: {

@@ -26,6 +26,10 @@
  * LookupItem { id, name, sortOrder, isActive, kind? }   (kind للحالات فقط)
  * Lookups    { taskTypes: LookupItem[], correspondenceTypes: LookupItem[], statuses: LookupItem[] }
  * Settings   { editLockDays: number, delayThresholdDays: number, minPasswordLength: number, forcePasswordChange: boolean }
+ * OrgLevel { id, name, levelNo, headTitle, isActive }          levelNo: ترتيب المستوى، الأصغر أعلى في الهيكل
+ * OrgUnit  { id, parentId: number|null, levelId, name, shortName, code, aliases: string[], sortOrder, isActive }
+ * OrgAuditEntry { id, entity: 'level'|'unit', entityId, action: 'insert'|'update'|'delete', changedBy, changedAt,
+ *                 changedFields: string[]|null, oldData, newData }   (مفاتيح snake_case كما في قاعدة البيانات)
  * AuditEntry { id, taskId, action: 'insert'|'update'|'delete'|'restore', changedBy, changedAt,
  *              changedFields: string[]|null, oldData: object|null, newData: object|null }
  *              (مفاتيح oldData/newData بأسماء أعمدة قاعدة البيانات snake_case)
@@ -67,6 +71,15 @@
  * settings.save(Settings)        → Settings
  *
  * audit.list({ taskId?, from?, to?, limit? }) → AuditEntry[]   الأحدث أولاً
+ *
+ * org.load()                     → { levels: OrgLevel[], units: OrgUnit[] }   الهيكل كله (مئات الوحدات، طلب واحد)
+ * org.saveLevel(level)           → OrgLevel       بدون id = إضافة (المدير)
+ * org.deleteLevel(id)            → void           المستوى غير المستخدم فقط
+ * org.saveUnit(unit)             → OrgUnit        بدون id = إضافة؛ تغيير parentId = نقل (مع كل ما تحتها). التفعيل عبر setActive
+ * org.setActive(id, active, subtree?) → number    التعطيل يشمل ما تحتها دائماً؛ التفعيل للوحدة وحدها أو مع ما تحتها
+ * org.deleteUnit(id)             → void           الوحدة التي ليس تحتها وحدات فقط
+ * org.audit({ limit? })          → OrgAuditEntry[]   الأحدث أولاً (المدير)
+ *        القواعد (قاعدة البيانات تفرضها): الأم في مستوى أعلى، لا دوران، لا مفعّلة تحت معطّلة، الاسم لا يتكرر بين الأخوات
  *
  * maintenance.refreshFromProduction() → { users, tasks, at }   اختياري: نسخة التجربة فقط
  *

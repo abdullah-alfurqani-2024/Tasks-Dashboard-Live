@@ -24,6 +24,7 @@ const MATRIX = {
   'tasks.bypassLock': ['admin', 'head'],
   'users.manage':     ['admin'],
   'lists.manage':     ['admin', 'head'],
+  'org.manage':       ['admin'],
   'settings.manage':  ['admin'],
   'audit.view':       ['admin', 'head'],
   'import.run':       ['admin'],

@@ -53,3 +53,11 @@ for s in support_tasks_staging support_tasks_dev; do TEST_DB=td TEST_SCHEMA=$s p
 TEST_DB=t TEST_SCHEMA=support_tasks python3 supabase/tests/run_dev_tests.py
 ```
 
+
+## اختبارات الهيكل التنظيمي (2.1.0-dev)
+`run_org_tests.py` يختبر `supabase/dev/sql/18_org_structure.sql` (58 حالة): المستويات، والإضافة تحت الأم الصحيحة فقط، والنقل ومنع الدوران،
+وتغيير المستوى، والتعطيل المتسلسل والتفعيل، والحذف، والصلاحيات، والسجل. على قاعدة `td` نفسها بعد `setup_dev.sql`:
+
+```bash
+TEST_DB=td TEST_SCHEMA=support_tasks_dev python3 supabase/tests/run_org_tests.py
+```

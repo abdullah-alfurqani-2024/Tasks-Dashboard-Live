@@ -30,6 +30,7 @@ const NAV = [
   { path: '/report', label: 'التقرير', icon: 'report', page: 'report' },
   { path: '/audit', label: 'سجل التعديلات', icon: 'history', page: 'audit', perm: 'audit.view' },
   { path: '/lists', label: 'القوائم', icon: 'list', page: 'lists', perm: 'lists.manage' },
+  { path: '/org', label: 'الهيكل التنظيمي', icon: 'org', page: 'org', perm: 'org.manage' },
   { path: '/users', label: 'المستخدمون', icon: 'users', page: 'users', perm: 'users.manage' },
   { path: '/import', label: 'الاستيراد', icon: 'upload', page: 'import', perm: 'import.run' },
   { path: '/settings', label: 'الإعدادات', icon: 'settings', page: 'settings', perm: 'settings.manage' },

@@ -433,6 +433,41 @@ a.num-link:hover { color: var(--brand); border-bottom-color: var(--brand); }
 .list-row.head { font-size: .82rem; color: var(--muted); font-weight: 600; background: var(--surface-2); }
 .list-row.no-kind { grid-template-columns: 70px 1fr 110px auto; }
 
+/* ---------------- الهيكل التنظيمي ---------------- */
+.org-tools { border-bottom: 1px solid var(--line); align-items: center; }
+.org-tools .check { align-self: center; }
+.org-count { margin-inline-start: auto; align-self: center; }
+.org-tree { padding: 6px 0; }
+.org-row { display: flex; align-items: center; gap: 6px; padding: 5px 14px 5px 10px; padding-inline-start: calc(10px + var(--d, 0) * 24px); border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.org-row:hover { background: color-mix(in srgb, var(--brand) 4%, transparent); }
+.org-row.off .org-name { color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--muted) 50%, transparent); }
+.org-row.flash { background: var(--warn-soft); transition: background .4s; }
+.org-tog { width: 26px; height: 26px; flex: none; display: grid; place-items: center; border: 0; background: none; color: var(--muted); border-radius: 6px; padding: 0; }
+button.org-tog { cursor: pointer; }
+button.org-tog:hover { background: var(--gray-soft); color: var(--ink); }
+.org-tog svg { width: 16px; height: 16px; }
+.org-main { flex: 1; min-width: 0; }
+.org-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.org-name { border: 0; background: none; padding: 2px 0; font: inherit; font-weight: 600; color: var(--ink); cursor: pointer; text-align: start; }
+.org-name:hover { color: var(--brand); }
+.org-path { margin-top: 1px; }
+.org-act { display: flex; gap: 2px; flex: none; width: 172px; justify-content: flex-start; opacity: .35; transition: opacity .15s; }  /* عرض ثابت: الأزرار في أماكنها في كل صف */
+.org-row:hover .org-act, .org-row:focus-within .org-act { opacity: 1; }
+.org-act .danger, .row-actions .danger { color: var(--bad); }
+.org-where { padding: 8px 11px; border-radius: 9px; background: var(--surface-2); border: 1px solid var(--line); font-size: .9rem; }
+.org-pick { margin: 10px 0; border: 1px solid var(--line); border-radius: 9px; max-height: 46vh; overflow-y: auto; }
+.org-opt { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; width: 100%; text-align: start; border: 0; border-bottom: 1px solid var(--line); background: none; padding: 8px 12px; cursor: pointer; font: inherit; color: var(--ink); }
+.org-opt .small { width: 100%; }
+.org-opt:hover { background: var(--surface-2); }
+.org-opt.on { background: var(--brand-soft); box-shadow: inset 3px 0 0 var(--brand); }
+.list-row.org-lv { grid-template-columns: 80px 1fr 1fr 90px 90px auto; }
+@media (pointer: coarse) { .org-act { opacity: 1; } }
+@media (max-width: 640px) {
+  .org-row { padding-inline-start: calc(6px + var(--d, 0) * 14px); flex-wrap: wrap; }
+  .org-act { width: 100%; justify-content: flex-end; flex-direction: row-reverse; }
+  .list-row.org-lv { grid-template-columns: 60px 1fr auto; }
+}
+
 /* ---------------- الاستيراد ---------------- */
 .drop { display: block; border: 2px dashed var(--line-strong); border-radius: var(--radius); padding: 30px; text-align: center; color: var(--muted); cursor: pointer; transition: border-color .15s, background .15s; }
 .drop:hover, .drop.over { border-color: var(--brand); background: var(--brand-soft); }
