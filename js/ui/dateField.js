@@ -6,6 +6,8 @@
  * التقويم: حقل التاريخ الأصلي شفاف فوق زر التقويم، فتصله لمسة المستخدم أو نقرته مباشرة.
  *   هكذا يفتح كل متصفح تقويمه بنفسه (iPhone وAndroid والحاسوب) دون الاعتماد على showPicker()
  *   وحده، فهو غير مدعوم في كل المتصفحات، ولا يعمل على حقل مخفي في بعضها.
+ * الحاسوب (فأرة): زر التقويم يفتح تقويماً داخل الصفحة بخط النظام (js/ui/calendar.js) بدل تقويم المتصفح
+ *   الذي يرسمه المتصفح بخط الجهاز. ويفتح أيضاً من لوحة المفاتيح: Alt+السهم للأسفل أو F4.
  * القيمة الفعلية في حقل مخفي يحمل name ويُرجع 'YYYY-MM-DD'، فبقية الكود يعمل كما هو:
  *   form.elements.from.value        ← '2026-10-31'
  *   form.elements.from.value = iso  ← يحدّث النص المعروض
@@ -15,6 +17,10 @@
 import { html } from '../core/dom.js';
 import { fmtDate, parseDate, DATE_FORMAT_HINT } from '../core/format.js';
 import { icon } from './icons.js';
+import { openCalendar, closeCalendar, calendarOwner, calendarKey } from './calendar.js';
+
+// الحاسوب: تقويم داخل الصفحة. الهاتف واللمس: منتقي التاريخ الخاص بالجهاز
+const DESKTOP = !!window.matchMedia?.('(pointer: fine)').matches;
 
 // علامات LRM تجعل الكلمات بنفس ترتيب الأرقام داخل الحقل: سنة/شهر/يوم
 const PLACEHOLDER = DATE_FORMAT_HINT.split('/').join('\u200E/');
@@ -75,6 +81,38 @@ function enhance(box) {
   });
   text.addEventListener('change', (e) => { e.stopPropagation(); commit(); });
   text.addEventListener('keydown', (e) => { if (e.key === 'Enter') { commit(); } });
+
+  if (DESKTOP) {
+    box.classList.add('cal');
+    native.hidden = true;
+    btn.removeAttribute('aria-hidden');
+    btn.title = 'اختيار من التقويم';
+    const toggle = () => {
+      if (calendarOwner() === box) return closeCalendar();
+      if (text.disabled || text.readOnly) return;
+      commit(); // يبدأ التقويم على التاريخ المكتوب إن كان صحيحاً
+      openCalendar(box, {
+        value: iso,
+        required: text.required,
+        onPick: (v) => {
+          text.focus();
+          if (v === iso) return;
+          hidden.value = v;
+          emit();
+        },
+      });
+    };
+    btn.addEventListener('mousedown', (e) => { e.preventDefault(); if (!text.disabled) text.focus(); });
+    btn.addEventListener('click', toggle);
+    text.addEventListener('keydown', (e) => {
+      if (calendarOwner() === box) {
+        if (calendarKey(e)) { e.preventDefault(); e.stopImmediatePropagation(); }
+      } else if (e.key === 'F4' || (e.altKey && e.key === 'ArrowDown')) { e.preventDefault(); toggle(); }
+    });
+    text.addEventListener('input', () => { if (calendarOwner() === box) closeCalendar(); });
+    text.addEventListener('blur', () => setTimeout(() => { if (calendarOwner() === box && document.activeElement !== text) closeCalendar(); }, 0));
+    return;
+  }
 
   // قبل فتح التقويم: يبدأ على التاريخ المكتوب
   const prime = () => { if (native.value !== iso) native.value = iso; };
