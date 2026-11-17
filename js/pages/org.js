@@ -183,7 +183,8 @@ export default async function org(ctx, main) {
       toastError({ message: parent ? `لا يوجد مستوى مفعّل أدنى من مستوى «${M.level.get(parent.levelId)?.name}». أضف مستوى من تبويب «المستويات».` : 'لا يوجد مستوى مفعّل. أضف مستوى من تبويب «المستويات».' });
       return;
     }
-    const nextOrder = () => Math.max(0, ...M.childrenOf(parent?.id || 0).map((s) => s.sortOrder)) + 1;
+    // ترتيب العرض الافتراضي: بعد الوحدات التابعة للأم نفسها (أم فيها وحدتان ← 3، أول وحدة ← 1)
+    const nextOrder = () => M.childrenOf(parent?.id || 0).length + 1;
     // الوحدات التي يمكن أن تكون أماً لوحدة جديدة: مفعّلة، ويوجد مستوى مفعّل أدنى منها
     // (تُحسب من الهيكل الحالي في كل مرة: «إضافة وأخرى» تضيف وحدات أثناء فتح النافذة)
     const parentList = () => (isNew ? treeOrder().filter((t) => t.isActive && M.levelNo(t) < maxNo) : []);
@@ -356,7 +357,8 @@ export default async function org(ctx, main) {
     $('[data-x]', m.el).onclick = () => m.close();
     ok.onclick = () => busy(ok, async () => {
       try {
-        await db.org.saveUnit({ ...unit, parentId: pick || null });
+        // تأتي في آخر الوحدات التابعة للأم الجديدة
+        await db.org.saveUnit({ ...unit, parentId: pick || null, sortOrder: M.childrenOf(pick || 0).length + 1 });
         if (pick) open.add(pick);
         m.close();
         await reload();
