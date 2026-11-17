@@ -415,10 +415,10 @@ export function createAdapter() {
         const active = row ? row.isActive : true;
         if (parentId) {
           const p = oUnit(parentId);
-          if (!p) throw err('الوحدة الأم غير موجودة.');
-          if (oLevel(p.levelId).levelNo >= lv.levelNo) throw err(`لا يمكن أن تتبع وحدة من مستوى «${lv.name}» وحدةً من مستوى «${oLevel(p.levelId).name}»: الوحدة الأم يجب أن تكون في مستوى أعلى.`);
+          if (!p) throw err('الوحدة الأعلى غير موجودة.');
+          if (oLevel(p.levelId).levelNo >= lv.levelNo) throw err(`لا يمكن أن تتبع وحدة من مستوى «${lv.name}» وحدةً من مستوى «${oLevel(p.levelId).name}»: تتبع الوحدة دائماً وحدةً في مستوى أعلى منها.`);
           if (row && oSub(row.id).includes(parentId)) throw err('لا يمكن نقل الوحدة تحت نفسها أو تحت إحدى الوحدات التابعة لها.');
-          if (active && !p.isActive) throw err(`الوحدة الأم «${p.name}» معطّلة؛ فعّلها أولاً.`);
+          if (active && !p.isActive) throw err(`الوحدة الأعلى «${p.name}» معطّلة؛ فعّلها أولاً.`);
         }
         if (row && lv.id !== row.levelId) {
           const kids = O().units.filter((c) => c.parentId === row.id).map((c) => oLevel(c.levelId).levelNo);
@@ -445,7 +445,7 @@ export function createAdapter() {
         if (!active) oSub(id).forEach((i) => flip(oUnit(i), false));
         else {
           const p = oUnit(row.parentId);
-          if (p && !p.isActive) throw err(`الوحدة الأم «${p.name}» معطّلة؛ فعّلها أولاً.`);
+          if (p && !p.isActive) throw err(`الوحدة الأعلى «${p.name}» معطّلة؛ فعّلها أولاً.`);
           (sub ? oSub(id) : [id]).forEach((i) => flip(oUnit(i), true));
         }
         persist(); return n;

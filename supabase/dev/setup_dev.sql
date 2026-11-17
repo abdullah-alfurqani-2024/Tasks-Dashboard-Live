@@ -1827,11 +1827,11 @@ select 'جاهز' as الحالة, count(*) as مستخدمو_التجربة fro
 --
 --  الهيكل بيانات يدخلها مدير النظام من صفحة «الهيكل التنظيمي»، ولا شيء منه مكتوب في الكود:
 --    org_levels  المستويات (مكتب الوزير، مكتب الوكيل، مديرية، دائرة، قسم…) بترتيب: الأصغر أعلى
---    org_units   الوحدات: كل وحدة تشير إلى وحدتها الأم (parent_id)، فتتكون شجرة بأي عمق
+--    org_units   الوحدات: كل وحدة تشير إلى الوحدة الأعلى منها (parent_id)، فتتكون شجرة بأي عمق
 --    org_audit   سجل كل تغيير على المستويات والوحدات (يكتبه النظام تلقائياً)
 --
 --  القواعد (تفرضها قاعدة البيانات، لا المتصفح):
---    - الوحدة الأم في مستوى أعلى (ترتيبه أصغر): قسم تحت مديرية مباشرة مسموح، ومديرية تحت قسم لا
+--    - الوحدة الأعلى في مستوى أعلى (ترتيبه أصغر): قسم تحت مديرية مباشرة مسموح، ومديرية تحت قسم لا
 --    - لا دوران: لا تُنقل وحدة تحت إحدى الوحدات التابعة لها، والتابعة تنتقل معها تلقائياً
 --    - لا وحدة مفعّلة تحت وحدة معطّلة؛ تعطيل وحدة يعطّل كل ما تحتها
 --    - الحذف للوحدة التي ليس تحتها وحدات فقط (لتصحيح الأخطاء)؛ وإلا تُعطَّل
@@ -2009,13 +2009,13 @@ begin
     perform support_tasks_dev.app_error(format('المستوى «%s» معطّل؛ فعّله من تبويب «المستويات» أولاً.', v_level.name));
   end if;
 
-  -- الوحدة الأم: موجودة، في مستوى أعلى، وليست الوحدة نفسها أو إحدى التابعة لها
+  -- الوحدة الأعلى: موجودة، في مستوى أعلى، وليست الوحدة نفسها أو إحدى التابعة لها
   if new.parent_id is not null then
     select * into v_parent from support_tasks_dev.org_units where id = new.parent_id;
-    if v_parent.id is null then perform support_tasks_dev.app_error('الوحدة الأم غير موجودة.'); end if;
+    if v_parent.id is null then perform support_tasks_dev.app_error('الوحدة الأعلى غير موجودة.'); end if;
     select level_no into v_parent_no from support_tasks_dev.org_levels where id = v_parent.level_id;
     if v_parent_no >= v_level.level_no then
-      perform support_tasks_dev.app_error(format('لا يمكن أن تتبع وحدة من مستوى «%s» وحدةً من مستوى «%s»: الوحدة الأم يجب أن تكون في مستوى أعلى.',
+      perform support_tasks_dev.app_error(format('لا يمكن أن تتبع وحدة من مستوى «%s» وحدةً من مستوى «%s»: تتبع الوحدة دائماً وحدةً في مستوى أعلى منها.',
         v_level.name, (select name from support_tasks_dev.org_levels where id = v_parent.level_id)));
     end if;
     if tg_op = 'UPDATE' and new.parent_id is distinct from old.parent_id
@@ -2023,7 +2023,7 @@ begin
       perform support_tasks_dev.app_error('لا يمكن نقل الوحدة تحت نفسها أو تحت إحدى الوحدات التابعة لها.');
     end if;
     if new.is_active and not v_parent.is_active then
-      perform support_tasks_dev.app_error(format('الوحدة الأم «%s» معطّلة؛ فعّلها أولاً.', v_parent.name));
+      perform support_tasks_dev.app_error(format('الوحدة الأعلى «%s» معطّلة؛ فعّلها أولاً.', v_parent.name));
     end if;
   end if;
 
