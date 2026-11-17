@@ -43,7 +43,10 @@ var CODES = {
   REQUIRED: ['engineer', 'entry', 'subject', 'received'],
   // حماية من عطل مؤقت في Report («لا توجد بيانات» مثلاً): إن قلّ عدد المهام عن هذه النسبة من آخر تشغيل
   // ناجح، يتوقف دون أن يكتب. لحذف كبير مقصود (أرشفة مثلاً) اجعلها 0 لتشغيل واحد ثم أعدها.
-  MIN_RATIO: 0.8
+  MIN_RATIO: 0.8,
+  // حد جوجل لأي تشغيل 6 دقائق. إن استغرقت القراءة أكثر من هذا (المصدر يُعاد حسابه مثلاً)، يتوقف قبل الكتابة
+  // بدل أن يُقطع في منتصفها، ويحاول في التشغيل التالي.
+  MAX_SECONDS_BEFORE_WRITE: 240
 };
 
 var CODES_REG_HEAD = ['رمز المهمة', 'رمز المهندس', 'اسم المهندس', 'تاريخ الإدخال', 'البصمة', 'أول ظهور', 'آخر ظهور', 'الحالة', 'ملاحظة'];
@@ -56,8 +59,10 @@ function importCopyWithCodes() {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(60000)) { Logger.log('تشغيل آخر قيد العمل، أُجّل.'); return; }
   try {
+    var t0 = Date.now();
     var ctx = codesLoad_();
     if (!ctx) return;
+    var tRead = Math.round((Date.now() - t0) / 1000);
     var prev = codesLastTotal_(ctx.dst);
     if (prev && ctx.rows.length < prev * CODES.MIN_RATIO) {
       var why = 'أُوقف: ' + ctx.rows.length + ' مهمة فقط في المصدر مقابل ' + prev + ' في آخر تشغيل ناجح (أقل من ' +
@@ -67,10 +72,19 @@ function importCopyWithCodes() {
       return;
     }
     var res = codesAssign_(ctx);
-    codesWriteReport_(ctx, res);
+    var spent = Math.round((Date.now() - t0) / 1000);
+    if (spent > CODES.MAX_SECONDS_BEFORE_WRITE) {
+      var late = 'أُوقف: القراءة استغرقت ' + spent + ' ثانية (المصدر قيد إعادة الحساب غالباً). لم يُكتب شيء، ويحاول التشغيل التالي.';
+      Logger.log('⚠ ' + late);
+      codesSheet_(ctx.dst, CODES.LOG_SHEET, CODES_LOG_HEAD).appendRow([ctx.now, ctx.rows.length, '', '', '', '', '', '', '', late]);
+      return;
+    }
+    // السجل أولاً: هو مرجع الرموز. لو قُطع التشغيل بعده، يُصلح التشغيل التالي ورقة Report
     codesSaveRegistry_(ctx);
+    codesWriteReport_(ctx, res);
+    res.timing = 'المدة: قراءة ' + tRead + ' ث، المجموع ' + Math.round((Date.now() - t0) / 1000) + ' ث';
     codesLog_(ctx, res);
-    Logger.log(codesSummary_(res));
+    Logger.log(codesSummary_(res) + '\n' + res.timing);
   } finally {
     lock.releaseLock();
   }
@@ -287,6 +301,7 @@ function codesLog_(ctx, res) {
   if (res.back.length) details.push('عادت: ' + res.back.join('، '));
   if (res.dupEntry.length) details.push('تاريخ إدخال مكرر (راجعها): ' + res.dupEntry.join('؛ '));
   if (res.renamed.length) details.push('تغيّر اسم مهندس: ' + res.renamed.join('، '));
+  if (res.timing) details.push(res.timing);
   sh.appendRow([ctx.now, res.total, res.kept, res.added.length, res.missing.length, res.back.length, res.noEntry, res.dupEntry.length,
     res.newEng.join('، '), details.join('\n')]);
 }
