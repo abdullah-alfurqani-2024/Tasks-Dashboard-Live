@@ -37,7 +37,9 @@ export default async function employees(ctx, main) {
 
   /* ───────────── البيانات ───────────── */
   const D = { emps: [], asg: [], types: [], M: null, users: [], byEmp: new Map(), emp: new Map(), type: new Map() };
-  const F = { q: '', unit: '', sub: true, status: 'active' };
+  const F = { q: '', unit: '', sub: true, status: 'active', reason: '' };
+  /** أسباب المراجعة كما تبدأ بها ملاحظاتها */
+  const REASONS = ['لا يوجد رقم مدني', 'رقم مدني غير صحيح', 'رقم مدني مكرر', 'لا يوجد رقم وظيفي', 'رقم وظيفي غير صحيح', 'رقم وظيفي مكرر', 'رقم وظيفي مسجّل لموظف آخر', 'لا يوجد اسم بالعربي'];
   let T = today();
 
   async function reload() {
@@ -82,6 +84,8 @@ export default async function employees(ctx, main) {
         <label class="check"><input type="checkbox" id="emp-sub" ${F.sub ? 'checked' : ''}> وما تحتها</label>
         <div class="field"><label for="emp-status">الحالة</label>
           <select class="input" id="emp-status">${options([['active', 'النشطون'], ['review', 'تحتاج مراجعة'], ['inactive', 'غير النشطين'], ['all', 'الكل']], F.status)}</select></div>
+        <div class="field" id="emp-reason-f" ${F.status === 'review' ? '' : 'hidden'}><label for="emp-reason">السبب</label>
+          <select class="input" id="emp-reason">${options(REASONS.map((r) => [r, r]), F.reason, 'كل الأسباب')}</select></div>
         <span class="small muted org-count" id="emp-count"></span>
       </div>
       <div id="emp-table"></div>`);
@@ -95,6 +99,7 @@ export default async function employees(ctx, main) {
       if (F.status === 'active' && !e.isActive) return false;
       if (F.status === 'inactive' && e.isActive) return false;
       if (F.status === 'review' && !e.needsReview) return false;
+      if (F.status === 'review' && F.reason && !(e.reviewNotes || '').includes(F.reason)) return false;
       if (words.length) {
         const t = searchKey(`${e.nameAr} ${e.nameEn} ${e.civilNo} ${e.employeeNo}`);
         if (!words.every((w) => t.includes(w))) return false;
@@ -127,7 +132,8 @@ export default async function employees(ctx, main) {
         return u ? html`<span class="badge" title="${u.fullName}">${icon('key')}${u.shortName || u.fullName.split(' ')[0]}</span>` : '';
       } },
       { key: 'isActive', label: 'الحالة', render: (e) => html`${e.isActive ? html`<span class="badge ok">نشط</span>` : html`<span class="badge">غير نشط</span>`}
-        ${e.needsReview ? html` <span class="badge warn" title="${e.reviewNotes}">تحتاج مراجعة</span>` : ''}` },
+        ${e.needsReview ? html` <span class="badge warn">تحتاج مراجعة</span>
+          ${e.reviewNotes ? html`<div class="small muted emp-why">${e.reviewNotes.split(/\s·\s|\n/).map((t) => html`<div>${t}</div>`)}</div>` : ''}` : ''}` },
     ];
     if (!table) {
       table = dataTable($('#emp-table', body), {
@@ -538,33 +544,35 @@ export default async function employees(ctx, main) {
 
       const rev = [];   // [النوع، السبب]
       // الرقم المدني
-      if (!x.civilNo) rev.push(['civil', 'بلا رقم مدني في الملف']);
-      else if (!/^[0-9]{1,20}$/.test(x.civilNo)) { rev.push(['civil', `رقم مدني غير صحيح في الملف: «${raw}»`]); x.civilNo = ''; }
+      if (!x.civilNo) rev.push(['civil', 'لا يوجد رقم مدني']);
+      else if (!/^[0-9]{1,20}$/.test(x.civilNo)) { rev.push(['civil', `رقم مدني غير صحيح: «${raw}»`]); x.civilNo = ''; }
       else if (seen.has(x.civilNo)) {
         const f = seen.get(x.civilNo);
         if (f.nameAr === x.nameAr && (f.employeeNo === x.employeeNo || !x.employeeNo)) return { ...x, st: 'skip', why: `مكرر بالبيانات نفسها (صف ${f.line})` };
-        rev.push(['civil', `الرقم المدني ${x.civilNo} مكرر في الملف (صف ${f.line}: ${f.nameAr})`]);
+        rev.push(['civil', `رقم مدني مكرر: ${x.civilNo} (صف ${f.line}: ${f.nameAr})`]);
         x.civilNo = '';
       }
       const cur = x.civilNo ? byCivil.get(x.civilNo) : null;
       // الرقم الوظيفي
       if (x.employeeNo) {
         const o = byNo.get(x.employeeNo);
-        if (!/^[0-9A-Z/-]{1,30}$/.test(x.employeeNo)) { rev.push(['eno', `رقم وظيفي غير صحيح في الملف: «${x.employeeNo}»`]); x.employeeNo = ''; }
-        else if (o && o !== cur) { rev.push(['eno', `الرقم الوظيفي ${x.employeeNo} مسجّل للموظف «${o.nameAr}»`]); x.employeeNo = ''; }
-        else if (seenNo.has(x.employeeNo)) { rev.push(['eno', `الرقم الوظيفي ${x.employeeNo} مكرر في الملف (صف ${seenNo.get(x.employeeNo)})`]); x.employeeNo = ''; }
-      } else if (!cur?.employeeNo) rev.push(['eno', 'بلا رقم وظيفي في الملف']);
+        if (!/^[0-9A-Z/-]{1,30}$/.test(x.employeeNo)) { rev.push(['eno', `رقم وظيفي غير صحيح: «${x.employeeNo}»`]); x.employeeNo = ''; }
+        else if (o && o !== cur) { rev.push(['eno', `رقم وظيفي مسجّل لموظف آخر: ${x.employeeNo} («${o.nameAr}»)`]); x.employeeNo = ''; }
+        else if (seenNo.has(x.employeeNo)) { rev.push(['eno', `رقم وظيفي مكرر: ${x.employeeNo} (صف ${seenNo.get(x.employeeNo)})`]); x.employeeNo = ''; }
+      } else if (!cur?.employeeNo) rev.push(['eno', 'لا يوجد رقم وظيفي']);
       // أحدهما مكان الآخر مؤقتاً
       if (!x.civilNo && x.employeeNo && civilFree(x.employeeNo)) {
         x.civilNo = x.employeeNo;
-        rev.push(['civil', `أُعطي الرقم الوظيفي (${x.employeeNo}) رقماً مدنياً`]);
+        const c = rev.findLast((v) => v[0] === 'civil');
+        c[1] += ` (وُضع الرقم الوظيفي ${x.employeeNo} مكانه مؤقتاً)`;
       } else if (x.civilNo && !x.employeeNo && !cur?.employeeNo && noFree(x.civilNo)) {
         x.employeeNo = x.civilNo;
-        rev.push(['eno', `أُعطي الرقم المدني (${x.civilNo}) رقماً وظيفياً`]);
+        const c = rev.findLast((v) => v[0] === 'eno');
+        c[1] += ` (وُضع الرقم المدني ${x.civilNo} مكانه مؤقتاً)`;
       }
       if (x.civilNo) seen.set(x.civilNo, x);
       if (x.employeeNo) seenNo.set(x.employeeNo, x.line);
-      if (!cur && !x.nameAr) rev.push(['name', 'بلا اسم بالعربي (استُخدم الإنجليزي)']);
+      if (!cur && !x.nameAr) rev.push(['name', 'لا يوجد اسم بالعربي (وُضع الإنجليزي مكانه)']);
       if (note && !rev.length) rev.push(['note', note]);   // سبب مراجعة سابق من النسخة الاحتياطية
 
       if (rev.length) {
@@ -617,7 +625,7 @@ export default async function employees(ctx, main) {
   }
 
   on(root, 'change', '[data-map]', (e, s) => { I.map[s.dataset.map] = s.value === '' ? null : Number(s.value); drawMapping(); });
-  on(root, 'click', '[data-show-review]', () => { F.status = 'review'; const s2 = $('#emp-status', body); if (s2) s2.value = 'review'; drawTable(); });
+  on(root, 'click', '[data-show-review]', () => { F.status = 'review'; const s2 = $('#emp-status', body); if (s2) s2.value = 'review'; const r = $('#emp-reason-f', body); if (r) r.hidden = false; drawTable(); });
   on(root, 'click', '[data-imp-filter]', (e, b) => { I.filter = b.dataset.impFilter; drawMapping(); });
   on(root, 'click', '[data-imp-go]', (e, b) => busy(b, async () => {
     if (I.map.civilNo == null || I.map.nameAr == null) return toastError({ message: 'حدّد عمودي «الرقم المدني» و«الاسم بالعربي».' });
@@ -704,7 +712,8 @@ export default async function employees(ctx, main) {
   root.addEventListener('change', (e) => {
     if (e.target.id === 'emp-unit') { F.unit = e.target.value; drawTable(); }
     else if (e.target.id === 'emp-sub') { F.sub = e.target.checked; drawTable(); }
-    else if (e.target.id === 'emp-status') { F.status = e.target.value; drawTable(); }
+    else if (e.target.id === 'emp-status') { F.status = e.target.value; const r = $('#emp-reason-f', body); if (r) r.hidden = F.status !== 'review'; drawTable(); }
+    else if (e.target.id === 'emp-reason') { F.reason = e.target.value; drawTable(); }
   });
 
   try {

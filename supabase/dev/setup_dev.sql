@@ -2826,6 +2826,21 @@ create index if not exists employees_review_idx on support_tasks_dev.employees (
 -- مطابقة من بلا رقم مدني بالاسم عند إعادة الاستيراد
 create index if not exists employees_nocivil_name_idx on support_tasks_dev.employees (name_ar) where civil_no is null;
 
+-- أسباب المراجعة بصيغة موحّدة تبدأ بالسبب («لا يوجد رقم مدني»…) — تعدّل ملاحظات ما استُورد بالصيغة السابقة
+update support_tasks_dev.employees set review_notes =
+  regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(review_notes,
+    'بلا رقم مدني في الملف', 'لا يوجد رقم مدني', 'g'),
+    'بلا رقم وظيفي في الملف', 'لا يوجد رقم وظيفي', 'g'),
+    'بلا اسم بالعربي \(استُخدم الإنجليزي\)', 'لا يوجد اسم بالعربي (وُضع الإنجليزي مكانه)', 'g'),
+    ' · أُعطي الرقم الوظيفي \(([^)]*)\) رقماً مدنياً', ' (وُضع الرقم الوظيفي \1 مكانه مؤقتاً)', 'g'),
+    ' · أُعطي الرقم المدني \(([^)]*)\) رقماً وظيفياً', ' (وُضع الرقم المدني \1 مكانه مؤقتاً)', 'g'),
+    'رقم مدني غير صحيح في الملف:', 'رقم مدني غير صحيح:', 'g'),
+    'الرقم المدني ([0-9]+) مكرر في الملف', 'رقم مدني مكرر: \1', 'g'),
+    'رقم وظيفي غير صحيح في الملف:', 'رقم وظيفي غير صحيح:', 'g'),
+    'الرقم الوظيفي (\S+) مسجّل للموظف («[^»]*»)', 'رقم وظيفي مسجّل لموظف آخر: \1 (\2)', 'g'),
+    'الرقم الوظيفي (\S+) مكرر في الملف', 'رقم وظيفي مكرر: \1', 'g')
+where review_notes ~ '(بلا رقم|بلا اسم بالعربي \(|أُعطي الرقم|في الملف)';
+
 -- قبل الحفظ (من 19): الرقم المدني الفارغ مسموح للموظف الذي يحتاج مراجعة، ويفرضها
 create or replace function support_tasks_dev.employees_before_write()
 returns trigger
