@@ -160,6 +160,31 @@ end $$;
 drop policy if exists org_audit_select on support_tasks_dev.org_audit;
 create policy org_audit_select on support_tasks_dev.org_audit for select to authenticated using ((select support_tasks_dev.app_role()) = 'admin');
 
+-- السجل (من 19): يتوقف أثناء «حذف كل الموظفين» فقط (علامة skip_audit داخل العملية نفسها)
+create or replace function support_tasks_dev.org_audit_write()
+returns trigger
+language plpgsql security definer
+set search_path = support_tasks_dev
+as $$
+declare
+  v_old jsonb;
+  v_new jsonb;
+  v_fields text[];
+begin
+  if current_setting('support_tasks_dev.skip_audit', true) = 'on' then return null; end if;
+  v_old := case when tg_op <> 'INSERT' then to_jsonb(old) - array['updated_at', 'updated_by', 'created_at', 'created_by'] end;
+  v_new := case when tg_op <> 'DELETE' then to_jsonb(new) - array['updated_at', 'updated_by', 'created_at', 'created_by'] end;
+  if tg_op = 'UPDATE' then
+    select array_agg(k order by k) into v_fields from jsonb_object_keys(v_new) k where v_new -> k is distinct from v_old -> k;
+    if v_fields is null then return null; end if;   -- حفظ بلا تغيير: لا يُسجَّل
+  end if;
+  insert into support_tasks_dev.org_audit (entity, entity_id, action, changed_by, changed_fields, old_data, new_data)
+  values (case tg_table_name when 'org_levels' then 'level' when 'org_units' then 'unit' when 'employees' then 'employee'
+                             when 'employee_assignments' then 'assignment' else 'assignment_type' end,
+          coalesce(new.id, old.id), lower(tg_op), auth.uid(), v_fields, v_old, v_new);
+  return null;
+end $$;
+
 -- ---------------------------------------------------------------------
 -- حذف كل الموظفين (مدير النظام): الموظفون وإسناداتهم وسجلها، وفك ربطهم بالمستخدمين
 -- الهيكل (الوحدات والمستويات) وأنواع الإسناد والمستخدمون يبقون. ← { employees, assignments, users }
@@ -174,15 +199,14 @@ begin
   perform support_tasks_dev.require_admin();
   update support_tasks_dev.profiles set employee_id = null where employee_id is not null;
   get diagnostics v_u = row_count;
-  alter table support_tasks_dev.employee_assignments disable trigger employee_assignments_audit;
-  alter table support_tasks_dev.employees disable trigger employees_audit;
+  -- السجل لا يُكتب لكل صف محذوف (يُكتب سطر واحد في الآخر). علامة لهذه العملية فقط، بلا تعديل على الجداول
+  perform set_config('support_tasks_dev.skip_audit', 'on', true);
   -- «where true»: Supabase يرفض DELETE بلا شرط (safeupdate). وTRUNCATE لا يصلح هنا لأن جدول المستخدمين يشير إلى الموظفين
   delete from support_tasks_dev.employee_assignments where true;
   get diagnostics v_a = row_count;
   delete from support_tasks_dev.employees where true;
   get diagnostics v_e = row_count;
-  alter table support_tasks_dev.employee_assignments enable trigger employee_assignments_audit;
-  alter table support_tasks_dev.employees enable trigger employees_audit;
+  perform set_config('support_tasks_dev.skip_audit', 'off', true);
   delete from support_tasks_dev.org_audit where entity in ('employee', 'assignment');
   -- سطر واحد في السجل يبيّن الحذف ومن نفّذه
   insert into support_tasks_dev.org_audit (entity, entity_id, action, changed_by, new_data)
