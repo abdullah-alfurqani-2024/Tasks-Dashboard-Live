@@ -6,15 +6,17 @@ import { state, can, engineers } from '../core/store.js';
 import { fmtDate, fmtDateTime, today, num, pct, dec1 } from '../core/format.js';
 import { setTitle } from '../core/session.js';
 import { exportTasks } from '../core/exporter.js';
-import { summarize } from '../lib/stats.js';
+import { summarize, groupCount } from '../lib/stats.js';
+import { directory } from '../core/directory.js';
+import { lookupField } from '../ui/lookupField.js';
 import { icon } from '../ui/icons.js';
 import { dateInput } from '../ui/dateField.js';
-import { toastError } from '../ui/feedback.js';
+import { toast, toastError } from '../ui/feedback.js';
 import { pageHead, options, loading, newPage } from '../ui/parts.js';
 
 const KEY = `${CONFIG.storagePrefix || 'tsk.'}filters.report`;
 const year = Number(today().slice(0, 4));
-const DEFAULTS = { engineerId: '', taskTypeId: '', correspondenceTypeId: '', statusId: '', year: String(year), from: `${year}-01-01`, to: `${year}-12-31`, sort: 'receivedDate', dir: 'asc', kind: '' };
+const DEFAULTS = { engineerId: '', taskTypeId: '', correspondenceTypeId: '', statusId: '', year: String(year), from: `${year}-01-01`, to: `${year}-12-31`, sort: 'receivedDate', dir: 'asc', kind: '', unitId: '', sub: true, group: '' };
 // أزرار الإحصائيات: تفلتر التقرير حسب نوع الحالة، والضغطة الثانية تلغي
 const KINDS = [['done', 'مكتملة', 'var(--ok)'], ['open', 'مفتوحة', 'var(--info)'], ['cancelled', 'مغلقة بدون إنجاز', 'var(--muted)']];
 const KIND_LABEL = { done: 'المكتملة', open: 'المفتوحة', cancelled: 'المغلقة بدون إنجاز' };
@@ -46,6 +48,9 @@ export default async function report(ctx, main) {
       <div class="field"><label for="r-type">نوع المهمة</label><select class="input" id="r-type" name="taskTypeId">${options(L.taskTypes, F.taskTypeId, 'الكل')}</select></div>
       <div class="field"><label for="r-corr">نوع المراسلة</label><select class="input" id="r-corr" name="correspondenceTypeId">${options(L.correspondenceTypes, F.correspondenceTypeId, 'الكل')}</select></div>
       <div class="field"><label for="r-st">الحالة</label><select class="input" id="r-st" name="statusId">${options(L.statuses, F.statusId, 'الكل')}</select></div>
+      <div class="field wide" data-dir hidden><label for="r-unit">الجهة الطالبة</label><div data-unit></div>
+        <label class="check small"><input type="checkbox" name="sub" ${F.sub ? 'checked' : ''}> مع الوحدات التابعة لها</label></div>
+      <div class="field" data-dir hidden><label for="r-group">التجميع حسب</label><select class="input" id="r-group" name="group"></select></div>
       <div class="field"><label for="r-year">السنة</label><select class="input" id="r-year" name="year">${options(years, F.year, '—')}</select></div>
       <div class="field"><label for="r-from">من</label>${dateInput({ name: 'from', id: 'r-from', value: F.from })}</div>
       <div class="field"><label for="r-to">إلى</label>${dateInput({ name: 'to', id: 'r-to', value: F.to })}</div>
@@ -73,6 +78,9 @@ export default async function report(ctx, main) {
     if (F.taskTypeId) c.push(`نوع المهمة: ${nameOf(L.taskTypes, F.taskTypeId)}`);
     if (F.correspondenceTypeId) c.push(`نوع المراسلة: ${nameOf(L.correspondenceTypes, F.correspondenceTypeId)}`);
     if (F.statusId) c.push(`الحالة: ${nameOf(L.statuses, F.statusId)}`);
+    if (F.unitId === 'none') c.push('الجهة الطالبة: غير مربوطة بالهيكل');
+    else if (F.unitId && D) c.push(`الجهة الطالبة: ${D.M.unit.get(Number(F.unitId))?.name || '—'}${F.sub ? ' وما يتبعها' : ''}`);
+    if (F.group && D) c.push(`التجميع حسب: ${D.M.level.get(Number(F.group))?.name || ''}`);
     if (F.kind) c.push(`عرض: ${KIND_LABEL[F.kind]} فقط`);
     return c;
   }
@@ -107,6 +115,7 @@ export default async function report(ctx, main) {
           <span class="chip">نسبة الإنجاز <b>${pct(s.rate)}</b></span>
           <span class="chip">متوسط المدة <b>${dec1(s.avgDuration)}</b> يوم</span>
         </div>
+        ${groupTable()}
         <div class="table-wrap"><table class="table">
           <thead><tr><th>م</th><th>الرمز</th>${viewAll ? html`<th>اسم المهندس</th>` : ''}<th>رقم القيد</th><th>الجهة الطالبة</th><th>اسم الموظف</th><th>الموضوع</th>
             <th>الاستقبال</th><th>الانتهاء</th><th>نوع المهمة</th><th>نوع المراسلة</th><th>الحالة</th><th>المدة</th><th>سبب التأخير</th><th>الملاحظات</th></tr></thead>
@@ -121,6 +130,58 @@ export default async function report(ctx, main) {
       </div>`);
   }
 
+  /* ───── الجهة الطالبة: التصفية بوحدة (وما يتبعها) والتجميع حسب مستوى ───── */
+  let D = null;
+  /** الوحدة التي تُجمَّع تحتها مهمة: سلفها في المستوى المختار، أو أدنى سلف أعلى منه (إن لم يكن في المسار وحدة من هذا المستوى) */
+  function groupUnit(t, levelId) {
+    const u = t.requesterUnitId ? D.M.unit.get(t.requesterUnitId) : null;
+    if (!u) return null;
+    const lvNo = D.M.level.get(levelId)?.levelNo ?? 0;
+    const chain = [...D.M.ancestors(u), u];
+    return chain.find((x) => x.levelId === levelId) || chain.filter((x) => D.M.levelNo(x) <= lvNo).at(-1) || null;
+  }
+  function groupTable() {
+    if (!D || !F.group) return '';
+    const levelId = Number(F.group);
+    const list = shown();
+    const lvName = D.M.level.get(levelId)?.name || '';
+    const g = groupCount(list, (t) => { const x = groupUnit(t, levelId); return x ? x.id : t.requesterUnitId ? 'up' : 'none'; },
+      (t) => { const x = groupUnit(t, levelId); return x ? (x.levelId === levelId ? x.name : `${x.name} (مباشرة)`) : t.requesterUnitId ? '' : 'غير مربوطة بالهيكل'; });
+    return html`<div class="table-wrap" style="margin-bottom:12px"><table class="table">
+      <thead><tr><th>${lvName}</th><th>الإجمالي</th><th>مكتملة</th><th>مفتوحة</th><th>مغلقة بدون إنجاز</th><th>نسبة الإنجاز</th><th>متوسط المدة</th></tr></thead>
+      <tbody>${g.map((x) => html`<tr class="${x.key === 'up' ? '' : 'clickable'}" ${x.key !== 'up' ? html`data-gunit="${x.key}"` : ''} title="${x.key !== 'up' ? 'عرض مهامها فقط' : ''}">
+        <td><b>${x.label}</b>${typeof x.key === 'number' ? html`<div class="small muted">${D.M.ancestors(D.M.unit.get(x.key)).slice(-2).map((a) => a.name).join(' ← ')}</div>` : ''}</td>
+        <td class="num"><b>${num(x.total)}</b></td><td class="num">${num(x.done)}</td><td class="num">${num(x.open)}</td><td class="num">${num(x.cancelled)}</td>
+        <td class="num">${pct(x.rate)}</td><td class="num">${dec1(x.avgDuration)}</td></tr>`)}</tbody></table></div>`;
+  }
+  const unitFilter = (list) => {
+    if (!F.unitId) return list;
+    if (F.unitId === 'none') return list.filter((t) => !t.requesterUnitId);
+    if (!D) return list;
+    const id = Number(F.unitId);
+    const set = new Set(F.sub ? D.M.subtree(id) : [id]);
+    return list.filter((t) => set.has(t.requesterUnitId));
+  };
+  let unitPick = null;
+  async function setupDirectory() {
+    try { D = await directory(); } catch { return; }
+    root.querySelectorAll('[data-dir]').forEach((x) => { x.hidden = false; });
+    const sel = form.elements.group;
+    mount(sel, options([...D.M.levels].sort((a, b) => a.levelNo - b.levelNo).map((l) => [l.id, l.name]), F.group, '— بلا تجميع —'));
+    const shortPath = (u) => D.M.ancestors(u).slice(-2).map((a) => a.name).join(' ← ');
+    unitPick = lookupField($('[data-unit]', root), {
+      id: 'r-unit', free: false, pickNote: 'اختر من النتائج، أو امسح للكل', placeholder: 'الكل',
+      value: F.unitId === 'none' ? { id: null, text: '' } : { id: Number(F.unitId) || null, text: D.M.unit.get(Number(F.unitId))?.name || '' },
+      search: (q) => D.searchUnits(q, 30).map((u) => ({ id: u.id, label: u.name, badge: D.M.level.get(u.levelId)?.name || '', sub: shortPath(u) })),
+      describe: (id) => (D.M.unit.get(id) ? { sub: [D.M.level.get(D.M.unit.get(id).levelId)?.name, shortPath(D.M.unit.get(id))].filter(Boolean).join(' · ') } : null),
+      onChange: (v, picked) => {
+        const next = picked ? String(picked.id) : v.text ? F.unitId : '';
+        if (next === F.unitId) return;
+        F.unitId = next; save(); load();
+      },
+    });
+  }
+
   let reqId = 0;
   async function load() {
     const my = ++reqId;
@@ -131,7 +192,7 @@ export default async function report(ctx, main) {
         taskTypeId: F.taskTypeId || undefined, correspondenceTypeId: F.correspondenceTypeId || undefined, statusId: F.statusId || undefined,
       });
       if (my !== reqId) return;
-      rows = list;
+      rows = unitFilter(list);
       draw();
     } catch (e) { if (my === reqId) mount(out, html`<div class="alert bad">${e.message}</div>`); }
   }
@@ -143,9 +204,17 @@ export default async function report(ctx, main) {
     if (n === 'year' && F.year) { F.from = `${F.year}-01-01`; F.to = `${F.year}-12-31`; form.elements.from.value = F.from; form.elements.to.value = F.to; }
     if (n === 'from' || n === 'to') { F.year = ''; form.elements.year.value = ''; }
     save();
-    if (n === 'sort' || n === 'dir') draw(); else load();
+    if (n === 'sort' || n === 'dir' || n === 'group') draw(); else load();
   });
 
+  on(root, 'click', '[data-gunit]', (e, tr) => {
+    const k = tr.dataset.gunit;
+    F.unitId = k === 'none' ? 'none' : k; F.sub = true;
+    form.elements.sub.checked = true;
+    unitPick?.set(k === 'none' ? { id: null, text: '' } : { id: Number(k), text: D.M.unit.get(Number(k))?.name || '' });
+    save(); load();
+    toastNote(k === 'none' ? 'المهام غير المربوطة بالهيكل فقط. امسح حقل «الجهة الطالبة» للكل.' : null);
+  });
   on(root, 'click', '[data-kind]', (e, b) => {
     const k = b.dataset.kind;
     F.kind = !k || F.kind === k ? '' : k;
@@ -168,6 +237,8 @@ export default async function report(ctx, main) {
     }
   });
 
+  const toastNote = (m) => { if (m) toast(m, 'info'); };
   syncUrl();
+  await setupDirectory();
   await load();
 }

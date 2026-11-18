@@ -15,6 +15,7 @@
  *   (يبقى النظام افتراضياً، أو يُؤخذ من الملف حسب الخيار). المهمة بلا مرجع (قبل هذه الميزة): كأن كل فرق
  *   تعارض إن عُدّلت في النظام بعد آخر استيراد، وإلا من الملف. والأعمدة غير الموجودة في الملف لا تُمس.
  */
+import { directory } from '../core/directory.js';
 import { db } from '../data/index.js';
 import { html, mount, $, on } from '../core/dom.js';
 import { state, engineers, loadReference, refreshReviewCount } from '../core/store.js';
@@ -259,6 +260,9 @@ export default async function importPage(ctx, main) {
 
     const codeCol = S.map.taskCode != null;
     if ((S.skipDup || codeCol) && !S.allTasks) S.allTasks = await db.tasks.list({ deleted: 'include' });
+    // الجهة الطالبة واسم الموظف: مطابقة الهيكل (بالاسم أو الاختصار أو الاسم البديل) وقائمة الموظفين
+    S.D = null; S.dirError = '';
+    try { S.D = await directory({ fresh: true }); } catch (e) { S.dirError = e.message; }
     if (codeCol && !S.bases) S.bases = await db.tasks.importBase();
     // المهام الموجودة في النظام: كم مرة توجد كل مهمة (لا نكرر الموجود، ونستورد الزائد عليه)
     // existing: لكل الصفوف بلا رمز. bare: للصف الذي رمزه جديد، مقابل مهام النظام التي بلا رمز
@@ -341,6 +345,8 @@ export default async function importPage(ctx, main) {
         subject: subjectV, receivedDate, completedDate: completedV, notes: cellText(g(r, 'notes')), delayReason: cellText(g(r, 'delayReason')),
         taskCode: code, enteredAt, _ref: { ...ref, status },
       };
+      task.requesterUnitId = (task.requester && S.D?.unitByName(task.requester)?.id) || null;
+      task.employeeId = (task.employeeName && S.D?.empByExactName(task.employeeName)?.id) || null;
       const row = { line, code, task, errors, reasons, exists: false, dup: false, engName: eng?.fullName || engName, statusName: status?.name || status?.pending || '' };
       const key = eng ? `${eng.id}|${receivedDate}|${normalizeAr(subjectV)}` : '';
       if (code && seenCode.has(code)) {
@@ -400,13 +406,28 @@ export default async function importPage(ctx, main) {
    * col: الحقل لا يُقارن ولا يُغيَّر إلا إذا كان عموده في الملف.
    */
   const nameOf = (x) => x?.name || x?.pending || '';
+  /** قيمة آخر استيراد بالمطابقة الحالية: نص ربطه مدير النظام بعدها (اسماً بديلاً) يُعدّ القيمة نفسها لا تعديلاً في النظام */
+  const baseKey = (k, v) => {
+    if (typeof v !== 'string' || !v || v.startsWith('#')) return v;
+    if (k === 'requester') return linkKey('u', S.D?.unitByName(v)?.id, v);
+    if (k === 'employeeName') return linkKey('e', S.D?.empByExactName(v)?.id, v);
+    return v;
+  };
+  /** مفتاح المقارنة: «#u12» للوحدة 12 و«#e7» للموظف 7، وإلا النص */
+  const linkKey = (k, id, text) => (id ? `#${k}${id}` : text || '');
+  const linkShow = (v) => {
+    const m = /^#([ue])(\d+)$/.exec(v || '');
+    if (!m) return v;
+    return m[1] === 'u' ? S.D?.M.unit.get(Number(m[2]))?.name || 'وحدة محذوفة' : S.D?.emp.get(Number(m[2]))?.nameAr || 'موظف محذوف';
+  };
   const isoOf = (v) => (v ? new Date(v).toISOString() : '');
   const engName = (id) => engineers({ includeInactive: true }).find((e) => e.id === id)?.fullName || id || '—';
   const MERGE = [
     { k: 'engineerId', label: 'المهندس', sys: (c) => c.engineerId, file: (t) => t.engineerId, show: engName },
     { k: 'refNo', col: 'refNo', label: 'رقم القيد', sys: (c) => c.refNo, file: (t) => t.refNo },
-    { k: 'requester', col: 'requester', label: 'الجهة الطالبة', sys: (c) => c.requester, file: (t) => t.requester },
-    { k: 'employeeName', col: 'employeeName', label: 'اسم الموظف', sys: (c) => c.employeeName, file: (t) => t.employeeName },
+    // الجهة والموظف المربوطان يُقارنان بالوحدة والموظف لا بالنص (نص الملف قد يكون اسماً بديلاً للوحدة)
+    { k: 'requester', col: 'requester', label: 'الجهة الطالبة', sys: (c) => linkKey('u', c.requesterUnitId, c.requester), file: (t) => linkKey('u', t.requesterUnitId, t.requester), show: linkShow },
+    { k: 'employeeName', col: 'employeeName', label: 'اسم الموظف', sys: (c) => linkKey('e', c.employeeId, c.employeeName), file: (t) => linkKey('e', t.employeeId, t.employeeName), show: linkShow },
     { k: 'subject', label: 'الموضوع', sys: (c) => c.subject, file: (t) => t.subject },
     { k: 'receivedDate', label: 'تاريخ الاستقبال', sys: (c) => c.receivedDate, file: (t) => t.receivedDate, show: fmtDate },
     { k: 'completedDate', col: 'completedDate', label: 'تاريخ الانتهاء', sys: (c) => c.completedDate, file: (t) => t.completedDate, show: fmtDate },
@@ -435,7 +456,7 @@ export default async function importPage(ctx, main) {
       if (sv === fv) continue;
       const d = { f, sv, fv };
       if (base && f.k in base) {
-        d.bv = base[f.k];
+        d.bv = baseKey(f.k, base[f.k]);
         if (sv === d.bv) r.take.push(d);                 // تغيّر في الملف فقط
         else if (fv === d.bv) r.keep.push(d);            // تغيّر في النظام فقط
         else r.conflicts.push(d);                        // تغيّر في الاثنين
@@ -484,6 +505,31 @@ export default async function importPage(ctx, main) {
     : r.reasons.length ? ['تُضاف وتحتاج مراجعة', 'warn'] : ['تُضاف', 'ok']);
   const diffText = (r) => (r.match && r.mode !== 'same' ? mergeText(r) : []);
 
+  /** ملخص مطابقة الجهة والموظف في الصفوف التي تُضاف أو تُحدَّث */
+  function linkNotice(rows) {
+    if (S.dirError) return html`<div class="alert warn small">تعذّر تحميل الهيكل وقائمة الموظفين (${S.dirError})، فتُستورد الجهة واسم الموظف نصاً بلا ربط.</div>`;
+    const go = rows.filter((r) => !r.errors.length && !r.exists && !r.deleted && !r.dupCode);
+    const cnt = (key, idKey) => {
+      const free = new Map();
+      let linked = 0;
+      for (const r of go) {
+        const v = r.task[key];
+        if (!v) continue;
+        if (r.task[idKey]) linked++; else free.set(v, (free.get(v) || 0) + 1);
+      }
+      return { linked, free: [...free].sort((a, b) => b[1] - a[1]) };
+    };
+    const u = cnt('requester', 'requesterUnitId'), e = cnt('employeeName', 'employeeId');
+    if (!u.linked && !u.free.length && !e.linked && !e.free.length) return '';
+    const nFree = (x) => x.free.reduce((a, [, n]) => a + n, 0);
+    const list = (x) => x.free.slice(0, 12).map(([t, n]) => `${t} (${num(n)})`).join('، ') + (x.free.length > 12 ? `، و${num(x.free.length - 12)} غيرها` : '');
+    return html`<div class="alert small ${nFree(u) || nFree(e) ? 'warn' : ''}">
+      <div><b>الجهة الطالبة:</b> ${num(u.linked)} صفاً تُربط بوحدتها في الهيكل${nFree(u) ? html`، و<b>${num(nFree(u))}</b> بنص غير موجود في الهيكل: ${list(u)}` : ''}.</div>
+      <div><b>اسم الموظف:</b> ${num(e.linked)} صفاً تُربط بالموظف${nFree(e) ? html`، و<b>${num(nFree(e))}</b> باسم غير مطابق لموظف واحد: ${list(e)}` : ''}.</div>
+      ${nFree(u) || nFree(e) ? html`<div style="margin-top:4px">غير المطابق يُستورد نصاً، وتُعلَّم مهمته «تحتاج مراجعة». لربطه قبل الاستيراد: اربط نصه في «الهيكل التنظيمي ← ربط المهام»
+        (فيُحفظ اسماً بديلاً للوحدة) أو أضفه للهيكل، ثم اضغط «رجوع» وأعد المعاينة. ويمكن ربطه بعد الاستيراد أيضاً.</div>` : ''}</div>`;
+  }
+
   async function step3(btn) {
     if (S.map.subject == null || S.map.receivedDate == null) return toastError({ message: 'طابق عمودي «الموضوع» و«تاريخ الاستقبال» على الأقل.' });
     if (S.engineerMode === 'column' && S.map.engineer == null) return toastError({ message: 'طابق عمود «اسم المهندس» أو اختر مهندساً واحداً.' });
@@ -521,6 +567,7 @@ export default async function importPage(ctx, main) {
             المطابقة: ${num(G.go.length)} ${codeCol ? 'جديدة' : 'ستُستورد'}${codeCol ? ` + ${num(G.upd.length)} تُحدَّث + ${num(G.same.length)} بلا تغيير + ${num(G.kept.length)} تعديلات النظام باقية + ${num(G.deleted.length)} محذوفة + ${num(G.dupCode.length)} رمز مكرر` : ''}
             + ${num(G.exists.length)} موجودة مسبقاً + ${num(blank.length)} بلا بيانات مهمة + ${num(G.stop.length)} تنتظر المهندس = <b>${num(total)}</b> صفاً.
             ${empty ? html` (وتجاهلنا ${num(empty)} صفاً فارغاً تماماً)` : ''}</div>
+          ${linkNotice(rows)}
           ${G.differs.length ? html`<div class="alert small">${num(G.differs.length)} مهمة ستبقى <b>مختلفة عن Sheets</b> بسبب تعديلات في النظام لم تُنقل إلى Sheets.
             الحقول وقيمها في «تقرير الصفوف»، لتعديلها في Sheets إن لزم.</div>` : ''}
           ${absent?.length ? html`<div class="alert small">${num(absent.length)} مهمة في النظام برموز من Sheets <b>ليست في هذا الملف</b>، ولا تُمس. قائمتها في «تقرير الصفوف».</div>` : ''}
@@ -601,6 +648,8 @@ export default async function importPage(ctx, main) {
           if (fd.k === 'reviewReasons') t.reviewReasons = f.reviewReasons;
           else if (fd.k === 'enteredAt') t.enteredAt = f.enteredAt;
           else if (set[fd.k]) t[set[fd.k]] = f[set[fd.k]];
+          else if (fd.k === 'requester') { t.requester = f.requester; t.requesterUnitId = f.requesterUnitId; }
+          else if (fd.k === 'employeeName') { t.employeeName = f.employeeName; t.employeeId = f.employeeId; }
           else t[fd.k] = f[fd.k];
         }
         // بعد الدمج قد تخالف المهمة قواعد الإدخال (مثل حالة «مكتملة» من الملف وتاريخ انتهاء فارغ في النظام): تُعلَّم للمراجعة
