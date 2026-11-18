@@ -639,7 +639,8 @@ export function createAdapter() {
           const civilNo = digits(r.civilNo), employeeNo = digits(r.employeeNo).toUpperCase(), nameAr = oClean(r.nameAr), nameEn = oClean(r.nameEn);
           const rev = String(r.review ?? '').trim();
           const e = civilNo ? Em().list.find((x) => x.civilNo === civilNo)
-            : nameAr ? Em().list.find((x) => !x.civilNo && x.nameAr === nameAr && (!employeeNo || x.employeeNo.toUpperCase() === employeeNo)) : null;
+            : (employeeNo && Em().list.find((x) => x.employeeNo.toUpperCase() === employeeNo))
+              || (nameAr ? Em().list.find((x) => !x.civilNo && x.nameAr === nameAr && (!employeeNo || !x.employeeNo || x.employeeNo.toUpperCase() === employeeNo)) : null);
           if (!e) {
             const row = { id: ++Em().seq.emp, civilNo, employeeNo, nameAr: nameAr || nameEn || 'بلا اسم', nameEn, isActive: true, needsReview: !!rev || !civilNo, reviewNotes: rev };
             Em().list.push(row); eLog('employee', row.id, 'insert', null, row); sum.created++;

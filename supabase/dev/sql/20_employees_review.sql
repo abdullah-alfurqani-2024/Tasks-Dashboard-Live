@@ -8,7 +8,8 @@
 --  يُصحَّح لاحقاً من سجل الموظف، ثم تُزال العلامة.
 --    - الرقم المدني يبقى المعرّف ولا يتكرر، لكنه يجوز أن يكون فارغاً للموظف الذي يحتاج مراجعة فقط
 --      (الموظف بلا رقم مدني يبقى «تحتاج مراجعة» حتى يُكتب رقمه)
---    - إعادة الاستيراد: الصف بلا رقم مدني يطابق موظفاً بلا رقم مدني بالاسم نفسه (والرقم الوظيفي إن وُجد)، فلا يتكرر
+--    - إعادة الاستيراد: الصف بلا رقم مدني يطابق الموظف صاحب رقمه الوظيفي (ولو صُحّح رقمه المدني في النظام)،
+--      وإلا موظفاً بلا رقم مدني بالاسم نفسه، فلا يتكرر
 -- =====================================================================
 
 alter table support_tasks_dev.employees alter column civil_no drop not null;
@@ -88,10 +89,15 @@ begin
     v_e := null;
     if v_civil is not null then
       select * into v_e from support_tasks_dev.employees where civil_no = v_civil;
-    elsif v_ar is not null then
-      select * into v_e from support_tasks_dev.employees
-      where civil_no is null and name_ar = v_ar and (v_no is null or upper(employee_no) = v_no)
-      order by id limit 1;
+    else
+      if v_no is not null then
+        select * into v_e from support_tasks_dev.employees where upper(employee_no) = v_no;
+      end if;
+      if v_e.id is null and v_ar is not null then
+        select * into v_e from support_tasks_dev.employees
+        where civil_no is null and name_ar = v_ar and (v_no is null or employee_no is null or upper(employee_no) = v_no)
+        order by id limit 1;
+      end if;
     end if;
     if v_e.id is null then
       insert into support_tasks_dev.employees (civil_no, employee_no, name_ar, name_en, needs_review, review_notes)

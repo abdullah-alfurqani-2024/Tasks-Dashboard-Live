@@ -169,6 +169,11 @@ check('…والاسم الناقص يُملأ من الإنجليزي', True, "
 check('إعادة الاستيراد لا تكرر من بلا رقم مدني', True,
       """select employees_import('[{"civil_no":null,"employee_no":"8001","name_ar":"بلا مدني","name_en":"","review":"بلا رقم مدني في الملف"}]'::jsonb)::text;
          select count(*) from employees where name_ar = 'بلا مدني'""", contains='"unchanged": 1')
+check('…ولا بعد تصحيح رقمه المدني في النظام (يُطابَق بالرقم الوظيفي)', True,
+      """update employees set civil_no = '9300' where name_ar = 'بلا مدني';
+         select employees_import('[{"civil_no":null,"employee_no":"8001","name_ar":"بلا مدني","name_en":"","review":"بلا رقم مدني في الملف"}]'::jsonb)::text;
+         select count(*) from employees where name_ar = 'بلا مدني'""", contains='\n1')
+sql("update employees set civil_no = null where name_ar = 'بلا مدني'")
 check('لا تُزال العلامة وهو بلا رقم مدني', True,
       "update employees set needs_review = false where name_ar = 'بلا مدني' returning needs_review", equals='t')
 check('كتابة الرقم المدني ثم إزالة العلامة', True,

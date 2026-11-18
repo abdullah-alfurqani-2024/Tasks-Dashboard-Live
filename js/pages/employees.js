@@ -512,6 +512,14 @@ export default async function employees(ctx, main) {
         x.civilNo = '';
       }
       if (x.civilNo) seen.set(x.civilNo, x);
+      // بلا رقم مدني ورقمه الوظيفي لموظف موجود: هو نفسه (ولو صُحّح رقمه المدني في النظام)
+      const sameByNo = !x.civilNo && x.employeeNo ? byNo.get(x.employeeNo) : null;
+      if (sameByNo) {
+        const ch = [];
+        if (x.nameAr && x.nameAr !== sameByNo.nameAr) ch.push(`الاسم: ${sameByNo.nameAr} ← ${x.nameAr}`);
+        if (x.nameEn && x.nameEn !== sameByNo.nameEn) ch.push(`الاسم بالإنجليزي: ${sameByNo.nameEn || '—'} ← ${x.nameEn}`);
+        return ch.length ? { ...x, st: 'update', why: `طوبق بالرقم الوظيفي · ${ch.join(' · ')}` } : { ...x, st: 'same', why: 'طوبق بالرقم الوظيفي' };
+      }
       if (x.employeeNo) {
         const o = byNo.get(x.employeeNo);
         if (!/^[0-9A-Z/-]{1,30}$/.test(x.employeeNo)) { rev.push(['eno', `رقم وظيفي غير صحيح في الملف: «${x.employeeNo}»`]); x.employeeNo = ''; }
@@ -526,7 +534,9 @@ export default async function employees(ctx, main) {
       }
       if (rev.length) {
         const why = rev.map((v) => v[1]).join(' · ');
-        if (cur && (cur.reviewNotes || '').includes(why)) return { ...x, st: 'same', why: 'سبق استيراده للمراجعة' };
+        // سبق استيراده للمراجعة، أو صُحّح رقمه الوظيفي في النظام: لا يُعلَّم من جديد
+        if (cur && ((cur.reviewNotes || '').includes(why) || cur.needsReview)) return { ...x, st: 'same', why: 'سبق استيراده للمراجعة' };
+        if (cur && rev.every((v) => v[0] === 'eno') && cur.employeeNo) return { ...x, st: 'same', why: 'الرقم الوظيفي في النظام يبقى' };
         return { ...x, st: 'review', why, review: why, kinds: rev.map((v) => v[0]) };
       }
       if (!cur) return { ...x, st: 'new' };
