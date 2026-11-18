@@ -2982,9 +2982,10 @@ begin
   get diagnostics v_u = row_count;
   alter table support_tasks_dev.employee_assignments disable trigger employee_assignments_audit;
   alter table support_tasks_dev.employees disable trigger employees_audit;
-  delete from support_tasks_dev.employee_assignments;
+  -- «where true»: Supabase يرفض DELETE بلا شرط (safeupdate). وTRUNCATE لا يصلح هنا لأن جدول المستخدمين يشير إلى الموظفين
+  delete from support_tasks_dev.employee_assignments where true;
   get diagnostics v_a = row_count;
-  delete from support_tasks_dev.employees;
+  delete from support_tasks_dev.employees where true;
   get diagnostics v_e = row_count;
   alter table support_tasks_dev.employee_assignments enable trigger employee_assignments_audit;
   alter table support_tasks_dev.employees enable trigger employees_audit;
