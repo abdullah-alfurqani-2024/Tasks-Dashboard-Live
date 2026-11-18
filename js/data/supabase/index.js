@@ -45,18 +45,24 @@ const orgMissing = (e) => {
   throw e;
 };
 
-const toEmployee = (r) => ({ id: r.id, civilNo: r.civil_no, employeeNo: r.employee_no || '', nameAr: r.name_ar, nameEn: r.name_en || '', isActive: r.is_active });
+const toEmployee = (r) => ({
+  id: r.id, civilNo: r.civil_no || '', employeeNo: r.employee_no || '', nameAr: r.name_ar, nameEn: r.name_en || '', isActive: r.is_active,
+  needsReview: !!r.needs_review, reviewNotes: r.review_notes || '',
+});
 const toAType = (r) => ({ id: r.id, name: r.name, isPrimary: r.is_primary, impliesHead: r.implies_head, sortOrder: r.sort_order, isActive: r.is_active });
 const toAssignment = (r) => ({
   id: r.id, employeeId: r.employee_id, unitId: r.unit_id, typeId: r.type_id, isHead: r.is_head,
   startDate: r.start_date, endDate: r.end_date, notes: r.notes || '',
 });
-const EMP_COLS = 'id,civil_no,employee_no,name_ar,name_en,is_active';
+const EMP_COLS = 'id,civil_no,employee_no,name_ar,name_en,is_active,needs_review,review_notes';
 const ASG_COLS = 'id,employee_id,unit_id,type_id,is_head,start_date,end_date,notes';
 /** جداول الموظفين غير موجودة بعد */
 const empMissing = (e) => {
   if (['PGRST205', 'PGRST202', '42P01', '42883'].includes(e?.code)) {
-    throw new ApiError('الموظفون غير مجهّزين في قاعدة بيانات هذه النسخة: نفّذ ملف supabase/dev/sql/19_employees.sql في SQL Editor.', e.status, e.code);
+    throw new ApiError('الموظفون غير مجهّزين في قاعدة بيانات هذه النسخة: نفّذ ملف supabase/dev/sql/19_employees.sql ثم 20_employees_review.sql في SQL Editor.', e.status, e.code);
+  }
+  if (e?.code === '42703' || e?.code === 'PGRST204') {   // عمود غير موجود: 20 لم يُنفَّذ
+    throw new ApiError('نفّذ ملف supabase/dev/sql/20_employees_review.sql في SQL Editor (أعمدة «تحتاج مراجعة»).', e.status, e.code);
   }
   throw e;
 };
@@ -302,8 +308,9 @@ export function createAdapter(config) {
         return (await c.selectAll('employees', { select: EMP_COLS, order: 'name_ar.asc,id.asc' }).catch(empMissing)).map(toEmployee);
       },
       async save(e) {
-        const row = { civil_no: e.civilNo, employee_no: e.employeeNo || null, name_ar: e.nameAr, name_en: e.nameEn || null };
-        const rows = e.id ? await c.update('employees', { id: `eq.${e.id}`, select: EMP_COLS }, row) : await c.insert('employees', row);
+        const row = { civil_no: e.civilNo || null, employee_no: e.employeeNo || null, name_ar: e.nameAr, name_en: e.nameEn || null,
+          needs_review: !!e.needsReview, review_notes: e.reviewNotes || null };
+        const rows = await (e.id ? c.update('employees', { id: `eq.${e.id}`, select: EMP_COLS }, row) : c.insert('employees', row)).catch(empMissing);
         if (!rows.length) throw new ApiError('لا تملك صلاحية تعديل الموظفين.');
         return toEmployee(rows[0]);
       },
@@ -338,9 +345,9 @@ export function createAdapter(config) {
       async deleteType(id) { await c.rpc('assignment_type_delete', { p_id: id }); },
       /** دفعات من 500 ← المجموع */
       async import(rows, onProgress) {
-        const sum = { created: 0, updated: 0, unchanged: 0, linked: 0 };
+        const sum = { created: 0, updated: 0, unchanged: 0, review: 0, linked: 0 };
         for (let i = 0; i < rows.length; i += 500) {
-          const part = rows.slice(i, i + 500).map((r) => ({ civil_no: r.civilNo, employee_no: r.employeeNo || null, name_ar: r.nameAr || null, name_en: r.nameEn || null }));
+          const part = rows.slice(i, i + 500).map((r) => ({ civil_no: r.civilNo || null, employee_no: r.employeeNo || null, name_ar: r.nameAr || null, name_en: r.nameEn || null, review: r.review || null }));
           const r = await c.rpc('employees_import', { p: part }).catch(empMissing);
           for (const k of Object.keys(sum)) sum[k] += r[k] || 0;
           onProgress?.(Math.min(i + 500, rows.length), rows.length);

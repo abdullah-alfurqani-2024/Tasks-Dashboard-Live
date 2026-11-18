@@ -28,7 +28,8 @@
  * Settings   { editLockDays: number, delayThresholdDays: number, minPasswordLength: number, forcePasswordChange: boolean }
  * OrgLevel { id, name, levelNo, headTitle, isActive }          levelNo: ترتيب المستوى، الأصغر أعلى في الهيكل
  * OrgUnit  { id, parentId: number|null, levelId, name, shortName, code, aliases: string[], sortOrder, isActive }   code: الرمز الرسمي (اختياري)، sortOrder: ترتيب العرض
- * Employee { id, civilNo, employeeNo, nameAr, nameEn, isActive }   civilNo: الرقم المدني (المعرّف، لا يتكرر)
+ * Employee { id, civilNo, employeeNo, nameAr, nameEn, isActive, needsReview, reviewNotes }
+ *            civilNo: الرقم المدني (المعرّف، لا يتكرر)؛ فارغ فقط لمن «تحتاج مراجعة» (من الاستيراد)
  * AssignmentType { id, name, isPrimary, impliesHead, sortOrder, isActive }   isPrimary: «أصيل» (واحد فقط)
  * Assignment { id, employeeId, unitId, typeId, isHead, startDate: 'YYYY-MM-DD', endDate: 'YYYY-MM-DD'|null, notes }
  *              endDate فارغ = قائم. القائم اليوم: startDate <= اليوم و(endDate فارغ أو >= اليوم)
@@ -95,8 +96,9 @@
  * employees.types()              → AssignmentType[]
  * employees.saveType(t)          → AssignmentType
  * employees.deleteType(id)       → void             غير المستخدم فقط، و«أصيل» لا يُحذف
- * employees.import(rows, onProgress) → { created, updated, unchanged, linked }
- *        rows: [{ civilNo, employeeNo, nameAr, nameEn }]، إضافة أو تحديث حسب الرقم المدني، والفارغ لا يمسح
+ * employees.import(rows, onProgress) → { created, updated, unchanged, review, linked }
+ *        rows: [{ civilNo, employeeNo, nameAr, nameEn, review? }]، إضافة أو تحديث حسب الرقم المدني، والفارغ لا يمسح.
+ *        review: سبب المراجعة للصف الخاطئ (الخانة الخاطئة تأتي فارغة)، فيُعلَّم الموظف «تحتاج مراجعة»
  * employees.linkUsers()          → number           ربط المستخدمين بسجلاتهم: رقم الدخول = الرقم المدني أو الوظيفي
  * employees.setUser(employeeId, userId|null) → void
  *        القواعد: أصيل واحد للموظف في أي يوم، رئيس أصيل واحد للوحدة ومن يقوم بأعمالها واحد، لا إسناد قائم في وحدة معطّلة أو لموظف غير نشط

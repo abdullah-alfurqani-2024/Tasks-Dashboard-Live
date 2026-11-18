@@ -1,0 +1,23 @@
+-- =====================================================================
+--  تراجع عن 20_employees_review.sql (سكيما التطوير وحدها)
+--  1) يحذف الموظفين الذين بلا رقم مدني (وإسناداتهم وربطهم بالمستخدمين)، لأن الرقم المدني يعود إلزامياً
+--  2) يحذف عمودي المراجعة
+--  3) بعده: نفّذ 19_employees.sql مرة أخرى لاسترجاع دالتي الحفظ والاستيراد كما كانتا (آمن، لا يمس البيانات)
+--  يُنفَّذ في Tasks-Test ← SQL Editor.
+-- =====================================================================
+
+update support_tasks_dev.profiles set employee_id = null
+where employee_id in (select id from support_tasks_dev.employees where civil_no is null);
+delete from support_tasks_dev.employee_assignments
+where employee_id in (select id from support_tasks_dev.employees where civil_no is null);
+delete from support_tasks_dev.employees where civil_no is null;
+
+drop index if exists support_tasks_dev.employees_review_idx;
+alter table support_tasks_dev.employees drop column if exists review_notes;
+alter table support_tasks_dev.employees drop column if exists needs_review;
+alter table support_tasks_dev.employees alter column civil_no set not null;
+
+-- التحقق: يجب أن يكون العدد صفراً، ثم نفّذ 19_employees.sql
+select count(*) as أعمدة_المراجعة_الباقية
+from information_schema.columns
+where table_schema = 'support_tasks_dev' and table_name = 'employees' and column_name in ('needs_review', 'review_notes');

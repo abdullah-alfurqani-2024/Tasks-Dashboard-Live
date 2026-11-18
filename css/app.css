@@ -479,6 +479,9 @@ button.org-tog:hover { background: var(--gray-soft); color: var(--ink); }
 .emp-section-head .row-actions { margin-inline-start: auto; display: flex; gap: 6px; }
 .emp-section .row-actions { display: flex; gap: 2px; justify-content: flex-end; }
 .list-row.emp-type { grid-template-columns: 80px 1fr 100px 90px 90px auto; }
+.emp-review { padding: 10px 12px; border-radius: 10px; border: 1px dashed var(--line-strong); gap: 6px; }
+.emp-review.on { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.emp-review textarea { min-height: 52px; }
 @media (pointer: coarse) { .org-act { opacity: 1; } }
 @media (max-width: 640px) {
   .org-row { padding-inline-start: calc(6px + var(--d, 0) * 14px); flex-wrap: wrap; }

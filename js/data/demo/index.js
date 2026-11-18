@@ -160,7 +160,7 @@ export function createAdapter() {
         : `يقوم بأعمال رئاسة الوحدة «${u.name}» في الفترة نفسها: ${emp(o.employeeId).nameAr}. أنهِ إسناده أولاً.`);
     }
   }
-  const EMP_SNAKE = { civilNo: 'civil_no', employeeNo: 'employee_no', nameAr: 'name_ar', nameEn: 'name_en', employeeId: 'employee_id', unitId: 'unit_id', typeId: 'type_id', isHead: 'is_head', startDate: 'start_date', endDate: 'end_date', isPrimary: 'is_primary', impliesHead: 'implies_head' };
+  const EMP_SNAKE = { needsReview: 'needs_review', reviewNotes: 'review_notes', civilNo: 'civil_no', employeeNo: 'employee_no', nameAr: 'name_ar', nameEn: 'name_en', employeeId: 'employee_id', unitId: 'unit_id', typeId: 'type_id', isHead: 'is_head', startDate: 'start_date', endDate: 'end_date', isPrimary: 'is_primary', impliesHead: 'implies_head' };
   const eLog = (entity, id, action, o, n) => {
     const m = (x) => (x ? Object.fromEntries(Object.entries(x).map(([k, v]) => [EMP_SNAKE[k] || ORG_SNAKE[k] || k, v === '' ? null : v ?? null])) : null);
     const od = m(o), nd = m(n);
@@ -528,18 +528,22 @@ export function createAdapter() {
       async save(e) {
         await wait(60); need('admin');
         const civilNo = digits(e.civilNo), employeeNo = digits(e.employeeNo).toUpperCase(), nameAr = oClean(e.nameAr), nameEn = oClean(e.nameEn);
-        if (!civilNo) throw err('الرقم المدني مطلوب.');
-        if (!/^[0-9]{1,20}$/.test(civilNo)) throw err(`الرقم المدني «${civilNo}» أرقام فقط (حتى 20 خانة).`);
+        const prevRow = e.id ? emp(e.id) : null;
+        let needsReview = !!e.needsReview;
+        if (!civilNo) {
+          if (!needsReview && (!prevRow || prevRow.civilNo)) throw err('الرقم المدني مطلوب.');
+          needsReview = true;   // بلا رقم مدني يبقى «تحتاج مراجعة»
+        } else if (!/^[0-9]{1,20}$/.test(civilNo)) throw err(`الرقم المدني «${civilNo}» أرقام فقط (حتى 20 خانة).`);
         if (employeeNo && !/^[0-9A-Z/-]{1,30}$/.test(employeeNo)) throw err(`الرقم الوظيفي «${employeeNo}» غير صحيح.`);
         if (!nameAr) throw err('الاسم بالعربي مطلوب.');
-        const dupC = Em().list.find((x) => x.civilNo === civilNo && x.id !== e.id);
+        const dupC = civilNo && Em().list.find((x) => x.civilNo === civilNo && x.id !== e.id);
         if (dupC) throw err(`الرقم المدني ${civilNo} مسجّل للموظف «${dupC.nameAr}».`);
         const dupN = employeeNo && Em().list.find((x) => x.employeeNo.toUpperCase() === employeeNo && x.id !== e.id);
         if (dupN) throw err(`الرقم الوظيفي ${employeeNo} مسجّل للموظف «${dupN.nameAr}».`);
         let row = e.id ? emp(e.id) : null;
         const old = row ? { ...row } : null;
         if (!row) { row = { id: ++Em().seq.emp, isActive: true }; Em().list.push(row); }
-        Object.assign(row, { civilNo, employeeNo, nameAr, nameEn });
+        Object.assign(row, { civilNo, employeeNo, nameAr, nameEn, needsReview, reviewNotes: String(e.reviewNotes ?? '').trim() });
         eLog('employee', row.id, old ? 'update' : 'insert', old, row);
         if (!old) linkUsers();
         persist(); return { ...row };
@@ -630,19 +634,25 @@ export function createAdapter() {
       },
       async import(rows, onProgress) {
         await wait(150); need('admin');
-        const sum = { created: 0, updated: 0, unchanged: 0, linked: 0 };
+        const sum = { created: 0, updated: 0, unchanged: 0, review: 0, linked: 0 };
         rows.forEach((r, i) => {
           const civilNo = digits(r.civilNo), employeeNo = digits(r.employeeNo).toUpperCase(), nameAr = oClean(r.nameAr), nameEn = oClean(r.nameEn);
-          const e = Em().list.find((x) => x.civilNo === civilNo);
+          const rev = String(r.review ?? '').trim();
+          const e = civilNo ? Em().list.find((x) => x.civilNo === civilNo)
+            : nameAr ? Em().list.find((x) => !x.civilNo && x.nameAr === nameAr && (!employeeNo || x.employeeNo.toUpperCase() === employeeNo)) : null;
           if (!e) {
-            if (!/^[0-9]{1,20}$/.test(civilNo) || !nameAr) throw err(`صف ${i + 1}: الرقم المدني والاسم بالعربي مطلوبان.`);
-            const row = { id: ++Em().seq.emp, civilNo, employeeNo, nameAr, nameEn, isActive: true };
+            const row = { id: ++Em().seq.emp, civilNo, employeeNo, nameAr: nameAr || nameEn || 'بلا اسم', nameEn, isActive: true, needsReview: !!rev || !civilNo, reviewNotes: rev };
             Em().list.push(row); eLog('employee', row.id, 'insert', null, row); sum.created++;
-          } else if ((employeeNo && employeeNo !== e.employeeNo) || (nameAr && nameAr !== e.nameAr) || (nameEn && nameEn !== e.nameEn)) {
-            const o = { ...e };
-            Object.assign(e, { employeeNo: employeeNo || e.employeeNo, nameAr: nameAr || e.nameAr, nameEn: nameEn || e.nameEn });
-            eLog('employee', e.id, 'update', o, e); sum.updated++;
-          } else sum.unchanged++;
+            if (row.needsReview) sum.review++;
+          } else {
+            const notes = !rev ? e.reviewNotes || '' : !e.reviewNotes ? rev : e.reviewNotes.includes(rev) ? e.reviewNotes : `${e.reviewNotes}\n${rev}`;
+            if ((employeeNo && employeeNo !== e.employeeNo) || (nameAr && nameAr !== e.nameAr) || (nameEn && nameEn !== e.nameEn) || notes !== (e.reviewNotes || '')) {
+              const o = { ...e };
+              Object.assign(e, { employeeNo: employeeNo || e.employeeNo, nameAr: nameAr || e.nameAr, nameEn: nameEn || e.nameEn, reviewNotes: notes, needsReview: !!e.needsReview || !!rev });
+              eLog('employee', e.id, 'update', o, e); sum.updated++;
+              if (rev) sum.review++;
+            } else sum.unchanged++;
+          }
           if ((i + 1) % 200 === 0) onProgress?.(i + 1, rows.length);
         });
         sum.linked = linkUsers();

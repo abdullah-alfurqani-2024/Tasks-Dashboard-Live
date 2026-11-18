@@ -156,6 +156,24 @@ check('رئيس القسم لا يستورد', False, """select employees_import
 
 check('حذف وحدة لها إسنادات: مرفوض', False, f"select org_delete_unit({UN('دائرة الدعم')})", contains='إسناد موظفين')
 
+# ---------- تحتاج مراجعة (20) ----------
+check('بلا رقم مدني من النموذج: مرفوض', False, "insert into employees (civil_no, name_ar) values (null, 'س')", contains='الرقم المدني مطلوب')
+check('بلا رقم مدني مع «تحتاج مراجعة»: مسموح', True,
+      "insert into employees (civil_no, name_ar, needs_review, review_notes) values (null, 'مراجعة أولى', true, 'بلا رقم مدني') returning needs_review", equals='t')
+check('الاستيراد يقبل صفوف المراجعة', True,
+      """select employees_import('[{"civil_no":null,"employee_no":"8001","name_ar":"بلا مدني","name_en":"","review":"بلا رقم مدني في الملف"},
+         {"civil_no":"9100","employee_no":"","name_ar":"رقم وظيفي مكرر","name_en":"","review":"الرقم الوظيفي 5001 مسجّل لموظف آخر"},
+         {"civil_no":"9101","employee_no":"","name_ar":"","name_en":"No Arabic","review":"بلا اسم بالعربي"}]'::jsonb)::text""",
+      contains='"review": 3')
+check('…والاسم الناقص يُملأ من الإنجليزي', True, "select name_ar || '|' || needs_review from employees where civil_no = '9101'", equals='No Arabic|true')
+check('إعادة الاستيراد لا تكرر من بلا رقم مدني', True,
+      """select employees_import('[{"civil_no":null,"employee_no":"8001","name_ar":"بلا مدني","name_en":"","review":"بلا رقم مدني في الملف"}]'::jsonb)::text;
+         select count(*) from employees where name_ar = 'بلا مدني'""", contains='"unchanged": 1')
+check('لا تُزال العلامة وهو بلا رقم مدني', True,
+      "update employees set needs_review = false where name_ar = 'بلا مدني' returning needs_review", equals='t')
+check('كتابة الرقم المدني ثم إزالة العلامة', True,
+      "update employees set civil_no = '9200', needs_review = false, review_notes = null where name_ar = 'بلا مدني' returning needs_review", equals='f')
+
 # ---------- السجل ----------
 check('السجل يشمل الموظفين والإسنادات والأنواع', True,
       "select string_agg(distinct entity, ',' order by entity) from org_audit", equals='assignment,assignment_type,employee,unit')
