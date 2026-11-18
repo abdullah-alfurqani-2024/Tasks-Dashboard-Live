@@ -50,7 +50,9 @@ function translate(status, body) {
   // دوالنا على الخادم ترجع رسالة عربية واضحة حتى مع أخطاء 5xx، فتُعرض كما هي
   if (status >= 500 && typeof body?.error === 'string' && /[\u0600-\u06FF]/.test(body.error)) return body.error;
   if (code === 'WORKER_LIMIT' || status === 546) return 'تجاوزت دالة الخادم حدود الذاكرة أو الوقت في Supabase. حاول مرة أخرى، وإن تكرر راجع سجلات الدالة.';
-  if (status >= 500) return `خطأ في الخادم (${status}). حاول لاحقاً.`;
+  if (code === '57014') return 'استغرقت العملية أطول من المهلة المسموحة في قاعدة البيانات، فأُلغيت. أعد المحاولة، وإن تكرر أخبر المطوّر.';
+  // الرمز والرسالة الأصلية تساعد في معرفة السبب
+  if (status >= 500) return `خطأ في الخادم (${status}${code ? `، ${code}` : ''}). حاول لاحقاً.${msg ? ` [${String(msg).slice(0, 160)}]` : ''}`;
   return msg || 'حدث خطأ غير متوقع.';
 }
 

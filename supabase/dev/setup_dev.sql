@@ -2814,6 +2814,7 @@ select 'جاهز' as الحالة,
 --  يُصحَّح لاحقاً من سجل الموظف، ثم تُزال العلامة.
 --    - الرقم المدني يبقى المعرّف ولا يتكرر، لكنه يجوز أن يكون فارغاً للموظف الذي يحتاج مراجعة فقط
 --      (الموظف بلا رقم مدني يبقى «تحتاج مراجعة» حتى يُكتب رقمه)
+--    - السرعة: فحوص المشغّلات بصلاحية المالك والسياسات تقرأ الدور مرة واحدة (انظر آخر الملف)
 --    - إعادة الاستيراد: الصف بلا رقم مدني يطابق الموظف صاحب رقمه الوظيفي (ولو صُحّح رقمه المدني في النظام)،
 --      وإلا موظفاً بلا رقم مدني بالاسم نفسه، فلا يتكرر
 -- =====================================================================
@@ -2822,11 +2823,13 @@ alter table support_tasks_dev.employees alter column civil_no drop not null;
 alter table support_tasks_dev.employees add column if not exists needs_review boolean not null default false;
 alter table support_tasks_dev.employees add column if not exists review_notes text;
 create index if not exists employees_review_idx on support_tasks_dev.employees (needs_review) where needs_review;
+-- مطابقة من بلا رقم مدني بالاسم عند إعادة الاستيراد
+create index if not exists employees_nocivil_name_idx on support_tasks_dev.employees (name_ar) where civil_no is null;
 
 -- قبل الحفظ (من 19): الرقم المدني الفارغ مسموح للموظف الذي يحتاج مراجعة، ويفرضها
 create or replace function support_tasks_dev.employees_before_write()
 returns trigger
-language plpgsql
+language plpgsql security definer
 set search_path = support_tasks_dev
 as $$
 declare v_other text;
@@ -2931,6 +2934,37 @@ begin
   v_l := support_tasks_dev.link_users_to_employees();
   return jsonb_build_object('created', v_c, 'updated', v_u, 'unchanged', v_s, 'review', v_r, 'linked', v_l);
 end $$;
+
+-- ---------------------------------------------------------------------
+-- السرعة: الاستيراد كان يبطؤ كلما زاد الموظفون (ويتجاوز مهلة Supabase ← خطأ 500)
+--  1) فحوص المشغّلات (التكرار والتداخل) تعمل بصلاحية المالك: ترى كل الصفوف وتستخدم الفهارس، بدل أن
+--     تمنعها سياسات RLS فيُفحص كل جدول الموظفين لكل صف مستورد
+--  2) السياسات تقرأ دور المستخدم مرة واحدة لكل استعلام: (select app_role()) بدل استدعائها لكل صف
+-- ---------------------------------------------------------------------
+alter function support_tasks_dev.employee_assignments_before_write() security definer;
+alter function support_tasks_dev.assignment_types_before_write() security definer;
+alter function support_tasks_dev.org_units_before_write() security definer;
+alter function support_tasks_dev.org_levels_before_write() security definer;
+alter function support_tasks_dev.org_units_before_delete() security definer;
+alter function support_tasks_dev.org_levels_before_delete() security definer;
+
+do $$
+declare r record;
+begin
+  for r in select * from (values
+      ('employees', 'admin'), ('employee_assignments', 'admin'), ('assignment_types', 'any'),
+      ('org_units', 'any'), ('org_levels', 'any')) as t(tbl, rd) loop
+    execute format('drop policy if exists %1$s_select on support_tasks_dev.%1$s', r.tbl);
+    execute format('create policy %1$s_select on support_tasks_dev.%1$s for select to authenticated using (%2$s)', r.tbl,
+      case r.rd when 'admin' then '(select support_tasks_dev.app_role()) = ''admin''' else '(select support_tasks_dev.app_role()) is not null' end);
+    execute format('drop policy if exists %1$s_insert on support_tasks_dev.%1$s', r.tbl);
+    execute format('create policy %1$s_insert on support_tasks_dev.%1$s for insert to authenticated with check ((select support_tasks_dev.app_role()) = ''admin'')', r.tbl);
+    execute format('drop policy if exists %1$s_update on support_tasks_dev.%1$s', r.tbl);
+    execute format('create policy %1$s_update on support_tasks_dev.%1$s for update to authenticated using ((select support_tasks_dev.app_role()) = ''admin'') with check ((select support_tasks_dev.app_role()) = ''admin'')', r.tbl);
+  end loop;
+end $$;
+drop policy if exists org_audit_select on support_tasks_dev.org_audit;
+create policy org_audit_select on support_tasks_dev.org_audit for select to authenticated using ((select support_tasks_dev.app_role()) = 'admin');
 
 -- التحقق: يجب أن يظهر سطر واحد
 select 'جاهز' as الحالة,

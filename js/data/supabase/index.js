@@ -343,14 +343,15 @@ export function createAdapter(config) {
         return toAType(rows[0]);
       },
       async deleteType(id) { await c.rpc('assignment_type_delete', { p_id: id }); },
-      /** دفعات من 500 ← المجموع */
+      /** دفعات من 250 (كل دفعة طلب مستقل تحت مهلة Supabase) ← المجموع */
       async import(rows, onProgress) {
         const sum = { created: 0, updated: 0, unchanged: 0, review: 0, linked: 0 };
-        for (let i = 0; i < rows.length; i += 500) {
-          const part = rows.slice(i, i + 500).map((r) => ({ civil_no: r.civilNo || null, employee_no: r.employeeNo || null, name_ar: r.nameAr || null, name_en: r.nameEn || null, review: r.review || null }));
+        const N = 250;
+        for (let i = 0; i < rows.length; i += N) {
+          const part = rows.slice(i, i + N).map((r) => ({ civil_no: r.civilNo || null, employee_no: r.employeeNo || null, name_ar: r.nameAr || null, name_en: r.nameEn || null, review: r.review || null }));
           const r = await c.rpc('employees_import', { p: part }).catch(empMissing);
           for (const k of Object.keys(sum)) sum[k] += r[k] || 0;
-          onProgress?.(Math.min(i + 500, rows.length), rows.length);
+          onProgress?.(Math.min(i + N, rows.length), rows.length);
         }
         return sum;
       },
