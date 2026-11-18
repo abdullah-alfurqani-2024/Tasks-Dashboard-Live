@@ -48,8 +48,9 @@ export default async function report(ctx, main) {
       <div class="field"><label for="r-type">نوع المهمة</label><select class="input" id="r-type" name="taskTypeId">${options(L.taskTypes, F.taskTypeId, 'الكل')}</select></div>
       <div class="field"><label for="r-corr">نوع المراسلة</label><select class="input" id="r-corr" name="correspondenceTypeId">${options(L.correspondenceTypes, F.correspondenceTypeId, 'الكل')}</select></div>
       <div class="field"><label for="r-st">الحالة</label><select class="input" id="r-st" name="statusId">${options(L.statuses, F.statusId, 'الكل')}</select></div>
-      <div class="field wide" data-dir hidden><label for="r-unit">الجهة الطالبة</label><div data-unit></div>
-        <label class="check small"><input type="checkbox" name="sub" ${F.sub ? 'checked' : ''}> مع الوحدات التابعة لها</label></div>
+      <div class="field wide" data-dir hidden><label for="r-unit">الجهة الطالبة</label><div data-unit></div></div>
+      <div class="field" data-dir hidden><label for="r-scope">النطاق</label>
+        <select class="input" id="r-scope" name="scope">${options([['sub', 'الوحدة وما يتبعها'], ['only', 'الوحدة فقط']], F.sub ? 'sub' : 'only')}</select></div>
       <div class="field" data-dir hidden><label for="r-group">التجميع حسب</label><select class="input" id="r-group" name="group"></select></div>
       <div class="field"><label for="r-year">السنة</label><select class="input" id="r-year" name="year">${options(years, F.year, '—')}</select></div>
       <div class="field"><label for="r-from">من</label>${dateInput({ name: 'from', id: 'r-from', value: F.from })}</div>
@@ -170,7 +171,7 @@ export default async function report(ctx, main) {
     mount(sel, options([...D.M.levels].sort((a, b) => a.levelNo - b.levelNo).map((l) => [l.id, l.name]), F.group, '— بلا تجميع —'));
     const shortPath = (u) => D.M.ancestors(u).slice(-2).map((a) => a.name).join(' ← ');
     unitPick = lookupField($('[data-unit]', root), {
-      id: 'r-unit', free: false, pickNote: 'اختر من النتائج، أو امسح للكل', placeholder: 'الكل',
+      id: 'r-unit', free: false, compact: true, placeholder: 'الكل (اكتب للبحث)',
       value: F.unitId === 'none' ? { id: null, text: '' } : { id: Number(F.unitId) || null, text: D.M.unit.get(Number(F.unitId))?.name || '' },
       search: (q) => D.searchUnits(q, 30).map((u) => ({ id: u.id, label: u.name, badge: D.M.level.get(u.levelId)?.name || '', sub: shortPath(u) })),
       describe: (id) => (D.M.unit.get(id) ? { sub: [D.M.level.get(D.M.unit.get(id).levelId)?.name, shortPath(D.M.unit.get(id))].filter(Boolean).join(' · ') } : null),
@@ -201,6 +202,7 @@ export default async function report(ctx, main) {
   form.addEventListener('change', (e) => {
     const n = e.target.name;
     F = { ...F, ...formData(form) };
+    F.sub = F.scope !== 'only'; delete F.scope;
     if (n === 'year' && F.year) { F.from = `${F.year}-01-01`; F.to = `${F.year}-12-31`; form.elements.from.value = F.from; form.elements.to.value = F.to; }
     if (n === 'from' || n === 'to') { F.year = ''; form.elements.year.value = ''; }
     save();
@@ -210,7 +212,7 @@ export default async function report(ctx, main) {
   on(root, 'click', '[data-gunit]', (e, tr) => {
     const k = tr.dataset.gunit;
     F.unitId = k === 'none' ? 'none' : k; F.sub = true;
-    form.elements.sub.checked = true;
+    form.elements.scope.value = 'sub';
     unitPick?.set(k === 'none' ? { id: null, text: '' } : { id: Number(k), text: D.M.unit.get(Number(k))?.name || '' });
     save(); load();
     toastNote(k === 'none' ? 'المهام غير المربوطة بالهيكل فقط. امسح حقل «الجهة الطالبة» للكل.' : null);

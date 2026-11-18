@@ -218,6 +218,8 @@ body.acting .topbar { box-shadow: inset 0 -3px 0 #b45309; }
   background: var(--surface); min-height: 40px;
 }
 textarea.input { min-height: 84px; resize: vertical; }
+/* حقول السطر الواحد والقوائم بارتفاع واحد، فتتحاذى في الصف الواحد */
+input.input, select.input { height: 42px; }
 .input:focus { border-color: var(--brand); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent); }
 .input[readonly], .input:disabled { background: var(--surface-2); color: var(--muted); }
 .field.invalid .input { border-color: var(--bad); }

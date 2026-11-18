@@ -6,7 +6,7 @@
  *
  * lookupField(el, { id, value: { id, text }, placeholder, disabled,
  *   search(q) → [item], recent() → [item], item: { id, label, sub?, badge? }, describe(id) → { label, sub } | null,
- *   free: boolean, freeNote, searchOnFocus (البحث بالنص المكتوب عند التركيز), onChange({ id, text }, picked: item|null) })
+ *   free: boolean, freeNote, compact (بلا سطر تحته), searchOnFocus (البحث بالنص المكتوب عند التركيز), onChange({ id, text }, picked: item|null) })
  *   ← { get value(), set({ id, text }), setFree(bool) }
  */
 import { html, mount, $, on, debounce } from '../core/dom.js';
@@ -21,8 +21,10 @@ export function lookupField(el, opts) {
     <input class="input" id="${id}" value="${cur.text}" autocomplete="off" maxlength="300" placeholder="${placeholder}" ${disabled ? 'disabled' : ''}
       role="combobox" aria-autocomplete="list" aria-expanded="false">
     <div class="lk-list" role="listbox" hidden></div></div>
-    <div class="lk-state small" aria-live="polite"></div></div>`);
-  const input = $('input', el), list = $('.lk-list', el), state = $('.lk-state', el);
+    ${opts.compact ? '' : html`<div class="lk-state small" aria-live="polite"></div>`}</div>`);
+  const input = $('input', el), list = $('.lk-list', el);
+  // compact: بلا سطر تحت الحقل (في صف التصفية)، والوصف عند المرور على الحقل
+  const state = $('.lk-state', el) || document.createElement('div');
 
   function drawState() {
     const d = cur.id ? describe(cur.id) : null;
@@ -35,6 +37,7 @@ export function lookupField(el, opts) {
     } else mount(state, '');
     input.classList.toggle('lk-linked', !!d);
     state.title = state.textContent.trim();   // السطر يُختصر بـ«…» إن طال، والنص كاملاً عند المرور عليه
+    if (opts.compact) input.title = d?.sub || '';
   }
 
   function close() { list.hidden = true; input.setAttribute('aria-expanded', 'false'); active = -1; }
