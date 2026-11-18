@@ -12,7 +12,14 @@ import { modal, busy, toast, confirmBox, toastError } from './feedback.js';
 import { options } from './parts.js';
 import { icon } from './icons.js';
 import { dateInput } from './dateField.js';
+import { lookupField } from './lookupField.js';
+import { directory, recent, pushRecent } from '../core/directory.js';
 
+/** أسباب «تحتاج مراجعة» من الربط: نص حر لم يُربط بالهيكل أو بقائمة الموظفين */
+export const linkReasons = (t) => [
+  t.requester && !t.requesterUnitId ? `الجهة الطالبة «${t.requester}» ليست من الهيكل التنظيمي` : '',
+  t.employeeName && !t.employeeId ? `الموظف «${t.employeeName}» غير مسجّل في قائمة الموظفين` : '',
+].filter(Boolean);
 const kindOf = (statusId) => state.lookups.statuses.find((s) => s.id === Number(statusId))?.kind;
 // «نوع المراسلة» يخص نوع المهمة «مراسلة» فقط (يُعرف بالاسم في قائمة أنواع المهام)
 const isCorrType = (taskTypeId) => normalizeAr(state.lookups.taskTypes.find((x) => x.id === Number(taskTypeId))?.name || '').startsWith(normalizeAr('مراسل'));
@@ -39,6 +46,7 @@ export function openTaskForm({ task = null, copyOf = null, requesters = [], onSa
     ...fresh,
     engineerId: can('tasks.assign') ? copyOf.engineerId : state.user.id,
     requester: copyOf.requester, employeeName: copyOf.employeeName, subject: copyOf.subject,
+    requesterUnitId: copyOf.requesterUnitId, employeeId: copyOf.employeeId,
     taskTypeId: copyOf.taskTypeId, correspondenceTypeId: copyOf.correspondenceTypeId,
     priority: copyOf.priority, notes: copyOf.notes,
   } : fresh);
@@ -56,6 +64,11 @@ export function openTaskForm({ task = null, copyOf = null, requesters = [], onSa
       ${editable ? html`<label class="check" style="margin-top:8px"><input type="checkbox" id="t-reviewed"> <b>تمت المراجعة</b>: أصلحت ما يلزم، وتُزال العلامة عند الحفظ</label>
         <div class="small muted">يمكنك الحفظ دون هذا الاختيار لإصلاح جزء، وتبقى المهمة في «تحتاج مراجعة».</div>` : ''}
     </div>` : ''}
+    ${!isNew && t.needsLink ? html`<div class="alert warn" style="margin-bottom:14px" id="t-link">
+      <b>تحتاج مراجعة</b>:
+      <ul style="margin:6px 0 0;padding-inline-start:20px">${linkReasons(t).map((x) => html`<li>${x}</li>`)}</ul>
+      ${editable ? html`<div class="small" style="margin-top:6px">اخترها من القائمة في الحقل لتُربط، وتُزال العلامة عند الحفظ. إن لم تكن في القائمة فمدير النظام يضيفها.</div>` : ''}
+    </div>` : ''}
     <form class="form-grid" novalidate id="task-form">
       ${can('tasks.assign') ? html`
         <div class="field span-2"><label for="t-eng">${LABEL.engineerId} <span class="req">*</span></label>
@@ -65,13 +78,11 @@ export function openTaskForm({ task = null, copyOf = null, requesters = [], onSa
         : !isNew && t.engineerId !== state.user.id ? html`<div class="field span-2"><span class="label">${LABEL.engineerId}</span><div>${t.engineerName}</div></div>` : ''}
       <div class="field span-2"><label for="t-subject">${LABEL.subject} <span class="req">*</span></label>
         <textarea class="input" id="t-subject" name="subject" rows="2" maxlength="2000" required ${dis}>${t.subject || ''}</textarea></div>
+      <div class="field" data-f="requester"><label for="t-req">${LABEL.requester}</label><div data-req></div></div>
+      <div class="field" data-f="employeeName"><label for="t-emp">${LABEL.employeeName}</label><div data-emp></div></div>
+      ${editable ? html`<div class="span-2 small muted" data-link-hint style="margin-top:-6px">الجهة الطالبة أو اسم الموظف، أحدهما على الأقل. اختيار الموظف يملأ الجهة من وحدته في تاريخ الاستقبال.</div>` : ''}
       <div class="field"><label for="t-ref">${LABEL.refNo}</label>
         <input class="input" id="t-ref" name="refNo" value="${t.refNo || ''}" maxlength="100" ${dis}></div>
-      <div class="field"><label for="t-req">${LABEL.requester}</label>
-        <input class="input" id="t-req" name="requester" value="${t.requester || ''}" list="dl-req" maxlength="300" autocomplete="off" ${dis}>
-        <datalist id="dl-req">${requesters.slice(0, 300).map((r) => html`<option value="${r}">`)}</datalist></div>
-      <div class="field"><label for="t-emp">${LABEL.employeeName}</label>
-        <input class="input" id="t-emp" name="employeeName" value="${t.employeeName || ''}" maxlength="300" ${dis}></div>
       <div class="field"><label for="t-prio">${LABEL.priority}</label>
         <select class="input" id="t-prio" name="priority" ${dis}>${options(Object.entries(PRIORITY_LABELS), t.priority || 'normal')}</select></div>
       <div class="field"><label for="t-type">${LABEL.taskTypeId}</label>
@@ -111,6 +122,48 @@ export function openTaskForm({ task = null, copyOf = null, requesters = [], onSa
   const errBox = $('#t-err', m.el);
   const f = (n) => form.elements[n];
 
+  /* ───── الجهة الطالبة واسم الموظف: من الهيكل وقائمة الموظفين ───── */
+  let D = null;           // الدليل بعد تحميله
+  let autoUnit = false;   // الجهة مملوءة تلقائياً من وحدة الموظف (تتبع تغيير الموظف أو التاريخ)
+  const free = state.settings?.allowUnlisted !== false;
+  const uid = state.user.id;
+  /** مسار قصير: أقرب وحدتين أعلى */
+  const shortPath = (u) => D.M.ancestors(u).slice(-2).map((a) => a.name).join(' ← ');
+  const unitItem = (u) => ({ id: u.id, label: u.name, badge: D.M.level.get(u.levelId)?.name || '', sub: shortPath(u) || 'وحدة رئيسية' });
+  const unitDesc = (id) => { const u = D.M.unit.get(id); if (!u) return null; const lv = D.M.level.get(u.levelId)?.name || ''; return { sub: [lv, shortPath(u)].filter(Boolean).join(' · ') }; };
+  const empUnitName = (e) => D.unitAt(e.id, f('receivedDate').value || today())?.name || '';
+  const empItem = (e) => ({ id: e.id, label: e.nameAr, sub: [e.employeeNo, empUnitName(e)].filter(Boolean).join(' · ') });
+  const req = lookupField($('[data-req]', m.el), {
+    id: 't-req', value: { id: t.requesterUnitId, text: t.requester }, disabled: !editable, free,
+    placeholder: 'اكتب للبحث في الهيكل…', freeNote: 'ليست في الهيكل: تُحفظ نصاً، والمهمة «تحتاج مراجعة»',
+    search: (q) => (D ? D.searchUnits(q).map(unitItem) : []),
+    recent: () => (D ? recent('unit', uid).map((id) => D.M.unit.get(id)).filter((u) => u?.isActive).map(unitItem) : []),
+    describe: (id) => (D ? unitDesc(id) : { sub: 'من الهيكل' }),
+    onChange: () => { autoUnit = false; syncLinkHint(); },
+  });
+  const emp = lookupField($('[data-emp]', m.el), {
+    id: 't-emp', value: { id: t.employeeId, text: t.employeeName }, disabled: !editable, free,
+    placeholder: 'اكتب الاسم أو الرقم الوظيفي…', freeNote: 'غير مسجّل في قائمة الموظفين: يُحفظ نصاً، والمهمة «تحتاج مراجعة»',
+    search: (q) => (D ? D.searchEmployees(q).map(empItem) : []),
+    recent: () => (D ? recent('emp', uid).map((id) => D.emp.get(id)).filter((e) => e?.isActive).map(empItem) : []),
+    describe: (id) => (D ? (D.emp.get(id) ? { sub: [D.emp.get(id).employeeNo, empUnitName(D.emp.get(id))].filter(Boolean).join(' · ') || 'مسجّل' } : null) : { sub: 'مسجّل' }),
+    onChange: (v, picked) => { if (picked) fillUnitFromEmployee(); syncLinkHint(); },
+  });
+  /** اختيار الموظف: الجهة من وحدته في تاريخ الاستقبال، إن كانت فارغة أو مملوءة تلقائياً من قبل */
+  function fillUnitFromEmployee() {
+    const e = emp.value;
+    if (!D || !e.id || (req.value.text && !autoUnit)) return;
+    const u = D.unitAt(e.id, f('receivedDate').value || today());
+    if (!u) { if (autoUnit) req.set({ id: null, text: '' }); autoUnit = false; return; }
+    req.set({ id: u.id, text: u.name });
+    autoUnit = true;
+  }
+  function syncLinkHint() { form.querySelectorAll('[data-f]').forEach((x) => x.classList.remove('invalid')); }
+  if (editable) {
+    directory().then((d) => { D = d; req.set(req.value.id && !d.M.unit.get(req.value.id) ? { id: null, text: req.value.text } : req.value); emp.set(emp.value); })
+      .catch((e) => { const h = $('[data-link-hint]', m.el); if (h) { h.textContent = `تعذّر تحميل الهيكل وقائمة الموظفين (${e.message}) — يُكتب الحقلان نصاً.`; h.style.color = 'var(--warn)'; } });
+  } else directory().then((d) => { D = d; req.set(req.value); emp.set(emp.value); }).catch(() => {});
+
   // المهمة المستوردة تُعرض كما في الملف: لا نمسح تاريخ انتهائها عند الفتح حتى لو كانت حالتها مفتوحة
   let keepAsIs = !isNew && !!t.reviewReasons?.length;
   // نوع المراسلة يظهر مع «مراسلة» فقط. المهمة المستوردة التي تنتظر المراجعة تُعرض قيمتها كما في الملف
@@ -137,6 +190,7 @@ export function openTaskForm({ task = null, copyOf = null, requesters = [], onSa
     box.style.color = dur != null && (dur < 0 || dur > delayDays) ? 'var(--bad)' : '';
   }
   form.addEventListener('change', (e) => {
+    if (e.target.name === 'receivedDate' && autoUnit) fillUnitFromEmployee();
     if (e.target.name === 'statusId') keepAsIs = false;
     if (e.target.name === 'statusId' && kindOf(e.target.value) === 'done' && !f('completedDate').value) f('completedDate').value = today();
     sync();
@@ -155,6 +209,10 @@ export function openTaskForm({ task = null, copyOf = null, requesters = [], onSa
     if (kind === 'done' && !v.completedDate) return ['completedDate', 'المهمة المكتملة تحتاج تاريخ الانتهاء.'];
     if (v.completedDate && v.completedDate < v.receivedDate) return ['completedDate', 'تاريخ الانتهاء قبل تاريخ الاستقبال.'];
     if (v.receivedDate > today()) return ['receivedDate', 'تاريخ الاستقبال في المستقبل.'];
+    const r = req.value, e = emp.value;
+    if (!r.text && !e.text && (isNew || t.requester || t.employeeName)) return ['requester', 'حدّد الجهة الطالبة أو اسم الموظف (أحدهما على الأقل).'];
+    if (!free && D && r.text && !r.id && r.text !== (t.requester || '')) return ['requester', 'اختر الجهة الطالبة من الهيكل التنظيمي.'];
+    if (!free && D && e.text && !e.id && e.text !== (t.employeeName || '')) return ['employeeName', 'اختر اسم الموظف من قائمة الموظفين.'];
     return null;
   }
 
@@ -167,14 +225,18 @@ export function openTaskForm({ task = null, copyOf = null, requesters = [], onSa
     const bad = stillFlagged ? (can('tasks.assign') && !v.engineerId ? ['engineerId', 'اختر المهندس.'] : !v.statusId ? ['statusId', 'اختر الحالة.'] : null) : validate(v);
     if (bad) {
       errBox.textContent = bad[1]; errBox.hidden = false;
-      f(bad[0])?.closest('.field')?.classList.add('invalid');
-      f(bad[0])?.focus();
+      const lk = { requester: req, employeeName: emp }[bad[0]];
+      (lk ? lk.input : f(bad[0]))?.closest('.field')?.classList.add('invalid');
+      (lk ? lk.input : f(bad[0]))?.focus();
       return;
     }
     errBox.hidden = true;
     const input = {
       engineerId: can('tasks.assign') ? v.engineerId : undefined,
-      refNo: v.refNo, requester: v.requester, employeeName: v.employeeName, subject: v.subject,
+      refNo: v.refNo, subject: v.subject,
+      requester: req.value.text, employeeName: emp.value.text,
+      // قبل تحميل الدليل لا يُرسل الربط (يبقى كما هو)
+      ...(D ? { requesterUnitId: req.value.id || null, employeeId: emp.value.id || null } : {}),
       receivedDate: v.receivedDate || null, completedDate: v.completedDate || null, notes: v.notes,
       taskTypeId: v.taskTypeId ? Number(v.taskTypeId) : null,
       // غير «مراسلة»: تُمسح عند الحفظ، إلا في مهمة مستوردة تنتظر المراجعة فتبقى كما في الملف
@@ -185,6 +247,8 @@ export function openTaskForm({ task = null, copyOf = null, requesters = [], onSa
     await busy(btn, async () => {
       try {
         const saved = isNew ? await db.tasks.create(input) : await db.tasks.update(t.id, input);
+        pushRecent('unit', uid, input.requesterUnitId); pushRecent('emp', uid, input.employeeId);
+        if (t.needsLink && !saved?.needsLink) refreshReviewCount();
         toast(isNew ? `أُضيفت المهمة #${saved.id}.` : input.reviewReasons ? 'تم الحفظ وأُزيلت علامة المراجعة.' : 'تم حفظ التعديلات.', 'ok');
         if (input.reviewReasons) refreshReviewCount();
         m.close();

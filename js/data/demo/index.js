@@ -181,6 +181,7 @@ export function createAdapter() {
   const purgeOrg = () => {
     const r = { units: O().units.length, assignments: Em().asg.length };
     O().units = []; Em().asg = [];
+    db.tasks.forEach((t) => { t.requesterUnitId = null; });
     O().audit = O().audit.filter((a) => a.entity !== 'unit' && a.entity !== 'assignment');
     O().audit.unshift({ id: ++O().seq.audit, entity: 'unit', entityId: 0, action: 'delete', changedBy: me?.id || null, changedAt: new Date().toISOString(),
       changedFields: null, oldData: null, newData: { name: 'حذف الهيكل', units: r.units, assignments: r.assignments } });
@@ -195,6 +196,9 @@ export function createAdapter() {
     return {
       ...t, reviewReasons: t.reviewReasons || [], priority: t.priority || 'normal', engineerName: u.fullName, engineerShort: u.shortName,
       taskCode: t.taskCode || '', enteredAt: t.enteredAt || t.createdAt, importedAt: t.importedAt || null,
+      requester: (t.requesterUnitId && oUnit(t.requesterUnitId)?.name) || t.requester || '',
+      requesterUnitId: t.requesterUnitId || null, employeeId: t.employeeId || null,
+      needsLink: !!((t.requester && !t.requesterUnitId) || (t.employeeName && !t.employeeId)),
       taskType: lk('taskTypes', t.taskTypeId)?.name || '', correspondenceType: lk('correspondenceTypes', t.correspondenceTypeId)?.name || '',
       status: st.name, statusKind: st.kind,
       durationDays: t.completedDate && t.receivedDate ? Math.round((Date.parse(t.completedDate) - Date.parse(t.receivedDate)) / 864e5) : null,
@@ -228,6 +232,41 @@ export function createAdapter() {
     taskTypeId: Number(t.taskTypeId) || null, correspondenceTypeId: Number(t.correspondenceTypeId) || null, statusId: Number(t.statusId), delayReason: t.delayReason?.trim() || '',
     ...(t.priority !== undefined ? { priority: t.priority === 'urgent' ? 'urgent' : 'normal' } : {}),
   });
+  /** قواعد ربط الجهة والموظف (مثل 23_task_links.sql): row المهمة بعد التعديل، before قبله (أو null)، input المُرسل */
+  function applyLinks(row, input, before, asIs) {
+    const unitName = (id) => oUnit(id)?.name;
+    if (input.requesterUnitId !== undefined) row.requesterUnitId = input.requesterUnitId || null;
+    else if (before?.requesterUnitId) {
+      if (row.requester === unitName(before.requesterUnitId)) row.requester = before.requester;
+      else if (row.requester !== before.requester) row.requesterUnitId = null;
+    }
+    if (input.employeeId !== undefined) row.employeeId = input.employeeId || null;
+    else if (before?.employeeId && row.employeeName !== before.employeeName && row.employeeName !== emp(before.employeeId)?.nameAr) row.employeeId = null;
+    if (row.employeeId && row.employeeId !== before?.employeeId) {
+      const e = emp(row.employeeId);
+      if (!e) throw err('الموظف غير موجود في قائمة الموظفين.');
+      if (!e.isActive) throw err(`الموظف «${e.nameAr}» غير نشط؛ اختر موظفاً آخر.`);
+      row.employeeName = e.nameAr;
+      if (!row.requesterUnitId && !row.requester) {
+        const d = row.receivedDate || today();
+        const a = Em().asg.filter((x) => x.employeeId === e.id && x.startDate <= d && (!x.endDate || x.endDate >= d))
+          .sort((x, y) => (aType(y.typeId)?.isPrimary ? 1 : 0) - (aType(x.typeId)?.isPrimary ? 1 : 0) || y.startDate.localeCompare(x.startDate))[0];
+        row.requesterUnitId = a?.unitId || null;
+      }
+    }
+    if (row.requesterUnitId && row.requesterUnitId !== before?.requesterUnitId) {
+      const u = oUnit(row.requesterUnitId);
+      if (!u) throw err('الجهة الطالبة غير موجودة في الهيكل التنظيمي.');
+      if (!u.isActive) throw err(`الوحدة «${u.name}» معطّلة؛ اختر وحدة أخرى.`);
+      row.requester = u.name;
+    }
+    if (asIs) return;
+    if (!normalizeSettings(db.settings).allowUnlisted) {
+      if (row.requester && !row.requesterUnitId && (!before || row.requester !== before.requester)) throw err('اختر الجهة الطالبة من الهيكل التنظيمي.');
+      if (row.employeeName && !row.employeeId && (!before || row.employeeName !== before.employeeName)) throw err('اختر اسم الموظف من قائمة الموظفين.');
+    }
+    if (!row.requester && !row.employeeName && (!before || before.requester || before.employeeName)) throw err('حدّد الجهة الطالبة أو اسم الموظف (أحدهما على الأقل).');
+  }
   /** رمز مهمة تُنشأ في النظام: رمز المهندس + S + تسلسل (A08-S0001)، أو S-00001 لمهندس بلا رمز. لا يُعاد رقم */
   const nextCode = (engineerId) => {
     const ec = db.users.find((u) => u.id === engineerId)?.engineerCode;
@@ -307,7 +346,7 @@ export function createAdapter() {
           if ((f.from || f.to) && !t.receivedDate) return false;
           if (f.from && t.receivedDate < f.from) return false;
           if (f.to && t.receivedDate > f.to) return false;
-          if (f.review && !t.reviewReasons?.length) return false;
+          if (f.review && !t.reviewReasons?.length && !view(t).needsLink) return false;
           return true;
         }).map(view).sort((a, b) => (b.receivedDate || '9999').localeCompare(a.receivedDate || '9999') || b.id - a.id);
       },
@@ -319,6 +358,7 @@ export function createAdapter() {
         const now = new Date().toISOString();
         const engineerId = role() === 'engineer' ? me.id : input.engineerId || me.id;
         const row = { id: ++db.seq.task, engineerId, ...t, taskCode: nextCode(engineerId), enteredAt: now, createdAt: now, createdBy: me.id, updatedAt: now, updatedBy: me.id, deletedAt: null, deletedBy: null };
+        applyLinks(row, input, null, false);
         db.tasks.push(row);
         audit(row.id, 'insert', null, row);
         persist();
@@ -335,6 +375,8 @@ export function createAdapter() {
         validate(t, input.reviewReasons !== undefined ? !!input.reviewReasons?.length : !!row.reviewReasons?.length);
         const before = { ...row };
         Object.assign(row, t, { updatedAt: new Date().toISOString(), updatedBy: me.id });
+        try { applyLinks(row, input, before, input.reviewReasons !== undefined ? !!input.reviewReasons?.length : !!before.reviewReasons?.length); }
+        catch (e) { Object.keys(row).forEach((k) => delete row[k]); Object.assign(row, before); throw e; }
         if (input.engineerId && role() !== 'engineer') row.engineerId = input.engineerId;
         // أسباب المراجعة: يضعها الاستيراد فقط، والمسح = «تمت المراجعة»
         if (input.reviewReasons !== undefined) {
@@ -349,7 +391,31 @@ export function createAdapter() {
       async reviewCount() {
         await wait(20);
         if (!me) return 0;
-        return db.tasks.filter((t) => t.reviewReasons?.length && !t.deletedAt && (role() !== 'engineer' || t.engineerId === me.id)).length;
+        return db.tasks.filter((t) => (t.reviewReasons?.length || view(t).needsLink) && !t.deletedAt && (role() !== 'engineer' || t.engineerId === me.id)).length;
+      },
+      async linkTexts() {
+        await wait(80); need('admin');
+        const group = (key, idKey) => {
+          const m = new Map();
+          for (const t of db.tasks) if (t[key] && !t[idKey]) m.set(t[key], (m.get(t[key]) || 0) + 1);
+          return [...m].map(([text, n]) => ({ text, n })).sort((a, b) => b.n - a.n || a.text.localeCompare(b.text, 'ar'));
+        };
+        return { requesters: group('requester', 'requesterUnitId'), employees: group('employeeName', 'employeeId'),
+          linkedUnits: db.tasks.filter((t) => t.requesterUnitId).length, linkedEmployees: db.tasks.filter((t) => t.employeeId).length, tasks: db.tasks.length };
+      },
+      async linkApply(items, onProgress) {
+        await wait(120); need('admin');
+        const bad = items.find((x) => (x.kind === 'unit' ? !oUnit(x.id) : !emp(x.id)));
+        if (bad) throw err(`«${bad.text}»: الوحدة أو الموظف غير موجود. حدّث الصفحة.`);
+        const sum = { units: 0, employees: 0 };
+        const U = new Map(items.filter((x) => x.kind === 'unit').map((x) => [x.text, x.id]));
+        const E = new Map(items.filter((x) => x.kind === 'employee').map((x) => [x.text, x.id]));
+        for (const t of db.tasks) {
+          if (t.requester && !t.requesterUnitId && U.has(t.requester)) { t.requesterUnitId = U.get(t.requester); sum.units++; }
+          if (t.employeeName && !t.employeeId && E.has(t.employeeName)) { t.employeeId = E.get(t.employeeName); sum.employees++; }
+        }
+        onProgress?.(items.length, items.length);
+        persist(); return sum;
       },
       async remove(id) {
         need('admin');
@@ -525,6 +591,8 @@ export function createAdapter() {
         const row = oUnit(id);
         if (!row) throw err('الوحدة غير موجودة.');
         if (O().units.some((x) => x.parentId === id)) throw err(`لا يمكن حذف «${row.name}» لأن تحتها وحدات. احذف الوحدات التابعة أولاً، أو عطّل الوحدة.`);
+        const nt = db.tasks.filter((t) => t.requesterUnitId === id).length;
+        if (nt) throw err(`لا يمكن حذف «${row.name}» لأنها الجهة الطالبة في ${nt} مهمة؛ عطّلها بدلاً من حذفها.`);
         O().units = O().units.filter((x) => x.id !== id);
         oLog('unit', id, 'delete', row, null);
         persist();
@@ -700,6 +768,14 @@ export function createAdapter() {
         persist(); return sum;
       },
       async linkUsers() { await wait(60); need('admin'); const n = linkUsers(); persist(); return n; },
+      async directory() {
+        await wait(60);
+        if (!me) throw err('سجّل الدخول أولاً.');
+        return {
+          employees: Em().list.map((e) => ({ id: e.id, nameAr: e.nameAr, employeeNo: e.employeeNo || '', isActive: e.isActive })).sort((a, b) => a.nameAr.localeCompare(b.nameAr, 'ar')),
+          assignments: Em().asg.map((a) => ({ employeeId: a.employeeId, unitId: a.unitId, startDate: a.startDate, endDate: a.endDate || null, isPrimary: !!aType(a.typeId)?.isPrimary })),
+        };
+      },
       async assignBulk(items, { date, transfer = true } = {}, onProgress) {
         await wait(150); need('admin');
         if (!date) throw err('تاريخ بداية الإسناد مطلوب.');
@@ -746,6 +822,7 @@ export function createAdapter() {
         const r = { employees: Em().list.length, assignments: Em().asg.length, users: db.users.filter((u) => u.employeeId).length };
         db.users.forEach((u) => { u.employeeId = null; });
         Em().list = []; Em().asg = [];
+        db.tasks.forEach((t) => { t.employeeId = null; });
         O().audit = O().audit.filter((a) => a.entity !== 'employee' && a.entity !== 'assignment');
         O().audit.unshift({ id: ++O().seq.audit, entity: 'employee', entityId: 0, action: 'delete', changedBy: me?.id || null, changedAt: new Date().toISOString(),
           changedFields: null, oldData: null, newData: { name_ar: 'حذف كل الموظفين', employees: r.employees, assignments: r.assignments } });

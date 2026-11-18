@@ -85,3 +85,12 @@ TEST_DB=td TEST_SCHEMA=support_tasks_dev python3 supabase/tests/run_org_import_t
 ```bash
 TEST_DB=td TEST_SCHEMA=support_tasks_dev python3 supabase/tests/run_assign_import_tests.py
 ```
+
+## اختبارات ربط المهام بالهيكل والموظفين (2.1.0-dev.14)
+`run_task_link_tests.py` يختبر `supabase/dev/sql/23_task_links.sql` (45 حالة): الجهة والموظف من القائمتين، وملء الجهة من وحدة الموظف بتاريخ المهمة،
+وأحد الحقلين، والنص الحر بالإعداد، وفك الربط عند كتابة نص آخر، ودليل الموظفين بلا الرقم المدني، والربط الجماعي دون تغيير «آخر تعديل»،
+وفك الربط عند حذف الهيكل أو الموظفين. `run_dev_tests.py` يملأ «الجهة الطالبة» افتراضياً في اختباراته بعد 23.
+
+```bash
+TEST_DB=td TEST_SCHEMA=support_tasks_dev python3 supabase/tests/run_task_link_tests.py
+```

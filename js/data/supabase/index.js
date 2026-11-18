@@ -6,7 +6,7 @@ import { normalizeSettings } from '../../core/settings.js';
 import { latinDigits as latin } from '../../core/format.js';
 import { CONFIG } from '../../config.js';
 
-const TASK_COLS = 'id,engineer_id,engineer_name,engineer_short,ref_no,requester,employee_name,subject,received_date,completed_date,notes,task_type_id,task_type,correspondence_type_id,correspondence_type,status_id,status,status_kind,delay_reason,duration_days,created_at,created_by,updated_at,updated_by,deleted_at,deleted_by,review_reasons,priority,task_code,entered_at,imported_at';
+const TASK_COLS = 'id,engineer_id,engineer_name,engineer_short,ref_no,requester,employee_name,subject,received_date,completed_date,notes,task_type_id,task_type,correspondence_type_id,correspondence_type,status_id,status,status_kind,delay_reason,duration_days,created_at,created_by,updated_at,updated_by,deleted_at,deleted_by,review_reasons,priority,task_code,entered_at,imported_at,requester_unit_id,employee_id,needs_link';
 const LOOKUP_TABLES = { taskTypes: 'task_types', correspondenceTypes: 'correspondence_types', statuses: 'task_statuses' };
 
 const INTERNAL = '@tasks.internal';
@@ -28,7 +28,16 @@ const toTask = (r) => ({
   deletedAt: r.deleted_at, deletedBy: r.deleted_by, reviewReasons: r.review_reasons || [], priority: r.priority || 'normal',
   // رمز المهمة (16_task_code.sql)، وتاريخ الإدخال: من Sheets للمستوردة، وإلا وقت الإضافة
   taskCode: r.task_code || '', enteredAt: r.entered_at || r.created_at, importedAt: r.imported_at || null,
+  // الربط بالهيكل والموظفين (dev/sql/23_task_links.sql)؛ needsLink: نص حر غير مربوط ← «تحتاج مراجعة»
+  requesterUnitId: r.requester_unit_id ?? null, employeeId: r.employee_id ?? null, needsLink: !!r.needs_link,
 });
+/** أعمدة الربط غير موجودة بعد */
+const linksMissing = (e) => {
+  if (e?.code === '42703' || e?.code === 'PGRST204' || ['PGRST202', '42883'].includes(e?.code)) {
+    throw new ApiError('ربط المهام بالهيكل والموظفين غير مجهّز في قاعدة بيانات هذه النسخة: نفّذ ملف supabase/dev/sql/23_task_links.sql في SQL Editor.', e.status, e.code);
+  }
+  throw e;
+};
 
 const toLevel = (r) => ({ id: r.id, name: r.name, levelNo: r.level_no, headTitle: r.head_title || '', isActive: r.is_active });
 const toUnit = (r) => ({
@@ -84,6 +93,9 @@ function taskRow(t) {
     status_id: t.statusId, delay_reason: t.delayReason || null,
   };
   if (t.engineerId) row.engineer_id = t.engineerId;
+  // الوحدة والموظف من القائمتين (غير مرسلَين = بلا تغيير)
+  if (t.requesterUnitId !== undefined) row.requester_unit_id = t.requesterUnitId || null;
+  if (t.employeeId !== undefined) row.employee_id = t.employeeId || null;
   // الاستيراد يسجّل المهمة باسم مهندسها (تقبله قاعدة البيانات من مدير النظام فقط)
   if (t.createdBy) row.created_by = t.createdBy;
   if (t.priority !== undefined) row.priority = t.priority === 'urgent' ? 'urgent' : 'normal';
@@ -137,7 +149,7 @@ export function createAdapter(config) {
   }
 
   const getTask = async (id) => {
-    const rows = await c.select('v_tasks', { id: `eq.${id}`, select: TASK_COLS });
+    const rows = await c.select('v_tasks', { id: `eq.${id}`, select: TASK_COLS }).catch(linksMissing);
     return rows[0] ? toTask(rows[0]) : null;
   };
 
@@ -182,7 +194,8 @@ export function createAdapter(config) {
         if (f.engineerId) q.engineer_id = `eq.${f.engineerId}`;
         if (f.statusId) q.status_id = `eq.${f.statusId}`;
         if (f.taskTypeId) q.task_type_id = `eq.${f.taskTypeId}`;
-        if (f.review) q.review_reasons = 'not.is.null';
+        // تحتاج مراجعة: من الاستيراد، أو جهة/موظف بنص حر غير مربوط
+        if (f.review) q.or = '(review_reasons.not.is.null,needs_link.is.true)';
         if (f.correspondenceTypeId) q.correspondence_type_id = `eq.${f.correspondenceTypeId}`;
         if (f.from) and.push(`received_date.gte.${f.from}`);
         if (f.to) and.push(`received_date.lte.${f.to}`);
@@ -190,7 +203,7 @@ export function createAdapter(config) {
         const del = f.deleted || 'exclude';
         if (del === 'exclude') q.deleted_at = 'is.null';
         else if (del === 'only') q.deleted_at = 'not.is.null';
-        return (await c.selectAll('v_tasks', q)).map(toTask);
+        return (await c.selectAll('v_tasks', q).catch(linksMissing)).map(toTask);
       },
       async create(t) {
         const [row] = await c.insert('tasks', taskRow(t));
@@ -203,8 +216,20 @@ export function createAdapter(config) {
       },
       /** عدد المهام التي تحتاج مراجعة (المهندس: مهامه فقط حسب الصلاحيات) */
       async reviewCount() {
-        const rows = await c.selectAll('tasks', { select: 'id', review_reasons: 'not.is.null', deleted_at: 'is.null' });
+        const rows = await c.selectAll('v_tasks', { select: 'id', or: '(review_reasons.not.is.null,needs_link.is.true)', deleted_at: 'is.null' }).catch(linksMissing);
         return rows.length;
+      },
+      /** النصوص غير المربوطة (مدير النظام) ← { requesters: [{ text, n }], employees: [{ text, n }], linkedUnits, linkedEmployees, tasks } */
+      async linkTexts() { return c.rpc('tasks_link_texts').catch(linksMissing); },
+      /** ربط المهام بالنص نفسه: [{ kind: 'unit'|'employee', text, id }] ← { units, employees }. دفعات من 500 */
+      async linkApply(items, onProgress) {
+        const sum = { units: 0, employees: 0 };
+        for (let i = 0; i < items.length; i += 500) {
+          const r = await c.rpc('tasks_link_apply', { p: items.slice(i, i + 500) }).catch(linksMissing);
+          sum.units += r.units; sum.employees += r.employees;
+          onProgress?.(Math.min(i + 500, items.length), items.length);
+        }
+        return sum;
       },
       async remove(id) { await c.rpc('soft_delete_task', { p_id: id }); },
       async restore(id) { await c.rpc('restore_task', { p_id: id }); },
@@ -371,6 +396,14 @@ export function createAdapter(config) {
         return sum;
       },
       async linkUsers() { return c.rpc('link_users_to_employees').catch(empMissing); },
+      /** دليل الموظفين لكل المستخدمين (بلا الرقم المدني) ← { employees: [{ id, nameAr, employeeNo, isActive }], assignments: [{ employeeId, unitId, startDate, endDate, isPrimary }] } */
+      async directory() {
+        const r = await c.rpc('employee_directory').catch(linksMissing);
+        return {
+          employees: r.employees.map(([id, nameAr, employeeNo, isActive]) => ({ id, nameAr, employeeNo: employeeNo || '', isActive })),
+          assignments: r.assignments.map(([employeeId, unitId, startDate, endDate, isPrimary]) => ({ employeeId, unitId, startDate, endDate, isPrimary })),
+        };
+      },
       async purge() { return c.rpc('employees_purge').catch(empMissing); },
       /** دفعات من 300 ← المجموع */
       async assignBulk(items, { date, transfer = true } = {}, onProgress) {
@@ -440,7 +473,7 @@ export function createAdapter(config) {
           minPasswordLength: m.min_password_length, forcePasswordChange: m.force_password_change,
           allowPurgeTasks: m.allow_purge_tasks, announcement: m.announcement,
           announcementType: m.announcement_type, announcementExpiresAt: m.announcement_expires_at,
-          syncUserId: m.sync_user_id,
+          syncUserId: m.sync_user_id, allowUnlisted: m.allow_unlisted,
         });
       },
       async save(s) {
@@ -455,6 +488,7 @@ export function createAdapter(config) {
           { key: 'announcement_type', value: n.announcementType },
           { key: 'announcement_expires_at', value: n.announcementExpiresAt },
           { key: 'sync_user_id', value: n.syncUserId },
+          { key: 'allow_unlisted', value: n.allowUnlisted },
         ], 'key');
         return this.load();
       },

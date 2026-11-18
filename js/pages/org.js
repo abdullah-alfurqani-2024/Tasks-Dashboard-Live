@@ -2,6 +2,7 @@
  * الهيكل التنظيمي (مدير النظام): الوحدات من مكتب الوزير حتى الأقسام، ومستوياتها، وسجل تغييراتها.
  * الهيكل كله بيانات: لا اسم وحدة ولا عدد مستويات في الكود. قاعدة البيانات تفرض القواعد نفسها مستقلة عن هذه الصفحة.
  */
+import { invalidateDirectory } from '../core/directory.js';
 import { db } from '../data/index.js';
 import { html, mount, $, on, debounce } from '../core/dom.js';
 import { userName } from '../core/store.js';
@@ -14,8 +15,9 @@ import { normalizeAr, searchKey, queryWords, fmtDateTime, fmtDate, today } from 
 import { CONFIG } from '../config.js';
 import { buildModel, pathText } from '../core/orgModel.js';
 import { orgImportTab } from './orgImport.js';
+import { taskLinksTab } from './taskLinks.js';
 
-const TABS = [['tree', 'الهيكل'], ['levels', 'المستويات'], ['import', 'الاستيراد'], ['log', 'سجل التغييرات']];
+const TABS = [['tree', 'الهيكل'], ['levels', 'المستويات'], ['import', 'الاستيراد'], ['links', 'ربط المهام'], ['log', 'سجل التغييرات']];
 const OPEN_KEY = `${CONFIG.storagePrefix}org.open`;
 const MAX_RESULTS = 200;
 
@@ -40,6 +42,7 @@ export default async function org(ctx, main) {
   const saveOpen = () => { try { localStorage.setItem(OPEN_KEY, JSON.stringify([...open])); } catch { /* */ } };
 
   async function reload() {
+    invalidateDirectory();   // حقلا الجهة والموظف في المهام يُعاد تحميلهما
     M = buildModel(await db.org.load());
     for (const id of open) if (!M.unit.has(id)) open.delete(id);
   }
@@ -527,12 +530,15 @@ export default async function org(ctx, main) {
     onChanged: () => { if (tab === 'import') imp.draw(); },
   });
 
+  const lnk = taskLinksTab({ body, reload });
+
   function draw() {
     root.querySelectorAll('[data-tab]').forEach((b) => { b.classList.toggle('active', b.dataset.tab === tab); b.setAttribute('aria-selected', String(b.dataset.tab === tab)); });
     $('.page-head [data-act="add-root"]', root).hidden = tab !== 'tree';
     if (tab === 'tree') drawTree();
     else if (tab === 'levels') drawLevels();
     else if (tab === 'import') imp.draw();
+    else if (tab === 'links') lnk.draw();
     else drawLog();
   }
 

@@ -3,6 +3,7 @@
  * بتاريخ بداية ونهاية، وأنواع الإسناد، واستيراد الموظفين من Excel.
  * قاعدة البيانات تفرض القواعد نفسها مستقلة عن هذه الصفحة.
  */
+import { invalidateDirectory } from '../core/directory.js';
 import { db } from '../data/index.js';
 import { html, mount, $, on, debounce, formData, downloadBlob } from '../core/dom.js';
 import { state } from '../core/store.js';
@@ -44,6 +45,7 @@ export default async function employees(ctx, main) {
   let T = today();
 
   async function reload() {
+    invalidateDirectory();   // حقلا الجهة والموظف في المهام يُعاد تحميلهما
     const [emps, asg, types, org, users] = await Promise.all([
       db.employees.list(), db.employees.assignments(), db.employees.types(), db.org.load(), db.users.list(),
     ]);

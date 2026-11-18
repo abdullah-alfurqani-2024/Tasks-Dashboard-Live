@@ -11,9 +11,12 @@ import { summarize, isDelayed } from '../lib/stats.js';
 import { dataTable } from '../ui/table.js';
 import { icon } from '../ui/icons.js';
 import { toastError } from '../ui/feedback.js';
-import { openTaskForm } from '../ui/taskForm.js';
+import { openTaskForm, linkReasons } from '../ui/taskForm.js';
 import { pageHead, periodFields, options, rangeOf, statusBadge, searchBox, loading, newPage } from '../ui/parts.js';
 
+/** تحتاج مراجعة: من الاستيراد، أو جهة/موظف بنص حر غير مربوط */
+const needsReview = (t) => !!(t.reviewReasons?.length || t.needsLink);
+const reasonsOf = (t) => [...(t.reviewReasons || []), ...(t.needsLink ? linkReasons(t) : [])];
 const KEY = `${CONFIG.storagePrefix || 'tsk.'}filters.tasks`;
 const DEFAULTS = { period: 'year', from: '', to: '', engineerId: '', status: '', taskTypeId: '', q: '', deleted: 'exclude', review: '', priority: '' };
 const loadF = () => { try { return { ...DEFAULTS, ...JSON.parse(sessionStorage.getItem(KEY) || '{}') }; } catch { return { ...DEFAULTS }; } };
@@ -26,7 +29,7 @@ const QUICK = [
   { key: 'delayed', label: 'متأخرة', color: 'var(--warn)', set: { status: 'k:delayed' }, count: (s) => s.delayed },
   { key: 'cancelled', label: 'مغلقة بدون إنجاز', color: 'var(--muted)', set: { status: 'k:cancelled' }, count: (s) => s.cancelled },
   { key: 'urgent', label: 'عاجلة مفتوحة', color: 'var(--bad)', set: { status: 'k:open', priority: 'urgent' }, count: (s) => s.urgentOpen },
-  { key: 'review', label: 'تحتاج مراجعة', color: 'var(--warn)', set: { review: '1' }, count: (s, rows) => rows.filter((t) => t.reviewReasons?.length).length },
+  { key: 'review', label: 'تحتاج مراجعة', color: 'var(--warn)', set: { review: '1' }, count: (s, rows) => rows.filter(needsReview).length },
 ];
 const QUICK_KEYS = ['status', 'priority', 'review'];
 /** رمز مهمة كامل في البحث (بعد normalizeAr: حروف صغيرة): a08-0177 أو a08-s0001 أو s-00001 */
@@ -90,7 +93,7 @@ export default async function tasksPage(ctx, main) {
       render: (r) => html`<span title="#${r.id}">${r.taskCode || `#${r.id}`}</span>` },
     { key: 'receivedDate', label: 'الاستقبال', cls: 'nowrap num', render: (r) => fmtDate(r.receivedDate) },
     ...(viewAll ? [{ key: 'engineerName', label: 'المهندس', cls: 'nowrap', render: (r) => r.engineerShort || r.engineerName }] : []),
-    { key: 'subject', label: 'الموضوع', cls: 'subject', render: (r) => html`<div class="clip">${r.priority === 'urgent' ? html`<span class="badge bad">عاجلة</span> ` : ''}${r.reviewReasons?.length ? html`<span class="badge warn" title="${r.reviewReasons.join(' | ')}">تحتاج مراجعة</span> ` : ''}${r.subject}</div>${F.review && r.reviewReasons?.length ? html`<div class="small" style="color:var(--warn)">${r.reviewReasons.join(' · ')}</div>` : ''}${r.requester || r.employeeName ? html`<div class="small muted">${[r.requester, r.employeeName].filter(Boolean).join(' · ')}</div>` : ''}` },
+    { key: 'subject', label: 'الموضوع', cls: 'subject', render: (r) => html`<div class="clip">${r.priority === 'urgent' ? html`<span class="badge bad">عاجلة</span> ` : ''}${needsReview(r) ? html`<span class="badge warn" title="${reasonsOf(r).join(' | ')}">تحتاج مراجعة</span> ` : ''}${r.subject}</div>${F.review && needsReview(r) ? html`<div class="small" style="color:var(--warn)">${reasonsOf(r).join(' · ')}</div>` : ''}${r.requester || r.employeeName ? html`<div class="small muted">${[r.requester, r.employeeName].filter(Boolean).join(' · ')}</div>` : ''}` },
     { key: 'taskType', label: 'نوع المهمة', cls: 'nowrap' },
     { key: 'status', label: 'الحالة', render: (r) => statusBadge(r, isDelayed(r, delayDays, today())) },
     { key: 'completedDate', label: 'الانتهاء', cls: 'nowrap num', render: (r) => fmtDate(r.completedDate) },
@@ -113,7 +116,7 @@ export default async function tasksPage(ctx, main) {
         else if (t.statusId !== Number(F.status)) return false;
       }
       if (F.taskTypeId && t.taskTypeId !== Number(F.taskTypeId)) return false;
-      if (F.review && !t.reviewReasons?.length) return false;
+      if (F.review && !needsReview(t)) return false;
       if (F.priority === 'urgent' && t.priority !== 'urgent') return false;
       if (/^#\d+$/.test(q)) { if (t.id !== Number(q.slice(1))) return false; }
       else if (CODE_RE.test(q)) { if ((t.taskCode || '').toLowerCase() !== q) return false; }   // رمز كامل: تطابق تام

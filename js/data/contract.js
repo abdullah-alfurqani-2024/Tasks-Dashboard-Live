@@ -14,14 +14,18 @@
  *           statusId, status, statusKind: 'open'|'done'|'cancelled',
  *           delayReason, durationDays: number|null,
  *           createdAt, createdBy, updatedAt, updatedBy, deletedAt, deletedBy, reviewReasons: string[], priority,
- *           taskCode, enteredAt, importedAt }
+ *           taskCode, enteredAt, importedAt, requesterUnitId, employeeId, needsLink }
+ *           requesterUnitId/employeeId: الوحدة والموظف من الهيكل وقائمة الموظفين أو null (requester عندها اسم الوحدة الحالي)؛
+ *           needsLink: جهة أو موظف بنص حر غير مربوط ← «تحتاج مراجعة»
  *           taskCode: رمز ثابت لا يتكرر (A08-0177 من Sheets، A08-S0001 من النظام)؛ enteredAt: تاريخ الإدخال
  *           (من Sheets للمستوردة، وإلا = createdAt)؛ importedAt: آخر كتابة من الاستيراد أو null
  *
  * TaskInput  الحقول القابلة للكتابة فقط:
  *           { engineerId?, refNo, requester, employeeName, subject, receivedDate, completedDate,
  *             notes, taskTypeId, correspondenceTypeId, statusId, delayReason, priority?, reviewReasons?,
- *             taskCode?, enteredAt?, imported? }   (الثلاثة الأخيرة للاستيراد فقط؛ الرمز يُعطى تلقائياً إن لم يُرسل)
+ *             taskCode?, enteredAt?, imported?, requesterUnitId?, employeeId? }
+ *           requesterUnitId/employeeId غير المرسلين يبقيان كما هما. اختيار الموظف يملأ الجهة (إن كانت فارغة) من وحدته في تاريخ الاستقبال؛
+ *           أحد الحقلين (الجهة أو الموظف) مطلوب، والنص الحر بإعداد allowUnlisted   (الثلاثة الأخيرة للاستيراد فقط؛ الرمز يُعطى تلقائياً إن لم يُرسل)
  *
  * LookupItem { id, name, sortOrder, isActive, kind? }   (kind للحالات فقط)
  * Lookups    { taskTypes: LookupItem[], correspondenceTypes: LookupItem[], statuses: LookupItem[] }
@@ -52,6 +56,9 @@
  * tasks.list(filter)             → Task[]
  *        filter: { engineerId?, from?, to?, statusId?, taskTypeId?, correspondenceTypeId?, deleted?: 'exclude'|'only'|'include' }
  *        from/to على receivedDate، شاملة. الترتيب: الأحدث أولاً
+ *        review: تحتاج مراجعة (أسباب الاستيراد أو needsLink)
+ * tasks.linkTexts()              → { requesters: [{ text, n }], employees: [{ text, n }], linkedUnits, linkedEmployees, tasks }   النصوص غير المربوطة (المدير)
+ * tasks.linkApply([{ kind: 'unit'|'employee', text, id }], onProgress) → { units, employees }   ربط المهام بالنص نفسه؛ لا يغيّر «آخر تعديل» (المدير)
  * tasks.create(TaskInput)        → Task
  * tasks.update(id, TaskInput)    → Task
  * tasks.remove(id)               → void           حذف ناعم (المدير فقط)
@@ -107,6 +114,8 @@
  *        items: [{ employeeId, unitId, isHead }] إسناد «أصيل» من date؛ في وحدة أخرى ← نقل (transfer) أو يُترك؛
  *        الرئاسة المتعارضة ← إسناد بلا رئاسة (headConflicts)؛ خطأ موظف لا يوقف الباقين (failed: [{ employeeId, unitId, error }])
  * employees.purge()              → { employees, assignments, users }   حذف كل الموظفين وإسناداتهم وسجلها، وفك ربطهم بالمستخدمين (المدير)
+ * employees.directory()          → { employees: [{ id, nameAr, employeeNo, isActive }], assignments: [{ employeeId, unitId, startDate, endDate, isPrimary }] }
+ *        دليل الموظفين لكل المستخدمين (لحقل اسم الموظف في المهمة)، بلا الرقم المدني
  * employees.linkUsers()          → number           ربط المستخدمين بسجلاتهم: رقم الدخول = الرقم المدني أو الوظيفي
  * employees.setUser(employeeId, userId|null) → void
  *        القواعد: أصيل واحد للموظف في أي يوم، رئيس أصيل واحد للوحدة ومن يقوم بأعمالها واحد، لا إسناد قائم في وحدة معطّلة أو لموظف غير نشط

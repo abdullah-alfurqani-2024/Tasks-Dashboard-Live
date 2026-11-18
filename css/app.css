@@ -551,3 +551,20 @@ button.org-tog:hover { background: var(--gray-soft); color: var(--ink); }
 .print-only { display: none; }
 .page { animation: fade .12s ease; }
 .card-head h2 { font-size: 1rem; }
+
+/* حقل الكتابة مع الاختيار (الجهة الطالبة، اسم الموظف) */
+.lk-box { position: relative; }
+.lk-list { position: absolute; z-index: 30; inset-inline: 0; top: calc(100% + 4px); background: var(--surface); border: 1px solid var(--line-strong);
+  border-radius: 10px; box-shadow: var(--shadow-lg, 0 10px 30px rgba(0,0,0,.15)); max-height: 280px; overflow-y: auto; }
+.lk-opt { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; width: 100%; text-align: start; border: 0; border-bottom: 1px solid var(--line);
+  background: none; padding: 7px 11px; cursor: pointer; font: inherit; color: var(--ink); }
+.lk-opt .small { width: 100%; }
+.lk-opt:hover, .lk-opt.on { background: var(--brand-soft); }
+.lk-opt.cur b { color: var(--brand); }
+.lk-title, .lk-empty { padding: 6px 11px; }
+.lk-state { min-height: 1.2em; margin-top: 3px; line-height: 1.4; }
+.lk-state:empty { display: none; }
+.lk-ok svg { width: 14px; height: 14px; color: var(--ok); vertical-align: -2px; }
+.lk-free { color: var(--warn); }
+.lk-bad { color: var(--bad); }
+.input.lk-linked { border-color: color-mix(in srgb, var(--ok) 55%, var(--line-strong)); }

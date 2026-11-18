@@ -43,6 +43,10 @@ export default async function settings(ctx, main) {
           <div class="field"><label for="s-delay">حد التأخير (بالأيام)</label>
             <input class="input num" id="s-delay" name="delayThresholdDays" type="number" min="1" max="365" value="${s.delayThresholdDays}">
             <span class="hint">المهمة المفتوحة أكثر من هذه المدة تُعد «متأخرة» في المهام ولوحة المؤشرات، وتُلوَّن المدة الأطول منها بالأحمر.</span></div>
+          <h3 style="margin-top:8px">الجهة الطالبة واسم الموظف في المهام</h3>
+          <label class="check"><input type="checkbox" name="allowUnlisted" ${s.allowUnlisted ? 'checked' : ''}> السماح بكتابة جهة أو موظف غير موجود في الهيكل أو قائمة الموظفين</label>
+          <span class="hint">مفعّل: يُكتب نصاً حراً، وتُعلَّم المهمة «تحتاج مراجعة» حتى تُربط بالوحدة أو الموظف (بعد إضافتهما). موقوف: الاختيار من القائمتين فقط.
+            وفي الحالتين يكفي أحد الحقلين.</span>
           <h3 style="margin-top:8px">كلمات المرور</h3>
           <div class="field"><label for="s-pwmin">أقل طول لكلمة المرور</label>
             <input class="input num" id="s-pwmin" name="minPasswordLength" type="number" min="${PW_FLOOR}" max="72" value="${s.minPasswordLength}">
@@ -130,7 +134,7 @@ export default async function settings(ctx, main) {
     if (!Number.isInteger(pwMin) || pwMin < PW_FLOOR || pwMin > 72) { err.textContent = `أقل طول لكلمة المرور بين ${PW_FLOOR} و 72.`; err.hidden = false; return; }
     await busy($('button[type=submit]', form), async () => {
       try {
-        state.settings = await db.settings.save({ ...state.settings, editLockDays: lock, delayThresholdDays: delay, minPasswordLength: pwMin, forcePasswordChange: v.forcePasswordChange, allowPurgeTasks: !!v.allowPurgeTasks });
+        state.settings = await db.settings.save({ ...state.settings, editLockDays: lock, delayThresholdDays: delay, minPasswordLength: pwMin, forcePasswordChange: v.forcePasswordChange, allowPurgeTasks: !!v.allowPurgeTasks, allowUnlisted: !!v.allowUnlisted });
         syncPurge();
         toast('تم حفظ الإعدادات.', 'ok');
       } catch (ex) { err.textContent = ex.message; err.hidden = false; }

@@ -41,6 +41,9 @@ setup = ''.join(
 ok, out = sql("truncate task_audit, tasks restart identity cascade; truncate task_code_seq; update app_settings set updated_by = null;"
               "delete from profiles;" + setup)   # حسابات auth.users تبقى: قد تخص سكيما أخرى في القاعدة نفسها
 assert ok, out
+# قاعدة 23_task_links.sql: الجهة الطالبة أو اسم الموظف مطلوب؛ اختبارات الرموز هنا لا تخصهما، فيُملأ الأول افتراضياً
+if sql("select 1 from pg_trigger where tgname = 'tasks_links'")[1] == '1':
+    assert sql("alter table tasks alter column requester set default 'جهة الاختبار'")[0]
 
 OPEN = "(select id from task_statuses where kind = 'open' order by id limit 1)"
 DONE = "(select id from task_statuses where kind = 'done' order by id limit 1)"
@@ -168,5 +171,6 @@ check('تحديث استيراد مع حقول: يغيّر آخر تعديل و�
       "update tasks set notes = 'من الملف 2', imported_at = now(), imported_data = '{\"notes\": \"من الملف 2\"}' where task_code = 'A01-0900' "
       "returning (updated_at = imported_at)::text || '|' || (imported_data ->> 'notes')", 'admin', equals='true|من الملف 2')
 
+sql("alter table tasks alter column requester drop default")
 print(f'\n{passed} نجح، {failed} فشل')
 sys.exit(1 if failed else 0)

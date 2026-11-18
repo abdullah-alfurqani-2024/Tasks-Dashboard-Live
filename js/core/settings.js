@@ -12,6 +12,7 @@ export const SETTING_DEFAULTS = {
   announcement: '',            // إعلان من مدير النظام يظهر لكل المستخدمين (فارغ = لا إعلان)
   announcementType: 'normal',  // normal: يستطيع المستخدم إخفاءه — important: لا يُخفى حتى يمسحه المدير
   announcementExpiresAt: '',   // تاريخ ووقت (ISO) يختفي بعده الإعلان تلقائياً ('' = بلا انتهاء)
+  allowUnlisted: true,         // كتابة جهة أو موظف غير موجود في الهيكل/القائمة نصاً حراً (المهمة «تحتاج مراجعة» حتى تُربط)
   syncUserId: '',              // حساب «مزامنة التجربة» في الإنتاج: يُستثنى من «كلمات المرور للكل»
 };
 
@@ -27,6 +28,7 @@ export function normalizeSettings(s = {}) {
     minPasswordLength: Math.min(72, Math.max(PW_FLOOR, int(s.minPasswordLength, D.minPasswordLength))),
     forcePasswordChange: s.forcePasswordChange == null ? D.forcePasswordChange : s.forcePasswordChange === true || s.forcePasswordChange === 'true',
     allowPurgeTasks: s.allowPurgeTasks == null ? D.allowPurgeTasks : s.allowPurgeTasks === true || s.allowPurgeTasks === 'true',
+    allowUnlisted: s.allowUnlisted == null ? D.allowUnlisted : s.allowUnlisted === true || s.allowUnlisted === 'true',
     announcement: typeof s.announcement === 'string' ? s.announcement.trim().slice(0, ANNOUNCEMENT_MAX) : D.announcement,
     announcementType: s.announcementType === 'important' ? 'important' : 'normal',
     syncUserId: typeof s.syncUserId === 'string' ? s.syncUserId.trim().slice(0, 64) : '',
