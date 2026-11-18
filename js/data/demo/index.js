@@ -661,6 +661,16 @@ export function createAdapter() {
         persist(); return sum;
       },
       async linkUsers() { await wait(60); need('admin'); const n = linkUsers(); persist(); return n; },
+      async purge() {
+        await wait(120); need('admin');
+        const r = { employees: Em().list.length, assignments: Em().asg.length, users: db.users.filter((u) => u.employeeId).length };
+        db.users.forEach((u) => { u.employeeId = null; });
+        Em().list = []; Em().asg = [];
+        O().audit = O().audit.filter((a) => a.entity !== 'employee' && a.entity !== 'assignment');
+        O().audit.unshift({ id: ++O().seq.audit, entity: 'employee', entityId: 0, action: 'delete', changedBy: me?.id || null, changedAt: new Date().toISOString(),
+          changedFields: null, oldData: null, newData: { name_ar: 'حذف كل الموظفين', employees: r.employees, assignments: r.assignments } });
+        persist(); return r;
+      },
       async setUser(employeeId, userId) {
         await wait(60); need('admin');
         for (const u of db.users) if (u.employeeId === employeeId && u.id !== userId) u.employeeId = null;

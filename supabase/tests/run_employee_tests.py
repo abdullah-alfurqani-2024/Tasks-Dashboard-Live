@@ -185,5 +185,13 @@ check('السجل يشمل الموظفين والإسنادات والأنوا�
 check('تعديل الإسناد مسجّل بحقوله', True,
       "select count(*) > 0 from org_audit where entity = 'assignment' and action = 'update' and 'end_date' = any(changed_fields)", equals='t')
 
+# ---------- حذف كل الموظفين (في الآخر) ----------
+check('رئيس القسم لا يحذف الموظفين', False, 'select employees_purge()', 'head', contains='صلاحية')
+check('حذف كل الموظفين: الإسنادات والربط والسجل', True,
+      "select employees_purge() ->> 'employees' <> '0'; select count(*) from employees; select count(*) from employee_assignments;"
+      "select count(*) from profiles where employee_id is not null; select count(*) from org_audit where entity in ('employee', 'assignment');"
+      "select count(*) from org_units", equals='t\n0\n0\n0\n1\n5')
+check('…والأنواع باقية', True, 'select count(*) > 0 from assignment_types', equals='t')
+
 print(f'\n{passed} نجح، {failed} فشل')
 sys.exit(1 if failed else 0)

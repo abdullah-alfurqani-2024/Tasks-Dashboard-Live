@@ -4,7 +4,7 @@
  * قاعدة البيانات تفرض القواعد نفسها مستقلة عن هذه الصفحة.
  */
 import { db } from '../data/index.js';
-import { html, mount, $, on, debounce, formData } from '../core/dom.js';
+import { html, mount, $, on, debounce, formData, downloadBlob } from '../core/dom.js';
 import { state } from '../core/store.js';
 import { setTitle } from '../core/session.js';
 import { icon } from '../ui/icons.js';
@@ -15,7 +15,7 @@ import { dateInput } from '../ui/dateField.js';
 import { unitPicker } from '../ui/unitPicker.js';
 import { normalizeAr, searchKey, queryWords, latinDigits, fmtDate, today } from '../core/format.js';
 import { buildModel, pathText, treeOrder } from '../core/orgModel.js';
-import { readXlsx } from '../lib/xlsx.js';
+import { readXlsx, writeXlsx } from '../lib/xlsx.js';
 import { parseCsv } from '../lib/csv.js';
 
 const TABS = [['list', 'الموظفون'], ['types', 'أنواع الإسناد'], ['import', 'الاستيراد']];
@@ -434,10 +434,12 @@ export default async function employees(ctx, main) {
   /* ───────────── تبويب الاستيراد ───────────── */
   const FIELDS = [
     ['civilNo', 'الرقم المدني', true], ['employeeNo', 'الرقم الوظيفي', false], ['nameAr', 'الاسم بالعربي', true], ['nameEn', 'الاسم بالإنجليزي', false],
+    ['reviewNotes', 'سبب المراجعة', false],   // في النسخة الاحتياطية: تبقى علامة «تحتاج مراجعة» بعد إعادة الاستيراد
   ];
   /** يتعرف على عمود من عنوانه */
   function guess(h) {
     const t = normalizeAr(h);
+    if (/سبب/.test(t) && /مراجع/.test(t)) return 'reviewNotes';
     if (/مدني|civil/.test(t)) return 'civilNo';
     if (/وظيفي|employee|staff/.test(t)) return 'employeeNo';
     if (/انجليز|english|\ben\b/.test(t)) return 'nameEn';
@@ -452,10 +454,17 @@ export default async function employees(ctx, main) {
       <label class="drop" id="emp-drop" tabindex="0">
         ${icon('upload')}<div><b>اسحب ملف الموظفين هنا أو اضغط للاختيار</b></div>
         <div class="small">xlsx أو csv. الأعمدة: الرقم المدني، الرقم الوظيفي، الاسم بالعربي، الاسم بالإنجليزي (تُكتشف من العناوين، ويمكن تعديلها).
-          الموظف يُعرف برقمه المدني: الجديد يُضاف، والموجود تُحدَّث بياناته، والخانة الفارغة في الملف لا تمسح الموجود.</div>
+          الموظف يُعرف برقمه المدني: الجديد يُضاف، والموجود تُحدَّث بياناته، والخانة الفارغة في الملف لا تمسح الموجود.
+          الصف الناقص يُستورد «تحتاج مراجعة»، والصف بلا اسم (فارغ أو «0») لا يُستورد.</div>
         <input type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
       </label>
-      <div id="imp-step"></div></div>`);
+      <div id="imp-step"></div></div>
+      ${D.emps.length ? html`<div class="card-pad emp-danger">
+        <h3>حذف كل الموظفين</h3>
+        <p>يحذف <b>نهائياً</b> كل الموظفين (${D.emps.length.toLocaleString('en-US')}) وإسناداتهم وسجلها، ويفك ربطهم بحسابات النظام، لتستورد الملف من جديد.
+          قبل الحذف يُنزَّل إلى جهازك ملف Excel بالموظفين الحاليين (يمكن استيراده). الهيكل وأنواع الإسناد والمستخدمون يبقون كما هم.</p>
+        <button class="btn btn-danger" data-purge-emp>${icon('trash')}حذف كل الموظفين</button>
+      </div>` : ''}`);
     const drop = $('#emp-drop', body), input = $('input', drop);
     input.onchange = () => input.files[0] && readFile(input.files[0]);
     drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
@@ -489,8 +498,12 @@ export default async function employees(ctx, main) {
   }
 
   /**
-   * تصنيف صفوف الملف: new، update، same، review (فيه خطأ: يُستورد «تحتاج مراجعة» بعد تفريغ الخانة الخاطئة، والسبب مع القيمة الأصلية يُحفظ)،
-   * skip (مكرر بالبيانات نفسها في الملف: يُتجاهل)
+   * تصنيف صفوف الملف: new، update، same، review، skip
+   *   review: فيه نقص أو خطأ، يُستورد «تحتاج مراجعة» والسبب مع القيمة الأصلية يُحفظ في سجل الموظف:
+   *     - بلا رقم مدني (أو غير صحيح، أو مكرر باسم آخر) ← يُعطى الرقم الوظيفي رقماً مدنياً إن أمكن
+   *     - بلا رقم وظيفي (أو غير صحيح، أو مسجّل لغيره) ← يُعطى الرقم المدني رقماً وظيفياً إن أمكن
+   *     - بلا الاثنين ← يُستورد بدونهما
+   *   skip: صف بلا اسم (فارغ، أو «0» ونحوه)، أو مكرر بالبيانات نفسها في الملف
    */
   function analyze() {
     const byCivil = new Map(D.emps.filter((e) => e.civilNo).map((e) => [e.civilNo, e]));
@@ -498,20 +511,19 @@ export default async function employees(ctx, main) {
     const noCivil = D.emps.filter((e) => !e.civilNo);
     const seen = new Map(), seenNo = new Map();
     const get = (r, k) => (I.map[k] == null ? '' : cell(r[I.map[k]]));
+    const zero = (v) => (/^0*$/.test(v) ? '' : v);          // «0» و«000» = فارغ
+    const hasName = (v) => /[A-Za-z؀-ۿ]/.test(v);   // اسم فيه حرف واحد على الأقل
+    const civilFree = (v) => /^[0-9]{1,20}$/.test(v) && !byCivil.has(v) && !seen.has(v);
+    const noFree = (v) => /^[0-9A-Z/-]{1,30}$/.test(v) && !byNo.has(v) && !seenNo.has(v);
     return I.rows.map((r, i) => {
       const raw = get(r, 'civilNo');
-      const x = { line: i + 1, civilNo: digits(raw), employeeNo: digits(get(r, 'employeeNo')).toUpperCase(),
+      const x = { line: i + 1, civilNo: zero(digits(raw)), employeeNo: zero(digits(get(r, 'employeeNo')).toUpperCase()),
         nameAr: get(r, 'nameAr').replace(/\s+/g, ' '), nameEn: get(r, 'nameEn').replace(/\s+/g, ' ') };
-      const rev = [];   // [النوع، السبب]
-      if (!x.civilNo) rev.push(['civil', 'بلا رقم مدني في الملف']);
-      else if (!/^[0-9]{1,20}$/.test(x.civilNo)) { rev.push(['civil', `رقم مدني غير صحيح في الملف: «${raw}»`]); x.civilNo = ''; }
-      else if (seen.has(x.civilNo)) {
-        const f = seen.get(x.civilNo);
-        if (f.nameAr === x.nameAr && (f.employeeNo === x.employeeNo || !x.employeeNo)) return { ...x, st: 'skip', why: `مكرر بالبيانات نفسها (صف ${f.line})` };
-        rev.push(['civil', `الرقم المدني ${x.civilNo} مكرر في الملف (صف ${f.line}: ${f.nameAr})`]);
-        x.civilNo = '';
-      }
-      if (x.civilNo) seen.set(x.civilNo, x);
+      const note = get(r, 'reviewNotes').trim();
+      if (!hasName(x.nameAr)) x.nameAr = '';
+      if (!hasName(x.nameEn)) x.nameEn = '';
+      if (!x.nameAr && !x.nameEn) return { ...x, st: 'skip', why: 'صف فارغ أو بلا اسم' };
+
       // بلا رقم مدني ورقمه الوظيفي لموظف موجود: هو نفسه (ولو صُحّح رقمه المدني في النظام)
       const sameByNo = !x.civilNo && x.employeeNo ? byNo.get(x.employeeNo) : null;
       if (sameByNo) {
@@ -520,24 +532,47 @@ export default async function employees(ctx, main) {
         if (x.nameEn && x.nameEn !== sameByNo.nameEn) ch.push(`الاسم بالإنجليزي: ${sameByNo.nameEn || '—'} ← ${x.nameEn}`);
         return ch.length ? { ...x, st: 'update', why: `طوبق بالرقم الوظيفي · ${ch.join(' · ')}` } : { ...x, st: 'same', why: 'طوبق بالرقم الوظيفي' };
       }
+      if (!x.civilNo && x.nameAr && noCivil.some((e) => e.nameAr === x.nameAr && (!x.employeeNo || !e.employeeNo || e.employeeNo.toUpperCase() === x.employeeNo))) {
+        return { ...x, st: 'same', why: 'سبق استيراده للمراجعة' };
+      }
+
+      const rev = [];   // [النوع، السبب]
+      // الرقم المدني
+      if (!x.civilNo) rev.push(['civil', 'بلا رقم مدني في الملف']);
+      else if (!/^[0-9]{1,20}$/.test(x.civilNo)) { rev.push(['civil', `رقم مدني غير صحيح في الملف: «${raw}»`]); x.civilNo = ''; }
+      else if (seen.has(x.civilNo)) {
+        const f = seen.get(x.civilNo);
+        if (f.nameAr === x.nameAr && (f.employeeNo === x.employeeNo || !x.employeeNo)) return { ...x, st: 'skip', why: `مكرر بالبيانات نفسها (صف ${f.line})` };
+        rev.push(['civil', `الرقم المدني ${x.civilNo} مكرر في الملف (صف ${f.line}: ${f.nameAr})`]);
+        x.civilNo = '';
+      }
+      const cur = x.civilNo ? byCivil.get(x.civilNo) : null;
+      // الرقم الوظيفي
       if (x.employeeNo) {
         const o = byNo.get(x.employeeNo);
         if (!/^[0-9A-Z/-]{1,30}$/.test(x.employeeNo)) { rev.push(['eno', `رقم وظيفي غير صحيح في الملف: «${x.employeeNo}»`]); x.employeeNo = ''; }
-        else if (o && (!x.civilNo || o.civilNo !== x.civilNo)) { rev.push(['eno', `الرقم الوظيفي ${x.employeeNo} مسجّل للموظف «${o.nameAr}»`]); x.employeeNo = ''; }
+        else if (o && o !== cur) { rev.push(['eno', `الرقم الوظيفي ${x.employeeNo} مسجّل للموظف «${o.nameAr}»`]); x.employeeNo = ''; }
         else if (seenNo.has(x.employeeNo)) { rev.push(['eno', `الرقم الوظيفي ${x.employeeNo} مكرر في الملف (صف ${seenNo.get(x.employeeNo)})`]); x.employeeNo = ''; }
-        if (x.employeeNo) seenNo.set(x.employeeNo, x.line);
+      } else if (!cur?.employeeNo) rev.push(['eno', 'بلا رقم وظيفي في الملف']);
+      // أحدهما مكان الآخر مؤقتاً
+      if (!x.civilNo && x.employeeNo && civilFree(x.employeeNo)) {
+        x.civilNo = x.employeeNo;
+        rev.push(['civil', `أُعطي الرقم الوظيفي (${x.employeeNo}) رقماً مدنياً`]);
+      } else if (x.civilNo && !x.employeeNo && !cur?.employeeNo && noFree(x.civilNo)) {
+        x.employeeNo = x.civilNo;
+        rev.push(['eno', `أُعطي الرقم المدني (${x.civilNo}) رقماً وظيفياً`]);
       }
-      const cur = x.civilNo ? byCivil.get(x.civilNo) : null;
-      if (!cur && !x.nameAr) rev.push(['name', x.nameEn ? 'بلا اسم بالعربي (استُخدم الإنجليزي)' : 'بلا اسم']);
-      if (!x.civilNo && x.nameAr && noCivil.some((e) => e.nameAr === x.nameAr && (!x.employeeNo || e.employeeNo.toUpperCase() === x.employeeNo))) {
-        return { ...x, st: 'same', why: 'سبق استيراده للمراجعة' };
-      }
+      if (x.civilNo) seen.set(x.civilNo, x);
+      if (x.employeeNo) seenNo.set(x.employeeNo, x.line);
+      if (!cur && !x.nameAr) rev.push(['name', 'بلا اسم بالعربي (استُخدم الإنجليزي)']);
+      if (note && !rev.length) rev.push(['note', note]);   // سبب مراجعة سابق من النسخة الاحتياطية
+
       if (rev.length) {
         const why = rev.map((v) => v[1]).join(' · ');
-        // سبق استيراده للمراجعة، أو صُحّح رقمه الوظيفي في النظام: لا يُعلَّم من جديد
+        // سبق استيراده للمراجعة، أو صُحّح في النظام: لا يُعلَّم من جديد
         if (cur && ((cur.reviewNotes || '').includes(why) || cur.needsReview)) return { ...x, st: 'same', why: 'سبق استيراده للمراجعة' };
         if (cur && rev.every((v) => v[0] === 'eno') && cur.employeeNo) return { ...x, st: 'same', why: 'الرقم الوظيفي في النظام يبقى' };
-        return { ...x, st: 'review', why, review: why, kinds: rev.map((v) => v[0]) };
+        return { ...x, st: 'review', why, review: why, kinds: [...new Set(rev.map((v) => v[0]))] };
       }
       if (!cur) return { ...x, st: 'new' };
       const ch = [];
@@ -548,8 +583,8 @@ export default async function employees(ctx, main) {
     });
   }
 
-  const IMP = { new: ['جديد', 'ok'], update: ['تحديث', 'info'], same: ['بلا تغيير', ''], review: ['للمراجعة', 'warn'], skip: ['مكرر، يُتجاهل', ''] };
-  const KIND = { civil: 'الرقم المدني', eno: 'الرقم الوظيفي', name: 'الاسم' };
+  const IMP = { new: ['جديد', 'ok'], update: ['تحديث', 'info'], same: ['بلا تغيير', ''], review: ['للمراجعة', 'warn'], skip: ['لا يُستورد', ''] };
+  const KIND = { civil: 'الرقم المدني', eno: 'الرقم الوظيفي', name: 'الاسم', note: 'مراجعة سابقة' };
   function drawMapping() {
     const step = $('#imp-step', body);
     if (!step) return;
@@ -564,7 +599,7 @@ export default async function employees(ctx, main) {
       <div class="filters" style="padding:0 0 10px">${FIELDS.map(([k, label, req]) => html`<div class="field"><label>${label}${req ? html` <span class="req">*</span>` : ''}</label>
         <select class="input" data-map="${k}">${options(I.header.map((h, i) => [i, h || `عمود ${i + 1}`]), I.map[k] ?? '', '— لا يوجد —')}</select></div>`)}</div>
       <div class="chips" style="margin-bottom:10px">
-        ${[['all', 'الكل', I.preview.length], ['new', 'جديد', count('new')], ['update', 'تحديث', count('update')], ['same', 'بلا تغيير', count('same')], ['review', 'للمراجعة', count('review')], ['skip', 'مكرر', count('skip')]]
+        ${[['all', 'الكل', I.preview.length], ['new', 'جديد', count('new')], ['update', 'تحديث', count('update')], ['same', 'بلا تغيير', count('same')], ['review', 'للمراجعة', count('review')], ['skip', 'لا يُستورد', count('skip')]]
           .map(([k, l, n]) => html`<button type="button" class="chip chip-btn ${I.filter === k ? 'on' : ''}" data-imp-filter="${k}">${l} (${n.toLocaleString('en-US')})</button>`)}
       </div>
       <div class="table-wrap" style="max-height:50vh"><table class="table"><thead><tr><th>صف</th><th>الرقم المدني</th><th>الرقم الوظيفي</th><th>الاسم بالعربي</th><th>الاسم بالإنجليزي</th><th>النتيجة</th></tr></thead>
@@ -576,7 +611,7 @@ export default async function employees(ctx, main) {
       <div class="row" style="margin-top:14px">
         <button class="btn btn-primary" data-imp-go ${go ? '' : 'disabled'}>${icon('upload')}استيراد ${go.toLocaleString('en-US')} موظف (${count('new')} جديد، ${count('update')} تحديث، ${count('review')} للمراجعة)</button>
         ${count('review') ? html`<span class="small muted">الصفوف التي فيها خطأ (${count('review')}: ${[...kinds].map(([k, n]) => `${KIND[k]} ${n}`).join('، ')}) تُستورد بعلامة «تحتاج مراجعة»:
-          الخانة الخاطئة تبقى فارغة، وقيمتها وسبب الخطأ يُحفظان في سجل الموظف لتصحيحه لاحقاً.</span>` : ''}
+          الرقم الناقص أو الخاطئ يُعطى الرقم الآخر مؤقتاً إن أمكن، وإلا يبقى فارغاً، والسبب يُحفظ في سجل الموظف لتصحيحه لاحقاً. الصف بلا اسم لا يُستورد.</span>` : ''}
       </div>
       <div class="progress" data-imp-progress hidden style="margin-top:10px"><div></div></div>`);
   }
@@ -595,6 +630,53 @@ export default async function employees(ctx, main) {
       drawMapping();
     } catch (er) { toastError(er); }
   }));
+
+  /** نسخة احتياطية بأعمدة ملف الاستيراد نفسها، ومعها الوحدة والمراجعة والحساب */
+  function backupEmployees() {
+    const cols = [
+      { label: 'الرقم المدني', width: 14 }, { label: 'الرقم الوظيفي', width: 14 }, { label: 'الاسم بالعربي', width: 34 },
+      { label: 'الاسم بالانجليزي', width: 30 }, { label: 'الوحدة (أصيل)', width: 34 }, { label: 'الحالة', width: 10 },
+      { label: 'تحتاج مراجعة', width: 12 }, { label: 'سبب المراجعة', width: 40 }, { label: 'حساب النظام', width: 22 },
+    ];
+    const rows = D.emps.map((e) => {
+      const p = primaryOf(e.id);
+      return [e.civilNo, e.employeeNo, e.nameAr, e.nameEn, p ? unitName(p.unitId) : '', e.isActive ? 'نشط' : 'غير نشط',
+        e.needsReview ? 'نعم' : '', e.reviewNotes, D.userOf.get(e.id)?.fullName || ''];
+    });
+    downloadBlob(writeXlsx([{ name: 'الموظفون', columns: cols, rows }]), `employees_backup_${today()}.xlsx`);
+    return rows.length;
+  }
+
+  on(root, 'click', '[data-purge-emp]', () => {
+    const WORD = 'حذف الكل';
+    const m = modal({
+      title: 'حذف كل الموظفين', size: 'sm',
+      body: html`<form class="stack" novalidate>
+        <div class="alert bad">سيُحذف ${D.emps.length.toLocaleString('en-US')} موظف وإسناداتهم وسجلها <b>نهائياً</b>، ويُفك ربطهم بحسابات النظام.
+          سيُنزَّل أولاً ملف Excel بالموظفين الحاليين، احتفظ به.</div>
+        <div class="field"><label for="emp-purge-confirm">للتأكيد اكتب «${WORD}»</label>
+          <input class="input" id="emp-purge-confirm" name="confirm" autocomplete="off"></div>
+        <div class="alert bad" data-err hidden></div></form>`,
+      footer: html`<button class="btn btn-danger" data-ok>${icon('trash')}حذف نهائي</button><button class="btn" data-x>إلغاء</button>`,
+    });
+    const f = $('form', m.el), errBox = $('[data-err]', m.el);
+    $('[data-x]', m.el).onclick = () => m.close();
+    const go = () => busy($('[data-ok]', m.el), async () => {
+      errBox.hidden = true;
+      if (f.elements.confirm.value.trim() !== WORD) { errBox.textContent = `اكتب «${WORD}» للتأكيد.`; errBox.hidden = false; return; }
+      try {
+        const saved = backupEmployees();
+        const r = await db.employees.purge();
+        m.close();
+        I.rows = []; I.preview = null;
+        await reload();
+        draw();
+        toast(`حُذف ${r.employees.toLocaleString('en-US')} موظف و${r.assignments.toLocaleString('en-US')} إسناد${r.users ? `، وفُك ربط ${r.users} مستخدم` : ''}. النسخة الاحتياطية (${saved} موظف) نُزّلت إلى جهازك.`, 'ok', 8000);
+      } catch (ex) { errBox.textContent = ex.message; errBox.hidden = false; }
+    });
+    $('[data-ok]', m.el).onclick = go;
+    f.onsubmit = (ev) => { ev.preventDefault(); go(); };
+  });
 
   /* ───────────── الأحداث ───────────── */
   function draw() {

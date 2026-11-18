@@ -160,6 +160,37 @@ end $$;
 drop policy if exists org_audit_select on support_tasks_dev.org_audit;
 create policy org_audit_select on support_tasks_dev.org_audit for select to authenticated using ((select support_tasks_dev.app_role()) = 'admin');
 
+-- ---------------------------------------------------------------------
+-- حذف كل الموظفين (مدير النظام): الموظفون وإسناداتهم وسجلها، وفك ربطهم بالمستخدمين
+-- الهيكل (الوحدات والمستويات) وأنواع الإسناد والمستخدمون يبقون. ← { employees, assignments, users }
+-- ---------------------------------------------------------------------
+create or replace function support_tasks_dev.employees_purge()
+returns jsonb
+language plpgsql security definer
+set search_path = support_tasks_dev
+as $$
+declare v_e int; v_a int; v_u int;
+begin
+  perform support_tasks_dev.require_admin();
+  update support_tasks_dev.profiles set employee_id = null where employee_id is not null;
+  get diagnostics v_u = row_count;
+  alter table support_tasks_dev.employee_assignments disable trigger employee_assignments_audit;
+  alter table support_tasks_dev.employees disable trigger employees_audit;
+  delete from support_tasks_dev.employee_assignments;
+  get diagnostics v_a = row_count;
+  delete from support_tasks_dev.employees;
+  get diagnostics v_e = row_count;
+  alter table support_tasks_dev.employee_assignments enable trigger employee_assignments_audit;
+  alter table support_tasks_dev.employees enable trigger employees_audit;
+  delete from support_tasks_dev.org_audit where entity in ('employee', 'assignment');
+  -- سطر واحد في السجل يبيّن الحذف ومن نفّذه
+  insert into support_tasks_dev.org_audit (entity, entity_id, action, changed_by, new_data)
+  values ('employee', 0, 'delete', auth.uid(), jsonb_build_object('name_ar', 'حذف كل الموظفين', 'employees', v_e, 'assignments', v_a));
+  return jsonb_build_object('employees', v_e, 'assignments', v_a, 'users', v_u);
+end $$;
+revoke all on function support_tasks_dev.employees_purge() from public, anon;
+grant execute on function support_tasks_dev.employees_purge() to authenticated, service_role;
+
 -- التحقق: يجب أن يظهر سطر واحد
 select 'جاهز' as الحالة,
        (select count(*) from support_tasks_dev.employees) as الموظفون,

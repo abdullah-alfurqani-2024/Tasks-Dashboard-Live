@@ -6,6 +6,8 @@
 --  يُنفَّذ في Tasks-Test ← SQL Editor.
 -- =====================================================================
 
+drop function if exists support_tasks_dev.employees_purge();
+
 update support_tasks_dev.profiles set employee_id = null
 where employee_id in (select id from support_tasks_dev.employees where civil_no is null);
 delete from support_tasks_dev.employee_assignments

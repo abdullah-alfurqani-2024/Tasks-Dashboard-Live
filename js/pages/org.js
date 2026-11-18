@@ -507,7 +507,8 @@ export default async function org(ctx, main) {
             }
             const d = r.newData || r.oldData || {};
             if (r.entity === 'level') return html`<span class="small muted">الترتيب ${d.level_no}${d.head_title ? ` — ${d.head_title}` : ''}</span>`;
-            if (r.entity === 'employee') return html`<span class="small muted ltr">${d.civil_no}</span>`;
+            if (r.entity === 'employee' && !r.entityId) return html`<span class="small muted">${d.employees} موظف و${d.assignments} إسناد</span>`;
+            if (r.entity === 'employee') return html`<span class="small muted ltr">${d.civil_no || ''}</span>`;
             if (r.entity === 'assignment_type') return '';
             if (r.entity === 'assignment') return html`<span class="small muted">${show('type_id', d.type_id)} في «${show('unit_id', d.unit_id)}»${d.is_head ? ' (رئاسة)' : ''}، من ${fmtDate(d.start_date)}${d.end_date ? ` إلى ${fmtDate(d.end_date)}` : ''}</span>`;
             return html`<span class="small muted">${d.parent_id ? `تحت «${show('parent_id', d.parent_id)}»` : 'وحدة رئيسية'}</span>`;

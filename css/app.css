@@ -482,6 +482,9 @@ button.org-tog:hover { background: var(--gray-soft); color: var(--ink); }
 .emp-review { padding: 10px 12px; border-radius: 10px; border: 1px dashed var(--line-strong); gap: 6px; }
 .emp-review.on { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
 .emp-review textarea { min-height: 52px; }
+.emp-danger { border-top: 1px solid var(--line); }
+.emp-danger h3 { margin: 0 0 6px; font-size: 1rem; color: var(--bad); }
+.emp-danger p { margin: 0 0 10px; }
 @media (pointer: coarse) { .org-act { opacity: 1; } }
 @media (max-width: 640px) {
   .org-row { padding-inline-start: calc(6px + var(--d, 0) * 14px); flex-wrap: wrap; }

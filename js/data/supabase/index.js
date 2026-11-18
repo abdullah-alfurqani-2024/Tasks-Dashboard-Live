@@ -356,6 +356,7 @@ export function createAdapter(config) {
         return sum;
       },
       async linkUsers() { return c.rpc('link_users_to_employees').catch(empMissing); },
+      async purge() { return c.rpc('employees_purge').catch(empMissing); },
       async setUser(employeeId, userId) { await c.rpc('employee_set_user', { p_employee: employeeId, p_user: userId || null }); },
     },
 

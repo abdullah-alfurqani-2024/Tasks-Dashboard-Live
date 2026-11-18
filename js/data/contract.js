@@ -99,6 +99,7 @@
  * employees.import(rows, onProgress) → { created, updated, unchanged, review, linked }
  *        rows: [{ civilNo, employeeNo, nameAr, nameEn, review? }]، إضافة أو تحديث حسب الرقم المدني، والفارغ لا يمسح.
  *        review: سبب المراجعة للصف الخاطئ (الخانة الخاطئة تأتي فارغة)، فيُعلَّم الموظف «تحتاج مراجعة»
+ * employees.purge()              → { employees, assignments, users }   حذف كل الموظفين وإسناداتهم وسجلها، وفك ربطهم بالمستخدمين (المدير)
  * employees.linkUsers()          → number           ربط المستخدمين بسجلاتهم: رقم الدخول = الرقم المدني أو الوظيفي
  * employees.setUser(employeeId, userId|null) → void
  *        القواعد: أصيل واحد للموظف في أي يوم، رئيس أصيل واحد للوحدة ومن يقوم بأعمالها واحد، لا إسناد قائم في وحدة معطّلة أو لموظف غير نشط
