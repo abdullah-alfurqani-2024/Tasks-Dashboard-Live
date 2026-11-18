@@ -10,17 +10,12 @@ import { html, mount, $, on, downloadBlob } from '../core/dom.js';
 import { icon } from '../ui/icons.js';
 import { modal, busy, toast, toastError } from '../ui/feedback.js';
 import { options } from '../ui/parts.js';
-import { normalizeAr, searchKey, today } from '../core/format.js';
+import { normalizeAr, today } from '../core/format.js';
 import { treeOrder } from '../core/orgModel.js';
-import { readXlsx, writeXlsx } from '../lib/xlsx.js';
-import { parseCsv } from '../lib/csv.js';
+import { writeXlsx } from '../lib/xlsx.js';
+import { cell, guessLevel as guessLevelIn, readSheets, findHeader, rowPaths } from '../core/orgFile.js';
 
 const WORD = 'حذف الكل';
-/** عناوين إنجليزية شائعة ← اسم المستوى */
-const EN = [[/directorate|general\s*directorate/i, 'مديرية'], [/department/i, 'دائرة'], [/section|division|unit/i, 'قسم']];
-const OFFICE = /^(مكتب مدير|مدير مكتب)\s/;   // «مكتب مدير دائرة …»: موظفو مدير الدائرة نفسه، لا قسم
-const cell = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
-const hasLetters = (v) => /[A-Za-z؀-ۿ]/.test(v);
 
 /**
  * opts: { body, model: () => M, people: () => P, reload: async () => void, onChanged: () => void }
@@ -29,37 +24,17 @@ export function orgImportTab({ body, model, people, reload, onChanged }) {
   const S = { file: '', header: [], rows: [], hi: 0, col: new Map(), top: new Map(), replace: false, office: true, res: null };
 
   /* ───────────── المستويات من العناوين ───────────── */
-  function guessLevel(h) {
-    const M = model();
-    const t = cell(h);
-    if (!t) return '';
-    for (const [re, name] of EN) if (re.test(t)) { const l = M.levels.find((x) => x.name === name); if (l) return l.id; }
-    const k = searchKey(t);
-    let best = null;
-    for (const l of M.levels) {
-      const lk = searchKey(l.name);
-      if (k === lk || k.includes(lk) || lk.includes(k)) if (!best || l.name.length > best.name.length) best = l;
-    }
-    return best?.id || '';
-  }
+  const guessLevel = (h) => guessLevelIn(model().levels, h);
 
   /* ───────────── قراءة الملف ───────────── */
   async function readFile(file) {
     try {
-      let sheets;
-      if (/\.csv$/i.test(file.name) || file.type === 'text/csv') sheets = [{ rows: parseCsv(await file.text()) }];
-      else if (/\.xlsx$/i.test(file.name)) sheets = (await readXlsx(await file.arrayBuffer())).filter((s) => s.rows.length);
-      else throw new Error('نوع الملف غير مدعوم. استخدم xlsx أو csv.');
-      let found = null;
-      for (const s of sheets) {
-        const hi = s.rows.slice(0, 20).findIndex((r) => r.some((c) => guessLevel(c)));
-        if (hi >= 0) { found = { s, hi }; break; }
-      }
+      const found = findHeader(model().levels, await readSheets(file));
       if (!found) throw new Error('لم يُعثر على أعمدة للمستويات (مثل «المديرية» و«الدائرة» و«القسم») في أول 20 صفاً.');
       S.file = file.name;
       S.hi = found.hi;
-      S.header = found.s.rows[found.hi].map(cell);
-      S.rows = found.s.rows.slice(found.hi + 1);
+      S.header = found.sheet.rows[found.hi].map(cell);
+      S.rows = found.sheet.rows.slice(found.hi + 1);
       S.col = new Map();
       S.header.forEach((h, i) => { const l = guessLevel(h); if (l) S.col.set(i, l); });
       S.top = new Map();
@@ -72,52 +47,15 @@ export function orgImportTab({ body, model, people, reload, onChanged }) {
   function analyze() {
     const M = model();
     const lv = (id) => M.levels.find((l) => l.id === Number(id));
-    const cols = [...S.col.entries()].filter(([, l]) => l).sort((a, b) => lv(a[1]).levelNo - lv(b[1]).levelNo);
-    const byName = new Map(M.levels.map((l) => [normalizeAr(l.name), l]));
-    const titles = new Set(M.levels.map((l) => normalizeAr(l.headTitle)).filter(Boolean));
-    const skipped = [], inferred = [], ignoredOffice = new Set();
-    // المرور الأول: خلايا كل صف بعد التنظيف
-    const parsed = S.rows.map((r, i) => {
-      const line = S.hi + 2 + i;   // رقم الصف في Excel
-      const cells = cols.map(([ci, levelId], j) => {
-        let v = cell(r[ci]);
-        if (!hasLetters(v)) v = '';                               // فارغ، أو «0»، أو أرقام فقط
-        if (v && titles.has(normalizeAr(v))) v = '';              // مسمى مسؤول («الوزير») لا وحدة
-        if (v && j > 0 && S.office && OFFICE.test(v)) { ignoredOffice.add(v); v = ''; }
-        const own = v ? byName.get(normalizeAr(v)) : null;       // قيمة باسم مستوى («مكتب الوزير») تأخذ ذلك المستوى
-        return v ? { v, levelId: own ? own.id : Number(levelId) } : null;
-      });
-      return { line, cells, raw: cols.map(([ci]) => cell(r[ci])).filter(Boolean) };
-    });
-    // المسار السابق لكل قيمة، لإكمال الأعلى الناقص
-    const prefixes = new Map();
-    for (const p of parsed) {
-      p.cells.forEach((c, j) => {
-        if (!c || !p.cells.slice(0, j).some(Boolean)) return;
-        const k = `${j}|${normalizeAr(c.v)}`;
-        const pre = p.cells.slice(0, j).filter(Boolean);
-        const ps = pre.map((x) => normalizeAr(x.v)).join('›');
-        if (!prefixes.has(k)) prefixes.set(k, new Map());
-        prefixes.get(k).set(ps, pre);
-      });
-    }
+    const { rows: paths, ignoredOffice, cols } = rowPaths(M.levels, { cols: [...S.col.entries()], rows: S.rows, hi: S.hi, office: S.office });
+    const skipped = [], inferred = [];
     const nodes = new Map();   // المفتاح: مسار الأسماء المنظّفة
     const kids = new Map();
-    for (const p of parsed) {
-      let path = p.cells.filter(Boolean);
-      if (!path.length) { if (p.raw.length) skipped.push({ line: p.line, why: 'لا وحدة في الصف (فارغ، أو مسمى وظيفي، أو «مكتب مدير …»)', raw: p.raw }); continue; }
-      const j0 = p.cells.findIndex(Boolean);
-      if (j0 > 0) {
-        const opts = prefixes.get(`${j0}|${normalizeAr(path[0].v)}`);
-        if (opts && opts.size === 1) {
-          const pre = [...opts.values()][0];
-          inferred.push({ line: p.line, what: pre.map((x) => x.v).join(' ← '), name: path[0].v });
-          path = [...pre, ...path];
-        } else {
-          skipped.push({ line: p.line, why: opts ? 'المستوى الأعلى فارغ، والوحدة تظهر تحت أكثر من وحدة' : 'المستوى الأعلى فارغ، ولا يُعرف مكانها', raw: p.raw });
-          continue;
-        }
-      }
+    for (const p of paths) {
+      if (p.skip) { skipped.push({ line: p.line, why: p.skip, raw: p.raw }); continue; }
+      if (!p.path.length) continue;
+      const path = p.path;
+      if (p.inferred) inferred.push({ line: p.line, what: p.inferred, name: path[p.inferred.split(' ← ').length].v });
       let parentKey = null;
       for (const c of path) {
         const key = parentKey ? `${parentKey}›${normalizeAr(c.v)}` : normalizeAr(c.v);

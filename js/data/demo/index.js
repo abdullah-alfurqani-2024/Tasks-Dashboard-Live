@@ -700,6 +700,47 @@ export function createAdapter() {
         persist(); return sum;
       },
       async linkUsers() { await wait(60); need('admin'); const n = linkUsers(); persist(); return n; },
+      async assignBulk(items, { date, transfer = true } = {}, onProgress) {
+        await wait(150); need('admin');
+        if (!date) throw err('تاريخ بداية الإسناد مطلوب.');
+        const sum = { created: 0, unchanged: 0, heads: 0, transferred: 0, skipped: 0, headConflicts: [], failed: [] };
+        const prim = Em().types.find((t) => t.isPrimary);
+        const prevDay = new Date(Date.parse(date + 'T00:00:00Z') - 864e5).toISOString().slice(0, 10);
+        const put = (row) => { checkAssignment(row); const r = { ...row, id: ++Em().seq.asg }; Em().asg.push(r); eLog('assignment', r.id, 'insert', null, r); };
+        for (const it of items) {
+          const snap = JSON.stringify(Em().asg);
+          try {
+            const cur = Em().asg.find((a) => a.employeeId === it.employeeId && a.typeId === prim.id && a.startDate <= date && (!a.endDate || a.endDate >= date));
+            const base = { employeeId: it.employeeId, unitId: it.unitId, typeId: prim.id, startDate: date, endDate: null, notes: '' };
+            const tryHead = (fn) => {
+              try { fn(!!it.isHead); if (it.isHead) sum.heads++; } catch (e) {
+                if (!it.isHead) throw e;
+                Em().asg = JSON.parse(snap); fn(false);
+                sum.headConflicts.push({ employeeId: it.employeeId, unitId: it.unitId, error: e.message });
+              }
+            };
+            if (!cur) { tryHead((h) => put({ ...base, isHead: h })); sum.created++; }
+            else if (cur.unitId === it.unitId) {
+              if (it.isHead && !cur.isHead) {
+                try { checkAssignment({ ...cur, isHead: true }); cur.isHead = true; sum.heads++; } catch (e) { sum.headConflicts.push({ employeeId: it.employeeId, unitId: it.unitId, error: e.message }); }
+              }
+              sum.unchanged++;
+            } else if (transfer) {
+              tryHead((h) => {
+                const c2 = Em().asg.find((a) => a.id === cur.id);
+                if (c2.startDate === date) { const nx = { ...c2, unitId: it.unitId, isHead: h }; checkAssignment(nx); Object.assign(c2, nx); }
+                else { c2.endDate = prevDay; put({ ...base, isHead: h }); }
+              });
+              sum.transferred++;
+            } else sum.skipped++;
+          } catch (e) {
+            Em().asg = JSON.parse(snap);
+            sum.failed.push({ employeeId: it.employeeId, unitId: it.unitId, error: e.message });
+          }
+        }
+        onProgress?.(items.length, items.length);
+        persist(); return sum;
+      },
       async purge() {
         await wait(120); need('admin');
         const r = { employees: Em().list.length, assignments: Em().asg.length, users: db.users.filter((u) => u.employeeId).length };

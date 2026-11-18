@@ -77,3 +77,11 @@ TEST_DB=td TEST_SCHEMA=support_tasks_dev python3 supabase/tests/run_employee_tes
 ```bash
 TEST_DB=td TEST_SCHEMA=support_tasks_dev python3 supabase/tests/run_org_import_tests.py
 ```
+
+## اختبارات إسناد الموظفين من ملف الهيكل (2.1.0-dev.13)
+`run_assign_import_tests.py` يختبر `supabase/dev/sql/22_assign_import.sql` (13 حالة): الإسناد الجديد والرئاسة، وبلا تغيير،
+والنقل أو الترك، وتعارض الرئاسة، والأخطاء لكل موظف دون إيقاف الدفعة، والصلاحيات:
+
+```bash
+TEST_DB=td TEST_SCHEMA=support_tasks_dev python3 supabase/tests/run_assign_import_tests.py
+```

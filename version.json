@@ -1,5 +1,5 @@
 {
-  "version": "2.1.0-dev.12",
+  "version": "2.1.0-dev.13",
   "files": [
     "css/app.css",
     "css/print.css",
@@ -10,6 +10,7 @@
     "js/core/exporter.js",
     "js/core/fields.js",
     "js/core/format.js",
+    "js/core/orgFile.js",
     "js/core/orgModel.js",
     "js/core/router.js",
     "js/core/session.js",
@@ -26,6 +27,7 @@
     "js/lib/stats.js",
     "js/lib/xlsx.js",
     "js/lib/zip.js",
+    "js/pages/assignImport.js",
     "js/pages/audit.js",
     "js/pages/dashboard.js",
     "js/pages/employees.js",

@@ -17,6 +17,7 @@ import { normalizeAr, searchKey, queryWords, latinDigits, fmtDate, today } from 
 import { buildModel, pathText, treeOrder } from '../core/orgModel.js';
 import { readXlsx, writeXlsx } from '../lib/xlsx.js';
 import { parseCsv } from '../lib/csv.js';
+import { assignImportTab } from './assignImport.js';
 
 const TABS = [['list', 'الموظفون'], ['types', 'أنواع الإسناد'], ['import', 'الاستيراد']];
 const digits = (v) => latinDigits(String(v ?? '')).replace(/\s+/g, '');
@@ -453,6 +454,14 @@ export default async function employees(ctx, main) {
     return '';
   }
   const I = { file: '', rows: [], header: [], map: {}, preview: null, filter: 'all' };
+  /** إسناد الموظفين إلى وحداتهم من ملف الهيكل (js/pages/assignImport.js) */
+  const asgTab = assignImportTab({
+    data: () => ({
+      emps: D.emps, M: D.M,
+      primaryAt: (empId, d) => (D.byEmp.get(empId) || []).find((a) => D.type.get(a.typeId)?.isPrimary && a.startDate <= d && (!a.endDate || a.endDate >= d)),
+    }),
+    reload,
+  });
   const cell = (v) => (typeof v === 'number' ? (Number.isInteger(v) ? String(v) : String(Math.round(v))) : String(v ?? '').trim());
 
   function drawImport() {
@@ -465,6 +474,7 @@ export default async function employees(ctx, main) {
         <input type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
       </label>
       <div id="imp-step"></div></div>
+      ${D.emps.length ? html`<div id="asg-imp"></div>` : ''}
       ${D.emps.length ? html`<div class="card-pad emp-danger">
         <h3>حذف كل الموظفين</h3>
         <p>يحذف <b>نهائياً</b> كل الموظفين (${D.emps.length.toLocaleString('en-US')}) وإسناداتهم وسجلها، ويفك ربطهم بحسابات النظام، لتستورد الملف من جديد.
@@ -478,6 +488,8 @@ export default async function employees(ctx, main) {
     drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]); });
     drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } });
     if (I.rows.length) drawMapping();
+    const asgEl = $('#asg-imp', body);
+    if (asgEl) asgTab.draw(asgEl);
   }
 
   async function readFile(file) {

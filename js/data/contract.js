@@ -103,6 +103,9 @@
  * employees.import(rows, onProgress) → { created, updated, unchanged, review, linked }
  *        rows: [{ civilNo, employeeNo, nameAr, nameEn, review? }]، إضافة أو تحديث حسب الرقم المدني، والفارغ لا يمسح.
  *        review: سبب المراجعة للصف الخاطئ (الخانة الخاطئة تأتي فارغة)، فيُعلَّم الموظف «تحتاج مراجعة»
+ * employees.assignBulk(items, { date, transfer }, onProgress) → { created, unchanged, heads, transferred, skipped, headConflicts, failed }
+ *        items: [{ employeeId, unitId, isHead }] إسناد «أصيل» من date؛ في وحدة أخرى ← نقل (transfer) أو يُترك؛
+ *        الرئاسة المتعارضة ← إسناد بلا رئاسة (headConflicts)؛ خطأ موظف لا يوقف الباقين (failed: [{ employeeId, unitId, error }])
  * employees.purge()              → { employees, assignments, users }   حذف كل الموظفين وإسناداتهم وسجلها، وفك ربطهم بالمستخدمين (المدير)
  * employees.linkUsers()          → number           ربط المستخدمين بسجلاتهم: رقم الدخول = الرقم المدني أو الوظيفي
  * employees.setUser(employeeId, userId|null) → void

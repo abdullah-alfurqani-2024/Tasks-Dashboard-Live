@@ -492,6 +492,10 @@ button.org-tog:hover { background: var(--gray-soft); color: var(--ink); }
 .imp-notes > summary { cursor: pointer; color: var(--muted); }
 .emp-why { margin-top: 4px; max-width: 260px; line-height: 1.5; }
 .emp-danger { border-top: 1px solid var(--line); }
+.emp-asg { border-top: 1px solid var(--line); }
+.emp-asg h3 { margin: 0 0 6px; font-size: 1rem; }
+.asg-opts { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; margin-top: 6px; }
+.asg-opts .field { flex: 0 0 200px; margin: 0; }
 .emp-danger h3 { margin: 0 0 6px; font-size: 1rem; color: var(--bad); }
 .emp-danger p { margin: 0 0 10px; }
 @media (pointer: coarse) { .org-act { opacity: 1; } }

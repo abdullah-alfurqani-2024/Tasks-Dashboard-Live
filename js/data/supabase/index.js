@@ -372,6 +372,24 @@ export function createAdapter(config) {
       },
       async linkUsers() { return c.rpc('link_users_to_employees').catch(empMissing); },
       async purge() { return c.rpc('employees_purge').catch(empMissing); },
+      /** دفعات من 300 ← المجموع */
+      async assignBulk(items, { date, transfer = true } = {}, onProgress) {
+        const sum = { created: 0, unchanged: 0, heads: 0, transferred: 0, skipped: 0, headConflicts: [], failed: [] };
+        const N = 300;
+        const fix = (x) => ({ employeeId: x.employee_id, unitId: x.unit_id, error: x.error });
+        for (let i = 0; i < items.length; i += N) {
+          const part = items.slice(i, i + N).map((x) => ({ employee_id: x.employeeId, unit_id: x.unitId, is_head: !!x.isHead }));
+          const r = await c.rpc('employees_assign_bulk', { p: part, p_date: date, p_transfer: !!transfer }).catch((e) => {
+            if (['PGRST202', '42883'].includes(e?.code)) throw new ApiError('الإسناد من ملف الهيكل غير مجهّز في قاعدة بيانات هذه النسخة: نفّذ ملف supabase/dev/sql/22_assign_import.sql في SQL Editor.', e.status, e.code);
+            throw e;
+          });
+          for (const k of ['created', 'unchanged', 'heads', 'transferred', 'skipped']) sum[k] += r[k] || 0;
+          sum.headConflicts.push(...(r.head_conflicts || []).map(fix));
+          sum.failed.push(...(r.failed || []).map(fix));
+          onProgress?.(Math.min(i + N, items.length), items.length);
+        }
+        return sum;
+      },
       async setUser(employeeId, userId) { await c.rpc('employee_set_user', { p_employee: employeeId, p_user: userId || null }); },
     },
 
