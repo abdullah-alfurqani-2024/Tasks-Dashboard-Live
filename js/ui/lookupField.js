@@ -34,6 +34,7 @@ export function lookupField(el, opts) {
       state.className = 'lk-state small';
     } else mount(state, '');
     input.classList.toggle('lk-linked', !!d);
+    state.title = state.textContent.trim();   // السطر يُختصر بـ«…» إن طال، والنص كاملاً عند المرور عليه
   }
 
   function close() { list.hidden = true; input.setAttribute('aria-expanded', 'false'); active = -1; }

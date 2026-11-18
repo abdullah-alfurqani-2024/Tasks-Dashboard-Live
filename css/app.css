@@ -225,6 +225,8 @@ textarea.input { min-height: 84px; resize: vertical; }
 .check input { width: 17px; height: 17px; accent-color: var(--brand); }
 .form-grid { display: grid; gap: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .form-grid .span-2 { grid-column: 1 / -1; }
+/* حقلان في صف واحد يبدآن من الأعلى معاً ولو اختلف طول ما تحتهما */
+.form-grid > .field { align-content: start; }
 /* القائمة المنسدلة داخل الصفحة (فايرفوكس على الحاسوب، js/ui/selectPopup.js):
    قائمة فايرفوكس الأصلية لا ترى خط الموقع، فتُعرض هذه بدلها بنفس الخيارات */
 .sel-pop {
@@ -562,8 +564,7 @@ button.org-tog:hover { background: var(--gray-soft); color: var(--ink); }
 .lk-opt:hover, .lk-opt.on { background: var(--brand-soft); }
 .lk-opt.cur b { color: var(--brand); }
 .lk-title, .lk-empty { padding: 6px 11px; }
-.lk-state { min-height: 1.2em; margin-top: 3px; line-height: 1.4; }
-.lk-state:empty { display: none; }
+.lk-state { min-height: 1.4em; margin-top: 3px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lk-ok svg { width: 14px; height: 14px; color: var(--ok); vertical-align: -2px; }
 .lk-free { color: var(--warn); }
 .lk-bad { color: var(--bad); }
