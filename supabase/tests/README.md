@@ -69,3 +69,11 @@ TEST_DB=td TEST_SCHEMA=support_tasks_dev python3 supabase/tests/run_org_tests.py
 ```bash
 TEST_DB=td TEST_SCHEMA=support_tasks_dev python3 supabase/tests/run_employee_tests.py
 ```
+
+## اختبارات استيراد الهيكل وحذفه (2.1.0-dev.12)
+`run_org_import_tests.py` يختبر `supabase/dev/sql/21_org_import.sql` (21 حالة): الاستيراد والإضافة دون تكرار والمطابقة بالاسم البديل،
+وقواعد الهيكل، والاستبدال في عملية واحدة، وحذف الهيكل مع الإسنادات، والصلاحيات:
+
+```bash
+TEST_DB=td TEST_SCHEMA=support_tasks_dev python3 supabase/tests/run_org_import_tests.py
+```

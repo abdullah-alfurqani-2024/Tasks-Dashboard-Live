@@ -35,6 +35,13 @@ const toUnit = (r) => ({
   id: r.id, parentId: r.parent_id, levelId: r.level_id, name: r.name, shortName: r.short_name || '', code: r.code || '',
   aliases: r.aliases || [], sortOrder: r.sort_order, isActive: r.is_active,
 });
+/** دوال استيراد الهيكل وحذفه غير موجودة بعد */
+const orgImportMissing = (e) => {
+  if (['PGRST202', '42883'].includes(e?.code)) {
+    throw new ApiError('استيراد الهيكل وحذفه غير مجهّزين في قاعدة بيانات هذه النسخة: نفّذ ملف supabase/dev/sql/21_org_import.sql في SQL Editor.', e.status, e.code);
+  }
+  throw e;
+};
 const UNIT_COLS = 'id,parent_id,level_id,name,short_name,code,aliases,sort_order,is_active';
 /** جداول الهيكل غير موجودة بعد (لم يُنفَّذ ملف قاعدة البيانات في هذه النسخة) */
 const orgMissing = (e) => {
@@ -294,6 +301,14 @@ export function createAdapter(config) {
         return c.rpc('org_set_active', { p_id: id, p_active: !!active, p_subtree: !!subtree }).catch(orgMissing);
       },
       async deleteUnit(id) { await c.rpc('org_delete_unit', { p_id: id }).catch(orgMissing); },
+      async import(items, replace = false) {
+        const r = await c.rpc('org_import', {
+          p: items.map((i) => ({ k: i.k, p: i.p || null, parent_id: i.parentId || null, name: i.name, level_id: i.levelId, sort: i.sort || 0 })),
+          p_replace: !!replace,
+        }).catch(orgImportMissing);
+        return { created: r.created, existing: r.existing, purgedUnits: r.purged_units, purgedAssignments: r.purged_assignments };
+      },
+      async purge() { return c.rpc('org_purge').catch(orgImportMissing); },
       async audit(f = {}) {
         const rows = await c.select('org_audit', { select: '*', order: 'changed_at.desc,id.desc', limit: String(f.limit || 300) });
         return rows.map((r) => ({

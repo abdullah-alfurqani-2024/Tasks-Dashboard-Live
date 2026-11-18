@@ -13,8 +13,9 @@ import { pageHead, options, loading, newPage, searchBox } from '../ui/parts.js';
 import { normalizeAr, searchKey, queryWords, fmtDateTime, fmtDate, today } from '../core/format.js';
 import { CONFIG } from '../config.js';
 import { buildModel, pathText } from '../core/orgModel.js';
+import { orgImportTab } from './orgImport.js';
 
-const TABS = [['tree', 'الهيكل'], ['levels', 'المستويات'], ['log', 'سجل التغييرات']];
+const TABS = [['tree', 'الهيكل'], ['levels', 'المستويات'], ['import', 'الاستيراد'], ['log', 'سجل التغييرات']];
 const OPEN_KEY = `${CONFIG.storagePrefix}org.open`;
 const MAX_RESULTS = 200;
 
@@ -51,7 +52,7 @@ export default async function org(ctx, main) {
       const T = today();
       const name = new Map(emps.map((e) => [e.id, e.nameAr]));
       const primary = new Set(types.filter((t) => t.isPrimary).map((t) => t.id));
-      P = { head: new Map(), acting: new Map(), count: new Map(), empName: name, typeName: new Map(types.map((t) => [t.id, t.name])) };
+      P = { total: asg.length, head: new Map(), acting: new Map(), count: new Map(), empName: name, typeName: new Map(types.map((t) => [t.id, t.name])) };
       for (const a of asg) {
         if (!(a.startDate <= T && (!a.endDate || a.endDate >= T))) continue;
         const isP = primary.has(a.typeId);
@@ -508,6 +509,7 @@ export default async function org(ctx, main) {
             const d = r.newData || r.oldData || {};
             if (r.entity === 'level') return html`<span class="small muted">الترتيب ${d.level_no}${d.head_title ? ` — ${d.head_title}` : ''}</span>`;
             if (r.entity === 'employee' && !r.entityId) return html`<span class="small muted">${d.employees} موظف و${d.assignments} إسناد</span>`;
+            if (r.entity === 'unit' && !r.entityId) return html`<span class="small muted">${d.units} وحدة و${d.assignments} إسناد</span>`;
             if (r.entity === 'employee') return html`<span class="small muted ltr">${d.civil_no || ''}</span>`;
             if (r.entity === 'assignment_type') return '';
             if (r.entity === 'assignment') return html`<span class="small muted">${show('type_id', d.type_id)} في «${show('unit_id', d.unit_id)}»${d.is_head ? ' (رئاسة)' : ''}، من ${fmtDate(d.start_date)}${d.end_date ? ` إلى ${fmtDate(d.end_date)}` : ''}</span>`;
@@ -519,11 +521,18 @@ export default async function org(ctx, main) {
   }
 
   /* ───────────── الأحداث ───────────── */
+  const imp = orgImportTab({
+    body, model: () => M, people: () => P,
+    reload: async () => { await Promise.all([reload(), loadPeople()]); },
+    onChanged: () => { if (tab === 'import') imp.draw(); },
+  });
+
   function draw() {
     root.querySelectorAll('[data-tab]').forEach((b) => { b.classList.toggle('active', b.dataset.tab === tab); b.setAttribute('aria-selected', String(b.dataset.tab === tab)); });
     $('.page-head [data-act="add-root"]', root).hidden = tab !== 'tree';
     if (tab === 'tree') drawTree();
     else if (tab === 'levels') drawLevels();
+    else if (tab === 'import') imp.draw();
     else drawLog();
   }
 

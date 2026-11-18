@@ -177,6 +177,15 @@ export function createAdapter() {
     }
     return n;
   };
+  /** حذف الهيكل: الوحدات وسجلها وكل الإسنادات */
+  const purgeOrg = () => {
+    const r = { units: O().units.length, assignments: Em().asg.length };
+    O().units = []; Em().asg = [];
+    O().audit = O().audit.filter((a) => a.entity !== 'unit' && a.entity !== 'assignment');
+    O().audit.unshift({ id: ++O().seq.audit, entity: 'unit', entityId: 0, action: 'delete', changedBy: me?.id || null, changedAt: new Date().toISOString(),
+      changedFields: null, oldData: null, newData: { name: 'حذف الهيكل', units: r.units, assignments: r.assignments } });
+    return r;
+  };
   const need = (...roles) => { if (!me) throw err('سجّل الدخول أولاً.'); if (!roles.includes(me.role)) throw err('لا تملك صلاحية لهذه العملية.'); };
 
   const view = (t) => {
@@ -521,6 +530,36 @@ export function createAdapter() {
         persist();
       },
       async audit(f = {}) { await wait(40); need('admin'); return JSON.parse(JSON.stringify(O().audit.slice(0, f.limit || 300))); },
+      async purge() { await wait(100); need('admin'); const r = purgeOrg(); persist(); return r; },
+      async import(items, replace = false) {
+        await wait(150); need('admin');
+        const snap = JSON.stringify({ org: db.org, emp: db.emp });
+        try {
+          const pr = replace ? purgeOrg() : { units: 0, assignments: 0 };
+          const map = new Map();
+          let created = 0, existing = 0;
+          for (const it of items) {
+            const name = oClean(it.name);
+            let parentId = it.p ? map.get(it.p) : it.parentId || null;
+            if (it.p && !parentId) throw err(`ترتيب الملف: «${name}» قبل الوحدة الأعلى منها.`);
+            const low = name.toLowerCase();
+            const found = O().units.find((u) => (u.parentId || 0) === (parentId || 0) && (u.name.toLowerCase() === low || (u.aliases || []).some((a) => a.toLowerCase() === low)));
+            if (found) { map.set(it.k, found.id); existing++; continue; }
+            const lv = oLevel(Number(it.levelId));
+            if (!lv) throw err('اختر مستوى الوحدة.');
+            const par = oUnit(parentId);
+            if (par && oLevel(par.levelId).levelNo >= lv.levelNo) throw err(`لا يمكن أن تتبع وحدة من مستوى «${lv.name}» وحدةً من مستوى «${oLevel(par.levelId).name}»: تتبع الوحدة دائماً وحدةً في مستوى أعلى منها.`);
+            const row = { id: ++O().seq.unit, parentId, levelId: lv.id, name, shortName: '', code: '', aliases: [], sortOrder: Number(it.sort) || 0, isActive: true };
+            O().units.push(row); oLog('unit', row.id, 'insert', null, row);
+            map.set(it.k, row.id); created++;
+          }
+          persist();
+          return { created, existing, purgedUnits: pr.units, purgedAssignments: pr.assignments };
+        } catch (e) {
+          const s = JSON.parse(snap); db.org = s.org; db.emp = s.emp;
+          throw e;
+        }
+      },
     },
 
     employees: {

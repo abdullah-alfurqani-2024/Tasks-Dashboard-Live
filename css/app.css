@@ -482,6 +482,14 @@ button.org-tog:hover { background: var(--gray-soft); color: var(--ink); }
 .emp-review { padding: 10px 12px; border-radius: 10px; border: 1px dashed var(--line-strong); gap: 6px; }
 .emp-review.on { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
 .emp-review textarea { min-height: 52px; }
+.imp-h { margin: 18px 0 8px; font-size: .95rem; }
+.imp-tops select { min-width: 260px; }
+.imp-tree { max-height: 52vh; overflow: auto; border: 1px solid var(--line); border-radius: 9px; padding: 8px 12px; }
+.imp-node > summary { cursor: pointer; padding: 3px 0; }
+.imp-kids { padding-inline-start: 20px; border-inline-start: 1px dashed var(--line); margin-inline-start: 6px; }
+.imp-leaf { padding: 3px 0; padding-inline-start: 16px; }
+.imp-notes { margin-top: 8px; }
+.imp-notes > summary { cursor: pointer; color: var(--muted); }
 .emp-why { margin-top: 4px; max-width: 260px; line-height: 1.5; }
 .emp-danger { border-top: 1px solid var(--line); }
 .emp-danger h3 { margin: 0 0 6px; font-size: 1rem; color: var(--bad); }

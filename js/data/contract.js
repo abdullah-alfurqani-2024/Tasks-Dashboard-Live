@@ -84,6 +84,10 @@
  * org.setActive(id, active, subtree?) → number    التعطيل يشمل ما تحتها دائماً؛ التفعيل للوحدة وحدها أو مع ما تحتها
  * org.deleteUnit(id)             → void           الوحدة التي ليس تحتها وحدات فقط
  * org.audit({ limit? })          → OrgAuditEntry[]   الأحدث أولاً (المدير)
+ * org.import(items, replace)     → { created, existing, purgedUnits, purgedAssignments }   (المدير)
+ *        items: [{ k, p, parentId, name, levelId, sort }] الأعلى قبل ما تحته؛ p مفتاح الأعلى في الملف، parentId وحدة موجودة.
+ *        replace: حذف الهيكل الحالي (وكل الإسنادات) ثم الاستيراد في عملية واحدة؛ وإلا يُطابَق الموجود بالاسم أو الاسم البديل
+ * org.purge()                    → { units, assignments }   حذف كل الوحدات وسجلها وكل إسنادات الموظفين (المدير)
  *        القواعد (قاعدة البيانات تفرضها): الأم في مستوى أعلى، لا دوران، لا مفعّلة تحت معطّلة، الاسم لا يتكرر بين الأخوات
  *
  * employees.list()               → Employee[]                       (المدير)
